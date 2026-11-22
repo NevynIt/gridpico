@@ -2,7 +2,7 @@
 
 **Owner:** Project Manager. **Session operator:** Session Manager. These are suggested starting assignments and can be revised as budget and tasks change. This file is the canonical team model plan; no additional agents are implied by listing future seats.
 
-The model IDs below are candidates previously seen in the `rpico-bridge` development configuration, **not a guarantee** that the installed Codex CLI/account accepts them. Session Manager verifies support before launching and asks Project Manager for another model rather than silently falling back.
+The bootstrap sessions displayed the model and effort settings listed below. Project Manager is keeping those defaults for planning. Later and deferred entries are candidates to review against task complexity and the observed account allowance before requesting activation. If a requested setting is unavailable, Session Manager reports it to Project Manager for a decision.
 
 | Seat | Codex model ID | Effort | Stage |
 | --- | --- | --- | --- |

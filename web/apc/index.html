@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gridpico · APC simulator</title>
+<style>
+  :root {
+    color-scheme: light;
+    font: 100%/1.45 system-ui, sans-serif;
+    --ink: #252238;
+    --muted: #595469;
+    --line: #dcd7e8;
+    --accent: #edbb91;
+    --mono: ui-monospace, "Cascadia Mono", monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #f2eff7; color: var(--ink); }
+  main { max-width: 75rem; margin: auto; padding: clamp(1rem, 4vw, 3.5rem); }
+  h1, h2, p { margin: 0; }
+  h1 { font-size: clamp(2rem, 5vw, 3.5rem); line-height: 1.05; letter-spacing: -.06em; }
+  h2 { line-height: 1.25; font-size: 1.125rem; }
+  header { margin-bottom: 1.75rem; }
+  header p { margin-bottom: .5rem; color: var(--muted); }
+  .workspace { display: grid; grid-template-columns: minmax(0, 2.35fr) minmax(17rem, 1fr); gap: 1rem; align-items: stretch; }
+  .surface {
+    background: #292638; color: #f5f0fb; border: 1px solid #353045;
+    border-radius: 1.25rem; padding: clamp(.75rem, 2.6vw, 1.65rem);
+    box-shadow: 0 12px 24px #2a204218;
+  }
+  .surface-heading, .keybed-heading {
+    display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .35rem .75rem;
+  }
+  .surface-heading { margin-bottom: 1rem; }
+  .surface small { color: #cbc4d8; }
+  small, .mono { font: .8125rem/1.4 var(--mono); }
+  button { font: inherit; cursor: pointer; touch-action: manipulation; }
+  button:focus-visible { outline: 3px solid #d6bdff; outline-offset: -3px; z-index: 3; }
+  .panel, .transport { display: grid; gap: clamp(.25rem, 1vw, .6rem); }
+  .panel { grid-template-columns: repeat(8, minmax(0, 1fr)) minmax(2.65rem, 1.15fr); }
+  .control {
+    background: #403b52; color: #fff; border: 1px solid #56506a; border-radius: .45rem;
+    min-width: 0; min-height: 2rem; padding: .25rem .12rem; font-size: .8125rem;
+    user-select: none;
+  }
+  .pad { aspect-ratio: 1.46; background: #4f4962; box-shadow: inset 0 -3px #18152938; }
+  .scene { background: #372f48; }
+  .track { background: #342f44; }
+  .transport { display: flex; flex-wrap: wrap; margin: .875rem 0 1.15rem; }
+  .transport .control { padding: .365rem .65rem; }
+  .transport .control:disabled { color: #aaa0b9; cursor: default; }
+  .keybed-heading { margin-bottom: .5rem; }
+  .keys {
+    position: relative; display: grid; grid-template-columns: repeat(15, minmax(0, 1fr));
+    gap: 2px; height: clamp(6.8rem, 15vw, 10rem); background: #211e2c;
+    overflow: hidden; border-radius: .5rem;
+  }
+  .key {
+    border: 0; border-radius: 0 0 .28rem .28rem; padding: 0 0 .5rem; display: flex;
+    align-items: end; justify-content: center; font: .8125rem/1 var(--mono);
+    color: #4a4255; background: #f8f4f9; touch-action: none; user-select: none;
+  }
+  .key.black {
+    position: absolute; height: 61%; width: 4.1%; left: var(--left); transform: translateX(-50%);
+    color: #fff; background: #1d192a; z-index: 1; box-shadow: inset 0 -4px #fff1;
+  }
+  .control[data-held], .key[data-held] { color: #27182d; background: var(--accent); }
+  .playing-help { margin-top: .8rem; color: #d9d2e2; font-size: .875rem; }
+  .capture {
+    display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line);
+    border-radius: 1.25rem; padding: 1.15rem; min-width: 0;
+  }
+  .activity-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+  .tabs { display: flex; gap: .2rem; padding: .22rem; border-radius: .55rem; background: #f1edf6; }
+  .tabs button {
+    background: transparent; color: var(--muted); border: 0; border-radius: .4rem;
+    padding: .36rem .55rem; font-size: .875rem; font-weight: 650;
+  }
+  .tabs button[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 4px #29263819; }
+  .activity-panel { display: flex; flex: 1; flex-direction: column; margin-top: 1rem; }
+  .activity-panel[hidden] { display: none; }
+  .state { font-size: .875rem; font-weight: 650; color: #62451f; background: #f8ecdb; padding: .22rem .6rem; border-radius: .4rem; }
+  .state[data-connected] { color: #254e3b; background: #e5f1ea; }
+  .empty {
+    display: grid; place-items: center; flex: 1; min-height: 7rem; margin-top: 1rem;
+    padding: 1rem; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: .75rem;
+  }
+  .empty[hidden], .capture-results[hidden] { display: none; }
+  .capture-results { margin-top: 1rem; max-height: 26rem; overflow: auto; }
+  table { width: 100%; border-collapse: collapse; font: .875rem/1.4 var(--mono); }
+  th, td { padding: .55rem .25rem; text-align: left; border-bottom: 1px solid var(--line); }
+  th { background: white; position: sticky; top: 0; }
+  .monitor-actions { display: flex; align-items: center; flex-wrap: wrap; gap: .55rem; margin-top: .75rem; }
+  .audio-toggle {
+    border: 0; border-radius: .45rem; background: #3f3158; color: #fff;
+    padding: .46rem .65rem; font-size: .875rem; font-weight: 650;
+  }
+  #audio-status { font-size: .875rem; color: var(--muted); }
+  .volume {
+    display: grid; grid-template-columns: 1fr auto; gap: .2rem .5rem; margin: .8rem 0;
+    font-size: .875rem;
+  }
+  .volume input { grid-column: 1 / -1; width: 100%; margin: 0; accent-color: #594477; }
+  .channel-heading { margin: .2rem 0 .45rem; font-size: .875rem; }
+  .channels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .3rem .55rem; }
+  .channels label { display: flex; align-items: center; gap: .35rem; font: .8125rem/1.4 var(--mono); }
+  .channels label span { min-width: 1.35rem; }
+  .channels select {
+    width: 100%; min-width: 0; padding: .25rem .12rem; color: var(--ink); background: #fbf9fd;
+    border: 1px solid var(--line); border-radius: .35rem; font: .875rem/1.35 system-ui, sans-serif;
+  }
+  @media (max-width: 55rem) {
+    .workspace { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 32rem) {
+    .key span { font-size: .6875rem; }
+    .pad { aspect-ratio: auto; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="mono">Gridpico</p>
+    <h1>APC simulator</h1>
+  </header>
+
+  <div class="workspace">
+    <section class="surface" aria-labelledby="surface-title">
+      <div class="surface-heading">
+        <h2 id="surface-title">APC Key 25 mk2</h2>
+        <small>5 × 8 pads</small>
+      </div>
+      <div class="panel" id="panel" role="group" aria-label="Clip pads, scene buttons and track buttons"></div>
+      <div class="transport" id="transport" role="group" aria-label="Transport, modifier and keybed controls"></div>
+      <div class="keybed-heading">
+        <h2 id="keys-title">Keybed</h2>
+        <small id="range"></small>
+      </div>
+      <div class="keys" id="keys" role="group" aria-labelledby="keys-title" aria-describedby="playing-help"></div>
+      <p class="playing-help" id="playing-help">Play with a mouse or by touch, or use the letters and numbers shown on the keys.</p>
+    </section>
+
+    <section class="capture" aria-label="Destination MIDI">
+      <div class="activity-heading">
+        <div class="tabs" role="tablist" aria-label="Destination MIDI">
+          <button type="button" id="capture-tab" role="tab" aria-selected="true" aria-controls="capture-panel">Capture</button>
+          <button type="button" id="monitor-tab" role="tab" aria-selected="false" aria-controls="monitor-panel" tabindex="-1">Monitor</button>
+        </div>
+        <span class="state" id="connection" role="status">Disconnected</span>
+      </div>
+      <div class="activity-panel" id="capture-panel" role="tabpanel" aria-labelledby="capture-tab">
+        <h2 id="capture-title">Captured MIDI output</h2>
+        <p class="empty" id="empty">Waiting for a Gridpico connection.</p>
+        <div class="capture-results" id="capture-results" hidden>
+          <table aria-labelledby="capture-title">
+            <thead><tr><th scope="col">Event</th><th scope="col">Ch</th><th scope="col">Note</th><th scope="col">Vel</th></tr></thead>
+            <tbody id="capture-rows"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="activity-panel" id="monitor-panel" role="tabpanel" aria-labelledby="monitor-tab" hidden>
+        <h2>Browser audio</h2>
+        <div class="monitor-actions">
+          <button type="button" class="audio-toggle" id="audio-toggle">Enable audio</button>
+          <span id="audio-status" role="status">Audio off</span>
+        </div>
+        <div class="volume">
+          <label for="monitor-volume">Master volume</label>
+          <output id="volume-display" for="monitor-volume">35%</output>
+          <input id="monitor-volume" type="range" min="0" max="100" value="35">
+        </div>
+        <h3 class="channel-heading" id="channel-heading">MIDI channels</h3>
+        <div id="monitor-channels" class="channels" role="group" aria-labelledby="channel-heading"></div>
+      </div>
+    </section>
+  </div>
+</main>
+<script>
+"use strict";
+
+const panel = document.querySelector("#panel");
+const transport = document.querySelector("#transport");
+const keys = document.querySelector("#keys");
+const range = document.querySelector("#range");
+const connectionState = document.querySelector("#connection");
+const empty = document.querySelector("#empty");
+const captureResults = document.querySelector("#capture-results");
+const captureRows = document.querySelector("#capture-rows");
+const shortcuts = [
+  "Z", "S", "X", "D", "C", "V", "G", "B", "H", "N", "J", "M",
+  "Q", "2", "W", "3", "E", "R", "5", "T", "6", "Y", "7", "U", "I",
+];
+const shortcutTargets = new Map();
+const heldInputs = new Map();
+const heldControls = new Map();
+const noteNames = ["C", "C♯", "D", "D♯", "E", "F", "F♯", "G", "G♯", "A", "A♯", "B"];
+const keyButtons = [];
+const keyVelocity = 96;
+let firstNote = 48;
+let connection = null;
+
+function addButton(parent, label, classes, accessibleName = label) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = classes;
+  button.textContent = label;
+  button.setAttribute("aria-label", accessibleName);
+  parent.append(button);
+  return button;
+}
+
+function addPanelButton(parent, label, classes, name, note) {
+  const button = addButton(parent, label, classes, name);
+  button.dataset.apcNote = note;
+  button.title = name;
+  return button;
+}
+
+// Akai Communications Protocol v1.1, pp. 14–15. Port 1 pad IDs start at bottom left.
+for (let row = 0; row < 5; row++) {
+  for (let col = 0; col < 8; col++) {
+    addPanelButton(panel, "", "control pad", `Pad row ${row + 1}, column ${col + 1}`, (4 - row) * 8 + col);
+  }
+  addPanelButton(panel, `S${row + 1}`, "control scene", `Scene Launch ${row + 1}`, 0x52 + row);
+}
+for (let track = 0; track < 8; track++) {
+  addPanelButton(panel, `T${track + 1}`, "control track", `Track ${track + 1}`, 0x40 + track);
+}
+addPanelButton(panel, "Stop all", "control scene", "Stop All Clips", 0x51);
+addPanelButton(transport, "Shift", "control", "Shift", 0x62);
+addPanelButton(transport, "Play", "control", "Play", 0x5b);
+addPanelButton(transport, "Record", "control", "Record", 0x5d);
+const sustain = addButton(transport, "Sustain", "control");
+sustain.dataset.apcCc = 0x40;
+const octaveDown = addButton(transport, "Oct −", "control", "Octave down");
+const octaveUp = addButton(transport, "Oct +", "control", "Octave up");
+
+let whiteKeys = 0;
+for (const [index, shortcut] of shortcuts.entries()) {
+  const isBlack = noteNames[index % 12].includes("♯");
+  const button = addButton(keys, "", isBlack ? "key black" : "key");
+  const label = document.createElement("span");
+  label.textContent = shortcut;
+  label.setAttribute("aria-hidden", "true");
+  button.append(label);
+  button.dataset.keyIndex = index;
+  button.setAttribute("aria-keyshortcuts", shortcut);
+  shortcutTargets.set(shortcut, button);
+  keyButtons.push(button);
+  if (isBlack) {
+    button.style.setProperty("--left", `${whiteKeys / 15 * 100}%`);
+  } else {
+    whiteKeys++;
+  }
+}
+
+function updateRange() {
+  range.textContent = `MIDI notes ${firstNote}–${firstNote + 24}`;
+  octaveDown.disabled = firstNote < 12;
+  octaveUp.disabled = firstNote + 24 + 12 > 127;
+  for (const [index, button] of keyButtons.entries()) {
+    const note = firstNote + index;
+    const name = noteNames[note % 12] + (Math.floor(note / 12) - 1);
+    button.setAttribute("aria-label", `${name}, MIDI note ${note}`);
+    button.title = `${name} · MIDI ${note}`;
+  }
+}
+
+function moveOctave(semitones) {
+  firstNote += semitones;
+  updateRange();
+}
+
+octaveDown.addEventListener("click", () => moveOctave(-12));
+octaveUp.addEventListener("click", () => moveOctave(12));
+updateRange();
+
+function sendKeybed(note, pressed) {
+  if (!connection) return;
+  const activeConnection = connection;
+  try {
+    activeConnection.send({
+      type: pressed ? "note-on" : "note-off",
+      channel: 1,
+      note,
+      velocity: pressed ? keyVelocity : 0,
+    });
+  } catch (error) {
+    activeConnection.close();
+    console.error("Gridpico keybed delivery failed", error);
+  }
+}
+
+function press(input, button) {
+  if (heldInputs.has(input)) return;
+  let held = heldControls.get(button);
+  if (!held) {
+    held = { count: 0, note: button.matches(".key") ? firstNote + Number(button.dataset.keyIndex) : null };
+    heldControls.set(button, held);
+  }
+  heldInputs.set(input, button);
+  button.dataset.held = "";
+  held.count++;
+  if (held.count === 1 && held.note !== null) sendKeybed(held.note, true);
+}
+
+function release(input) {
+  const button = heldInputs.get(input);
+  if (!button) return;
+  heldInputs.delete(input);
+  const held = heldControls.get(button);
+  if (--held.count > 0) return;
+  heldControls.delete(button);
+  delete button.dataset.held;
+  if (held.note !== null) sendKeybed(held.note, false);
+}
+
+function releaseAll() {
+  for (const input of heldInputs.keys()) release(input);
+}
+
+const surface = document.querySelector(".surface");
+
+surface.addEventListener("pointerdown", (event) => {
+  const button = event.target.closest(".control, .key");
+  if (!button || button.disabled || event.button !== 0) return;
+  button.setPointerCapture(event.pointerId);
+  press(event.pointerId, button);
+});
+for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+  surface.addEventListener(type, (event) => release(event.pointerId));
+}
+
+function isActivationKey(event) {
+  return event.key === " " || event.key === "Enter";
+}
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    releaseAll();
+    return;
+  }
+  if (event.altKey || event.ctrlKey || event.metaKey || event.isComposing) return;
+  if (event.target.closest("input, select, textarea, [contenteditable]")) return;
+  const focused = event.target.closest(".control, .key");
+  const activate = focused && isActivationKey(event);
+  // Octave controls use the browser's native click activation.
+  if (activate && (focused === octaveDown || focused === octaveUp)) return;
+  const button = activate ? focused : shortcutTargets.get(event.key.toUpperCase());
+  if (!button || button.disabled) return;
+  event.preventDefault();
+  if (!event.repeat) press(event.code || event.key, button);
+});
+document.addEventListener("keyup", (event) => release(event.code || event.key));
+surface.addEventListener("focusout", (event) => {
+  for (const [input, button] of heldInputs) {
+    if ((input === "Space" || input === "Enter" || input === "NumpadEnter" || input === " ") &&
+        button === event.target) release(input);
+  }
+});
+// Assistive technologies can activate a button with a click and no pointer/key sequence.
+surface.addEventListener("click", (event) => {
+  const button = event.target.closest(".control, .key");
+  if (event.detail !== 0 || !button || button === octaveDown || button === octaveUp) return;
+  press("click", button);
+  release("click");
+});
+window.addEventListener("blur", releaseAll);
+window.addEventListener("pagehide", releaseAll);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) releaseAll();
+});
+
+const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
+
+function selectTab(selected) {
+  for (const tab of tabs) {
+    const visible = tab === selected;
+    tab.setAttribute("aria-selected", visible);
+    tab.tabIndex = visible ? 0 : -1;
+    document.getElementById(tab.getAttribute("aria-controls")).hidden = !visible;
+  }
+  if (selected.id === "capture-tab") captureResults.scrollTop = captureResults.scrollHeight;
+}
+
+for (const [index, tab] of tabs.entries()) {
+  tab.addEventListener("click", () => selectTab(tab));
+  tab.addEventListener("keydown", (event) => {
+    const targets = {
+      ArrowLeft: tabs[(index + tabs.length - 1) % tabs.length],
+      ArrowRight: tabs[(index + 1) % tabs.length],
+      Home: tabs[0],
+      End: tabs[tabs.length - 1],
+    };
+    const next = targets[event.key];
+    if (!tabs.includes(next)) return;
+    event.preventDefault();
+    selectTab(next);
+    next.focus();
+  });
+}
+
+const audioToggle = document.querySelector("#audio-toggle");
+const audioStatus = document.querySelector("#audio-status");
+const volume = document.querySelector("#monitor-volume");
+const volumeDisplay = document.querySelector("#volume-display");
+const channels = document.querySelector("#monitor-channels");
+const sounds = [["sine", "Sine"], ["triangle", "Triangle"], ["square", "Square"], ["mute", "Mute"]];
+const channelSounds = Array(16).fill("sine");
+const maxVoices = 16;
+const voices = new Set();
+let audio = null;
+
+for (const [index, initial] of channelSounds.entries()) {
+  const channel = index + 1;
+  const label = document.createElement("label");
+  const number = document.createElement("span");
+  number.textContent = String(channel).padStart(2, "0");
+  const choice = document.createElement("select");
+  choice.setAttribute("aria-label", `Channel ${channel} sound`);
+  for (const [value, name] of sounds) choice.add(new Option(name, value));
+  choice.value = initial;
+  choice.addEventListener("change", () => {
+    channelSounds[index] = choice.value;
+    if (choice.value !== "mute") return;
+    for (const voice of voices) {
+      if (voice.channel === channel) releaseVoice(voice);
+    }
+  });
+  label.append(number, choice);
+  channels.append(label);
+}
+
+function removeVoice(voice) {
+  voices.delete(voice);
+  voice.oscillator.disconnect();
+  voice.envelope.disconnect();
+}
+
+function stopVoice(voice) {
+  removeVoice(voice);
+  voice.oscillator.stop();
+}
+
+function releaseVoice(voice) {
+  if (voice.releasing) return;
+  voice.releasing = true;
+  const now = audio.context.currentTime;
+  voice.envelope.gain.setTargetAtTime(0, now, 0.006);
+  voice.oscillator.stop(now + 0.035);
+}
+
+function silenceMonitor() {
+  for (const voice of voices) stopVoice(voice);
+}
+
+function setAudioStatus(on, message) {
+  audioToggle.textContent = on ? "Disable audio" : "Enable audio";
+  audioStatus.textContent = message;
+}
+
+function disableAudio(message = "Audio off") {
+  if (audio) {
+    const { context } = audio;
+    silenceMonitor();
+    audio = null;
+    if (context.state !== "closed") context.close().catch(() => {});
+  }
+  setAudioStatus(false, message);
+}
+
+async function enableAudio() {
+  let context;
+  try {
+    context = new AudioContext();
+    audio = { context, master: null, ready: false };
+    const master = context.createGain();
+    master.gain.value = Number(volume.value) / 100;
+    master.connect(context.destination);
+    audio.master = master;
+    setAudioStatus(true, "Starting audio…");
+    await context.resume();
+    if (audio?.context !== context) return;
+    audio.ready = true;
+    context.addEventListener("statechange", () => {
+      if (audio?.context === context && context.state !== "running") silenceMonitor();
+    });
+    setAudioStatus(true, "Audio on");
+  } catch {
+    if (audio?.context === context || (!audio && !context)) disableAudio("Audio unavailable");
+    else if (context && context.state !== "closed") context.close().catch(() => {});
+  }
+}
+
+audioToggle.addEventListener("click", () => {
+  if (audio) disableAudio();
+  else enableAudio();
+});
+volume.addEventListener("input", () => {
+  volumeDisplay.textContent = `${volume.value}%`;
+  if (audio) audio.master.gain.setTargetAtTime(Number(volume.value) / 100, audio.context.currentTime, 0.01);
+});
+window.addEventListener("pagehide", silenceMonitor);
+
+function monitorDelivery(event, destination) {
+  if (!audio?.ready) return;
+  const { channel, note, velocity, type } = event;
+  const held = Array.from(voices).find((voice) =>
+    !voice.releasing && voice.destination === destination && voice.channel === channel && voice.note === note
+  );
+  if (type === "note-off") {
+    if (held) releaseVoice(held);
+    return;
+  }
+
+  if (audio.context.state !== "running") return;
+  const sound = channelSounds[channel - 1];
+  if (sound === "mute" || !Number.isInteger(velocity) || velocity < 1 || velocity > 127) return;
+  if (held) stopVoice(held);
+  // Count voices in their release tail too. Reclaim the oldest voice at capacity.
+  if (voices.size === maxVoices) stopVoice(voices.values().next().value);
+  const { context, master } = audio;
+  const oscillator = context.createOscillator();
+  const envelope = context.createGain();
+  const voice = { destination, channel, note, oscillator, envelope, releasing: false };
+  oscillator.type = sound;
+  oscillator.frequency.value = 440 * 2 ** ((note - 69) / 12);
+  envelope.gain.value = 0;
+  oscillator.connect(envelope);
+  envelope.connect(master);
+  oscillator.onended = () => {
+    if (voices.has(voice)) removeVoice(voice);
+  };
+  oscillator.start();
+  voices.add(voice);
+  envelope.gain.setTargetAtTime(0.04 * velocity / 127, context.currentTime, 0.004);
+}
+
+function setConnectionState(connected) {
+  connectionState.textContent = connected ? "Connected" : "Disconnected";
+  connectionState.toggleAttribute("data-connected", connected);
+  empty.textContent = connected ? "Waiting for MIDI at the destination." : "Waiting for a Gridpico connection.";
+}
+
+function appendCapture(event) {
+  if (!event || (event.type !== "note-on" && event.type !== "note-off")) return;
+  if (!Number.isInteger(event.channel) || event.channel < 1 || event.channel > 16 ||
+      !Number.isInteger(event.note) || event.note < 0 || event.note > 127) return;
+  const velocity = Number.isInteger(event.velocity) && event.velocity >= 0 && event.velocity <= 127
+    ? event.velocity : "—";
+  const row = captureRows.insertRow();
+  const type = event.type === "note-on" ? "Note On" : "Note Off";
+  for (const value of [type, event.channel, event.note, velocity]) row.insertCell().textContent = value;
+  if (captureRows.rows.length > 100) captureRows.deleteRow(0);
+  empty.hidden = true;
+  captureResults.hidden = false;
+  captureResults.scrollTop = captureResults.scrollHeight;
+  return true;
+}
+
+// Local UI adapter. The connection owner supplies real ingress and destination capture.
+window.gridpicoApc = Object.freeze({
+  connect(send) {
+    if (typeof send !== "function") throw new TypeError("A keybed sender is required");
+    if (connection) connection.close();
+    releaseAll();
+    captureRows.replaceChildren();
+    captureResults.hidden = true;
+    empty.hidden = false;
+    setConnectionState(true);
+
+    const active = {
+      send,
+      receiveCapture(event) {
+        if (connection !== active || !appendCapture(event)) return;
+        try {
+          // The demo attachment supplies one destination when the event has no destination field.
+          if (!active.closing) monitorDelivery(event, event.destination ?? active);
+        } catch {
+          disableAudio("Audio unavailable");
+        }
+      },
+      close() {
+        if (connection !== active) return;
+        // Keep the sender available for outstanding releases on a graceful close.
+        if (active.closing) return;
+        active.closing = true;
+        silenceMonitor();
+        releaseAll();
+        connection = null;
+        setConnectionState(false);
+      },
+    };
+    connection = active;
+    return Object.freeze({ receiveCapture: active.receiveCapture, close: active.close });
+  },
+});
+</script>
+</body>
+</html>

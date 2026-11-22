@@ -1,19 +1,21 @@
 # gridpico — initial architecture
 
-**Status:** planning baseline, not an implemented system.
+**Status:** planning baseline with draft public contracts.
 **Owner:** Architect. **Product authority:** human, through Strategist.
 **Baseline:** decisions agreed on 22 November 2026.
-**Related:** [Product brief](PRODUCT_BRIEF.md), [team coordination](AGENT_TEAM_COORDINATION.md), [diagrams](docs/diagrams/README.md).
+**Related:** [Product brief](PRODUCT_BRIEF.md), [public contracts](api/README.md), [team coordination](AGENT_TEAM_COORDINATION.md), [diagrams](docs/diagrams/README.md).
 
-This document describes responsibility boundaries, dependencies and design constraints. It is not a task plan. **Project Manager will create `ROADMAP.md` after discussing the product and architecture with Strategist and Architect.**
+This document describes responsibility boundaries, dependencies and design constraints. Project Manager owns task sequencing and the roadmap.
 
 ## 1. Product and design intent
 
 Gridpico is a portable, controller-independent MIDI workstation kernel. It connects and enhances existing MIDI devices through routing, transformations and, later, Circuit-Tracks-inspired sequencing. The initial instrument set is Yamaha P-95, Arturia MicroFreak, Akai APC Key 25 mk2 and Novation Circuit Tracks, with an optional computer. The piano's physical MIDI connection is supplied through a suitable interface; the kernel sees logical MIDI endpoints.
 
-The initial embedded deployment uses an RP2040: native USB is a device connection to the computer, while PIO USB hosts instruments through a hub. The same product must also run as a Linux or Windows application. Raspberry Pi Zero is a Linux ARM deployment, not a separate appliance architecture.
+The planned embedded deployment uses RP2040. Native USB connects to the computer as a device, and PIO USB hosts instruments through a hub. The same product must also run as a Linux or Windows application. Raspberry Pi Zero runs the Linux ARM application.
 
-**There is no synthesizer, sampler, audio engine or DSP subsystem, now or later within this scope.** Tracks target external MIDI destinations. MIDI controls for external instruments are legitimate; internal sound generation is not.
+The first proof runs in a Linux x86_64 container. It exercises production Session/control, MIDI graph and transpose against deterministic in-process MIDI services. The [proof contract](api/README.md#linux-x86_64-route-and-transpose-proof) defines the scope of that evidence. The standalone rehearsal and RP2040 acceptance depend on access to hardware.
+
+The portable kernel, platform backends and firmware handle MIDI. Tracks target MIDI destinations. Optional audible monitoring belongs to Web APC and generates sound in the host browser from routed destination events.
 
 CodeZero/GridZero, miniMIDI and rpico-bridge are references and experimental evidence only. There is no legacy code, configuration, wire-protocol or storage compatibility requirement. Reusing the development-container recipe is tooling reuse, not adoption of another product's implementation.
 
@@ -43,7 +45,7 @@ The Sequencer boundary is retained from the outset; its implementation can be de
 
 ### Session/control and state ownership
 
-Commands express intent, such as connecting a route, changing a processor parameter, editing a step or starting transport. Queries and state notifications describe musical state rather than a rendered surface. The same commands apply whether invoked by APC, piano, CLI or an authorized browser helper.
+Commands express intent, such as changing a route or processor setting. Queries and state notifications describe musical state. APC, CLI and authorized browser helpers use the same command boundary, which also accommodates a future piano frontend.
 
 Session/control validates cross-domain operations and dispatches to the owning module. Each domain remains authoritative for its own state. A coherent snapshot/revision mechanism lets frontends refresh without maintaining independent musical truth. State notifications must not be reinterpreted as new commands and echoed back.
 
@@ -57,7 +59,7 @@ Device bindings use logical identity and user aliases, not transient USB address
 
 Represent cable/port, MIDI channel and device identity separately. USB packet framing belongs in adapters. The core event contract must preserve ordinary MIDI, realtime messages and bounded/streamed SysEx without assuming every message is a four-byte USB packet.
 
-The graph owns note-release correctness. It records what destinations/notes a Note On produced, including transformation results, so later Note Off, sustain release, route edits, transport stops and disconnects can resolve the original output. Processors must expose enough association information for that accounting. Define collision/overlap and overflow behavior rather than assuming repeated identical notes are interchangeable.
+The graph owns note-release correctness. It retains the delivered output obligations for each accepted Note On. Processor results carry enough association for the graph to release the original outputs after parameter changes or route edits. The [MIDI graph contract](api/README.md#midi-graph) defines overlap, cleanup and overload behavior.
 
 Detect or reject graph-local feedback cycles. External applications can create loops outside the graph's visibility; do not claim to detect those universally. PC loopback is explicit routing, never automatic all-to-all echo.
 
@@ -65,7 +67,7 @@ Processors include filters, transpose, key/velocity splits, channel and controll
 
 ### Time and future sequencing
 
-The platform supplies monotonic time and wakeups. Musical time owns the musical schedule and maps the chosen internal/external clock to transport and position. Define clock loss, source switching, event cancellation, timing budgets and stop behavior independently of any frontend.
+The platform supplies monotonic time and wakeups. Musical time owns the musical schedule and maps the chosen internal or external clock to transport and position. The [musical time contract](api/README.md#musical-time) defines transport boundaries when scheduling is present. Timing budgets and clock-loss thresholds belong to the verified target profile.
 
 Reserve these concepts now:
 
@@ -92,16 +94,22 @@ The computer-visible read-only filesystem is **not** this writable project store
 | **APC frontend** `frontends/apc/` | Decode APC MIDI, interpret gestures/pages/modifiers, call the kernel API, and render state into incremental APC feedback plus full reconnect refreshes |
 | **Piano frontend** `frontends/piano/` | Later: interpret 88-key/pedal control gestures and render feedback through an abstract RGB strip; distinguish control consumption from musical forwarding |
 | **CLI frontend** `frontends/cli/` | Translate text into the common commands and present queries/state; no musical logic duplicated in the parser |
-| **Web APC simulator** `web/apc/` | Primary graphical interface; emulate APC controls, keybed and received LED feedback using the production APC MIDI protocol |
+| **Web APC simulator** `web/apc/` | Emulate APC controls, keybed and received LED feedback, and present the destination capture and optional browser Monitor |
 | **Computer connections** `connections/` | Optional CDC/serial and local browser transports, framing and connection lifecycle; no musical state or controller semantics |
 
 Inside the APC frontend, keep protocol decoding/encoding separate from view/gesture interpretation even though one owner initially owns both. Other frontends neither impersonate the APC nor import its view implementation.
 
-The preferred browser configuration experience is the APC simulator. Its MIDI goes through **Computer connections/platform MIDI → APC frontend → Session/control**, not directly to a second browser routing engine. Hardware APC panel traffic follows the same APC frontend. Keybed traffic remains ordinary musical input. Panel traffic is consumed as control while LED output remains possible; it is not merely globally dropped.
+The preferred browser configuration experience is the APC simulator. Physical and simulated panel messages reach the production APC frontend through Computer connections or platform MIDI. The frontend translates panel gestures into Session/control commands and sends state-derived LED feedback on the surface connection. Keybed notes enter the production MIDI graph through musical ingress.
 
 On RP2040, the browser can use the computer-visible MIDI ports. A desktop build can carry equivalent APC MIDI messages over a local connection into the same frontend. Supplementary browser tools, when a task truly does not fit the APC surface, use the common kernel API through Computer connections. Examples include file import/export and long text entry. These are additions, not an independently authoritative configurator.
 
 The piano frontend must remember whether a press/pedal transition was consumed or forwarded until its matching release, even across mode changes. Gesture interpretation is frontend-owned; ordinary MIDI note/sustain cleanup stays graph-owned. RGB-strip drawing describes logical feedback; the physical strip driver is a platform service.
+
+### Browser Monitor
+
+The Monitor tab consumes the same newly accepted destination events as Captured MIDI output. Its read-only feed starts audio from live destination Note On events and releases voices on the corresponding destination Note Off, including a release caused by cancelling a key interaction. The monitor starts disabled and sound starts after explicit user enablement. Master volume, per-channel sound or mute, lightweight presets and bounded voice state belong to Web APC. Monitor settings are local to the browser.
+
+Track voices by destination, MIDI channel and key so two channels using the same key can sound and release independently. Muting a channel releases its voices. Disabling audio or losing the connection releases all browser voices. The graph continues to own MIDI cleanup, including releases that occur after the browser has disconnected. The Monitor uses the existing routed MIDI delivery path and runs independently of its timing and acceptance.
 
 ### Patch and Circuit views
 
@@ -117,7 +125,7 @@ Final gestures, mappings and behavior-baseline versions belong in later approved
 
 ## 5. Platform contracts and five platform-group owners
 
-`api/platform/` provides only services the portable modules need: MIDI endpoints/discovery, monotonic time/wakeup, persistent storage, feedback devices and capability/resource reporting. No TinyUSB, ALSA, Windows or browser types cross that boundary. USB device class details are target services rather than requirements imposed on every backend.
+The [platform contracts](api/README.md#platform-services) cover MIDI endpoints and discovery, monotonic time and wakeups, persistent storage, feedback devices and capability reporting. Interface values use portable types. USB device classes are RP2040 integration details.
 
 | Owner / path | Scope |
 | --- | --- |
@@ -146,20 +154,25 @@ The five MIDI pairs are a proposed port allocation satisfying the minimum of thr
 
 The read-only volume contains `INDEX.HTM`, documentation and a version manifest. Generate its immutable filesystem image at build time; serve it without copying the entire image into RAM. Host writes are rejected at the storage protocol boundary. Keep it separate from writable settings/projects, with defined behavior during any flash operation.
 
-The user reports successful mass-storage/HTML operation in rpico-bridge. Treat that as experimental evidence that the approach works in that setup, not as an unresolved basic feasibility question or proof of the new implementation. Opening/copying/ejecting the volume must not disrupt MIDI. Do not require autorun; users open the HTML explicitly. Package assets without internet dependencies and verify supported browsers/permissions on actual target systems.
+At revision `36c61af1`, rpico-bridge sets up a native TinyUSB composite device with one MIDI cable pair, CDC and build-optional MSC. Its PIO host task services a separate root port. It links the prebuilt documentation image into read-only data and serves bounded reads while rejecting writes. These source patterns are reference evidence for firmware planning. [Composite descriptor](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_device.c#L62-L71) · [Host and device servicing](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_host.c#L70-L108) · [Image build](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/CMakeLists.txt#L64-L89) · [Read-only storage callbacks](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_docs_msc.c#L46-L88)
+
+The reference records a complete read of its 512 KiB drive and reported write protection, and documents earlier PIO hub checks. Gridpico's five-pair enumeration and traffic separation, planned hub and power setup, hotplug behavior, live browser connection and MIDI timing while opening, copying or ejecting `GRIDPICO` all require target evidence. Users open the offline HTML explicitly. [Reference bench results](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/docs/STATE.md) · [Reference hardware evidence](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/docs/HARDWARE.md)
 
 ## 6. Dependencies and replaceability
 
-- Frontends depend on the command/query/state contracts; only APC frontend knows APC behavior.
-- Session/control coordinates domain contracts; it does not depend on concrete frontends.
-- MIDI graph invokes processors through their contract and handles common delivery safety.
-- Sequencer uses musical time and the graph's recording/playback contracts, never direct USB/OS output.
-- Projects obtains/restores domain state through contracts and uses the storage service.
-- Backends implement platform contracts. Application Assembly selects implementations and owns integration glue.
-- Computer connections adapts transports; it cannot bypass kernel validation or become a musical engine.
-- Simulation implements services consumed by the **same production modules**. Independent tests belong to Testing, not hidden behavior inside a fake kernel.
+- Frontends consume the session command, query and state contracts. APC frontend owns APC interpretation. The web simulator emulates APC protocol traffic and feedback. Computer connections delivers transport data to the appropriate frontend or to Session/control for authorized supplementary commands.
+- Session/control consumes domain contracts. It coordinates validation, application and coherent state reads. Projects consumes portable configuration values and the storage service. Session/control coordinates capture and restore so Projects has no dependency on live domain implementations.
+- MIDI graph consumes the processor and platform MIDI contracts. Processors receive event and instance context from the graph. Musical time consumes the platform clock and wakeup contract.
+- When present, Sequencer consumes the musical time and graph contracts. Time dispatch and graph recording feeds reach Sequencer through assembly wiring and public contracts, keeping the graph and clock independent of Sequencer implementation.
+- Backends, including the simulation backend, provide the same platform contracts. Application Assembly selects concrete implementations, configures limits and wires event delivery. Shared value definitions live at the contract boundary. Modules use other modules through that boundary.
 
-Prefer explicit service interfaces and bounded events over a generic plugin/service framework. The architecture requires replaceability, not runtime loading, microservices or one process per module.
+Arrows in the [architecture diagram](docs/diagrams/README.md) show data or control flow. The rules above define source dependencies. Replaceability comes from explicit service interfaces and bounded events wired by Application Assembly.
+
+### Target capacities
+
+Application Assembly publishes one effective capacity profile for each supported target or deterministic simulation setup, with backend input and domain validation. Optional features report availability separately. Kernel limits apply before a configuration becomes live. Queues and other performance resources have finite bounds and explicit exhaustion behavior. Frontends page endpoints and report limits using the current profile and command results. The [capacity contract](api/README.md#capacity-profiles) lists the required units and admission rules.
+
+Use the visible five-by-eight Patch matrix as a workload case with five sources, eight destinations and 40 selectable pairs. Use the proposed five-pair RP2040 composite layout alongside active instrument routing and read-only disk activity as a separate workload case. These cases size validation and measurement. Verified simultaneous route, event, timing and storage limits belong to each target profile.
 
 ## 7. Agent mapping and ownership
 
@@ -175,12 +188,16 @@ See the coordination agreement for approvals, escalation and session lifecycle.
 
 Acceptance must eventually cover the same interaction through APC simulation, physical APC and non-APC command entry; desired/active routing and reconnection; processor note-lifetime safety; timing/recording boundaries; independent save/load recovery; browser feedback; USB port separation; and USB disk activity alongside MIDI.
 
+Browser Monitor verification covers a transposed note from the live destination feed, voice cleanup and channel isolation. Observe the same normalized MIDI destination trace with monitoring enabled and disabled.
+
 Maintain separate evidence for deterministic simulation, Linux x86, Linux ARM, Windows and RP2040 hardware. Test capacities/overflow, malformed configuration, SysEx concurrency, external clock transitions, device identity ambiguity and power-loss behavior where applicable.
 
 This list does not assign tasks, dates, release stages or a delivery order. The planning team determines those in the future roadmap.
 
 ## 9. Decisions intentionally left to planning
 
-Architect, Strategist and Project Manager must resolve the kernel language/subset and ABI, exact target CPU/OS profiles, budgets/capacities, formal command/event contracts, the selected Circuit behavior baseline, platform transport choices, physical deployment wiring and concrete acceptance thresholds. Do not silently choose them by copying a reference project.
+The native Linux x86_64 proof uses portable C11 and shared in-process types for route Apply, state queries and note delivery. [Native proof contract](api/README.md#linux-x86_64-route-and-transpose-proof)
+
+The planning team still needs to resolve the API and build profiles beyond this proof, measured target capacity values and timing thresholds, the selected Circuit behavior baseline, platform transport choices and physical deployment wiring.
 
 The initial documents are maintained collaboratively with single-file ownership. Human-approved changes to product scope, module boundaries or agent seats flow through Strategist. References and experimental evidence are recorded in [Sources](docs/SOURCES.md).

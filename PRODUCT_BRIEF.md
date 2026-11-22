@@ -5,13 +5,21 @@
 
 ## Purpose
 
-Make an existing collection of MIDI instruments more useful together without requiring a computer during performance. Gridpico provides routing and transformations first, with Circuit-Tracks-inspired MIDI sequencing available later through the same architecture. It never produces audio itself.
+Make an existing collection of MIDI instruments more useful together without requiring a computer during performance. Gridpico provides routing and transformations first, with Circuit-Tracks-inspired MIDI sequencing available later through the same architecture. The kernel and firmware operate on MIDI.
 
 The intended setup includes a Yamaha P-95, Arturia MicroFreak, Akai APC Key 25 mk2 and Novation Circuit Tracks. A computer is optional for configuration, simulation, additional MIDI applications and loopback routing.
 
 ## User experience
 
 The APC is the preferred physical interface. Its browser simulator is the preferred graphical configuration interface, using the same APC protocol and production frontend. Additional browser tools are justified only for operations that cannot reasonably fit the APC surface.
+
+The first browser APC slice shows the 5×8 pad grid, the other APC panel buttons and the 25-key playing keyboard. Prioritize a playable keybed whose presses and releases send MIDI Note On and Note Off through the simulated keybed path into the routing kernel. Basic pad and button LED feedback is sufficient for this slice.
+
+Include a browser MIDI log that shows events received at the simulated destination. Pressing and releasing a browser key on a route with transpose should visibly produce the matching transposed Note On and Note Off. This gives the user a way to check the routing path with no USB MIDI devices connected.
+
+The web interface can also offer optional audible monitoring of routed MIDI. The Monitor view uses the same destination events as the log and generates sound on the host in the browser. It offers an audio enable control, master volume, and a sound or mute choice for each MIDI channel of the monitored destination. A small set of lightweight sounds supports the first version.
+
+The web APC owner downloads and uses Akai Professional's official protocol document before mapping the controls. [APC Key 25 mk2 Communications Protocol v1.1](https://cdn.inmusicbrands.com/akai/attachments/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1.pdf)
 
 The musical kernel is not APC-specific. A CLI and, later, piano-key/pedal controls with an RGB feedback strip operate the same commands and state. Patch and Circuit views share the same musical project.
 
@@ -27,9 +35,9 @@ This is a product rationale, not a market-size, revenue, cost-saving or performa
 
 ## Scope boundaries
 
-Included: a portable MIDI kernel; interchangeable frontends/backends; APC simulation; offline UI/documentation distribution; routing/processing; a preserved sequencing module boundary; explicit projects and reliable state feedback.
+Included are a portable MIDI kernel, interchangeable frontends and backends, APC simulation with optional browser audio monitoring, offline UI and documentation distribution, MIDI routing and processing, a preserved sequencing module boundary, explicit projects, and reliable state feedback.
 
-Excluded: synthesis, sampling, audio/DSP processing, copying Novation's sound engine, legacy compatibility, and a custom agent orchestration framework. Earlier projects are references, not code foundations. Development tooling can reuse the established container recipe.
+Synthesis, sampling, and audio processing in the kernel or firmware are outside scope. The project also excludes copying Novation's sound engine, legacy compatibility, and a custom agent orchestration framework. Earlier projects provide reference material. Development tooling can reuse the established container recipe.
 
 ## Planning and ownership
 
