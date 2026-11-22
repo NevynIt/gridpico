@@ -50,9 +50,18 @@ The recipe includes amd64/arm64 host selection; successful image builds on each 
 
 The container is not privileged and has no automatic USB, sound-device or Docker-socket passthrough. Planning needs none. Hardware/device access can be added explicitly when an approved task needs it; the current setup is not a claim of physical MIDI access from Docker.
 
-## 4. Check authentication without exposing secrets
+## 4. Sign in and verify authentication without exposing secrets
 
-Inside the container:
+Inside the interactive container shell, run the shared-login helper:
+
+```sh
+bash .devcontainer/sign-in.sh
+```
+
+It reuses valid existing logins; otherwise it starts Codex device authentication and GitHub CLI's web-based device flow. The helper checks that both configured credential directories are real persistent mounts and refuses to log in to an ephemeral directory. For an M5/server install, the volumes exist on **that server's Docker daemon**, not on the laptop.
+
+Then check status:
+
 
 ```sh
 gh auth status --hostname github.com
