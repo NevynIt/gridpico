@@ -59,6 +59,7 @@ typedef struct {
     gridpico_endpoint_id source;
     gridpico_endpoint_id destination;
     int8_t transpose_offset;
+    bool enabled; /* Committed route intent. Active also requires availability. */
 } gridpico_route_snapshot;
 
 enum {
@@ -73,6 +74,7 @@ enum {
 
 typedef gridpico_result (*gridpico_apply_route_fn)(
     void *context, const gridpico_route_request *request);
+typedef gridpico_result (*gridpico_set_route_enabled_fn)(void *context, bool enabled);
 typedef gridpico_route_snapshot (*gridpico_read_route_fn)(void *context);
 typedef gridpico_result (*gridpico_submit_note_fn)(
     void *context, const gridpico_ingress_note *input);

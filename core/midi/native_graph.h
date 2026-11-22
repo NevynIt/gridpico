@@ -23,6 +23,7 @@ typedef struct {
     void *delivery_context;
     bool source_available;
     bool configured;
+    bool enabled;
     int8_t transpose_offset;
     size_t occurrence_count;
     gridpico_midi_occurrence occurrences[GRIDPICO_PROOF_NOTE_OCCURRENCES];
@@ -41,6 +42,7 @@ gridpico_result gridpico_midi_graph_submit_note(void *context,
                                                const gridpico_ingress_note *input);
 gridpico_result gridpico_midi_graph_apply_route(void *context,
                                                const gridpico_route_request *request);
+gridpico_result gridpico_midi_graph_set_route_enabled(void *context, bool enabled);
 /* Session/control supplies the applied revision. */
 gridpico_route_snapshot gridpico_midi_graph_read_route(void *context);
 

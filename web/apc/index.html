@@ -65,6 +65,15 @@
     color: #fff; background: #1d192a; z-index: 1; box-shadow: inset 0 -4px #fff1;
   }
   .control[data-held], .key[data-held] { color: #27182d; background: var(--accent); }
+  .route-pad {
+    --pad-fill: #322c42;
+    --pad-edge: #625a75;
+    font-size: clamp(.55rem, 1.2vw, .8125rem);
+  }
+  .route-pad[data-led="green"] { --pad-fill: #176340; --pad-edge: #68dfa0; }
+  .route-pad, .route-pad[data-held] { background: var(--pad-fill); border-color: var(--pad-edge); color: #fff; }
+  .route-pad[data-held] { box-shadow: inset 0 0 0 3px var(--accent); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .playing-help { margin-top: .8rem; color: #d9d2e2; font-size: .875rem; }
   .capture {
     display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line);
@@ -132,6 +141,7 @@
         <small>5 × 8 pads</small>
       </div>
       <div class="panel" id="panel" role="group" aria-label="Clip pads, scene buttons and track buttons"></div>
+      <span class="sr-only" id="route-pad-status" role="status">Route status unavailable</span>
       <div class="transport" id="transport" role="group" aria-label="Transport, modifier and keybed controls"></div>
       <div class="keybed-heading">
         <h2 id="keys-title">Keybed</h2>
@@ -224,6 +234,13 @@ for (let row = 0; row < 5; row++) {
   }
   addPanelButton(panel, `S${row + 1}`, "control scene", `Scene Launch ${row + 1}`, 0x52 + row);
 }
+const routePad = panel.querySelector('.pad[data-apc-note="0"]');
+const routePadStatus = document.querySelector("#route-pad-status");
+routePad.id = "route-pad";
+routePad.classList.add("route-pad");
+routePad.textContent = "Route";
+routePad.setAttribute("aria-label", "Route toggle, pad row 5, column 1");
+routePad.setAttribute("aria-describedby", "route-pad-status");
 for (let track = 0; track < 8; track++) {
   addPanelButton(panel, `T${track + 1}`, "control track", `Track ${track + 1}`, 0x40 + track);
 }
@@ -292,6 +309,24 @@ function sendKeybed(note, pressed) {
   }
 }
 
+function sendRoutePad(pressed) {
+  const active = connection;
+  if (!active?.sendSurface) return;
+  try {
+    active.sendSurface(pressed ? [0x90, 0x00, 0x7f] : [0x80, 0x00, 0x00]);
+  } catch (error) {
+    active.close();
+    console.error("Gridpico surface delivery failed", error);
+  }
+}
+
+function setRoutePadLed(state) {
+  if (state) routePad.dataset.led = state;
+  else delete routePad.dataset.led;
+  routePadStatus.textContent = state === "green" ? "Route active"
+    : state === "dark" ? "Route inactive" : "Route status unavailable";
+}
+
 function press(input, button) {
   if (heldInputs.has(input)) return;
   let held = heldControls.get(button);
@@ -302,7 +337,9 @@ function press(input, button) {
   heldInputs.set(input, button);
   button.dataset.held = "";
   held.count++;
-  if (held.count === 1 && held.note !== null) sendKeybed(held.note, true);
+  if (held.count !== 1) return;
+  if (held.note !== null) sendKeybed(held.note, true);
+  else if (button === routePad) sendRoutePad(true);
 }
 
 function release(input) {
@@ -314,6 +351,7 @@ function release(input) {
   heldControls.delete(button);
   delete button.dataset.held;
   if (held.note !== null) sendKeybed(held.note, false);
+  else if (button === routePad) sendRoutePad(false);
 }
 
 function releaseAll() {
@@ -329,7 +367,7 @@ surface.addEventListener("pointerdown", (event) => {
   press(event.pointerId, button);
 });
 for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
-  surface.addEventListener(type, (event) => release(event.pointerId));
+  document.addEventListener(type, (event) => release(event.pointerId));
 }
 
 function isActivationKey(event) {
@@ -561,8 +599,9 @@ function appendCapture(event) {
 
 // Local UI adapter. The connection owner supplies real ingress and destination capture.
 window.gridpicoApc = Object.freeze({
-  connect(send) {
+  connect(send, sendSurface = null) {
     if (typeof send !== "function") throw new TypeError("A keybed sender is required");
+    if (sendSurface !== null && typeof sendSurface !== "function") throw new TypeError("Invalid surface sender");
     if (connection) connection.close();
     releaseAll();
     captureRows.replaceChildren();
@@ -572,6 +611,7 @@ window.gridpicoApc = Object.freeze({
 
     const active = {
       send,
+      sendSurface,
       receiveCapture(event) {
         if (connection !== active || !appendCapture(event)) return;
         try {
@@ -581,11 +621,18 @@ window.gridpicoApc = Object.freeze({
           disableAudio("Audio unavailable");
         }
       },
+      receiveSurface(bytes) {
+        if (connection !== active || active.closing) return;
+        if (!Array.isArray(bytes) || bytes.length !== 3 || bytes[0] !== 0x96 || bytes[1] !== 0x00) return;
+        if (bytes[2] === 0x15) setRoutePadLed("green");
+        else if (bytes[2] === 0x00) setRoutePadLed("dark");
+      },
       close() {
         if (connection !== active) return;
         // Keep the sender available for outstanding releases on a graceful close.
         if (active.closing) return;
         active.closing = true;
+        setRoutePadLed(null);
         silenceMonitor();
         releaseAll();
         connection = null;
@@ -593,7 +640,11 @@ window.gridpicoApc = Object.freeze({
       },
     };
     connection = active;
-    return Object.freeze({ receiveCapture: active.receiveCapture, close: active.close });
+    return Object.freeze({
+      receiveCapture: active.receiveCapture,
+      receiveSurface: active.receiveSurface,
+      close: active.close,
+    });
   },
 });
 </script>

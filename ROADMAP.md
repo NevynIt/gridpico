@@ -2,14 +2,14 @@
 
 **Owner** — Project Manager
 
-**Status** — Native proof, connected Web APC log and browser Monitor independently verified for the 23 November delivery. The human approved both follow-ons below on the existing roster. Architect validated the one-pad contract.
+**Status** — Native proof, connected Web APC log, browser Monitor and the real one-pad route toggle independently verified for the 23 November delivery. The human approved both follow-ons on the existing roster.
 
 [Product brief](PRODUCT_BRIEF.md) · [Architecture](ARCHITECTURE.md) · [Team coordination](AGENT_TEAM_COORDINATION.md) · [Model and effort plan](.team/MODEL_PLAN.md)
 
 ## Demo sequence for 23 November at 09:00 CET (08:00 UTC)
 
 1. Start the independent native proof and the browser surface in parallel when their approved seats are available. Confirm the minimal fixture contracts first for core integration. Keep the browser surface to the 5×8 pad grid, panel buttons and 25-key keyboard. Verify each deliverable as soon as it is runnable.
-2. Connect the keybed and captured destination log once the fixture and local connection are ready. Give this integration priority over LED work. Leave LED expansion and panel parity for after the demo.
+2. Connect the keybed and captured destination log first. Verify the browser Monitor before the approved one-pad route toggle and LED feedback. Leave wider LED coverage and panel parity for later.
 3. At 07:30 CET (06:30 UTC), choose the demo path from what has passed verification. Include connected playback if pressing and releasing a key reliably shows the actual transposed pair and the cleanup checks pass. Otherwise, use the native proof and present the browser as a surface preview. Show the native command and real captured trace separately. If either baseline deliverable is still missing, show the verified portion and state the specific gap.
 4. Reserve the final 90 minutes for verification, fixes to the selected demo path, and rehearsal. Before batching and at the demo-path decision, check `/status` and use any observed usage rate to preserve capacity for this window. If allowance or time tightens earlier, drop LED work and then connected playback before cutting baseline verification.
 
@@ -39,7 +39,9 @@ Start this batch after the verified Monitor is published and allowance covers in
 
 Architect validated the explicit Session enable intent, independent of runtime active state, and the surface and LED framing. The graph retires held outputs on disable and consumes later releases. The runner publishes accepted release rows before the LED update.
 
-Use ordinary `/status` readings before each batch and after verification. The pre-Monitor reading showed 89% weekly remaining with 1,652 credits. Fit the Monitor and its regression checks first and leave room for fixes. If the production surface path, route-off contract, time or capacity is uncertain, keep the verified Monitor and report the remaining stretch work through Strategist.
+**Verified.** Hold **Q** and click the bottom-left **Route** pad. In Chromium, the actual destination Note Off for note 72 at velocity 0 preceded the dark LED, and the Monitor returned to silence with the source key still held. The late release, new presses while off and a key held through re-enable added no capture. Re-enable restored the green LED and a fresh **Q** produced the original transposed pair. Independent regression covered the connected log, Monitor, standalone preview and note-only runner. The original four-case native trace remained byte-identical. Sustained stalled-reader saturation was outside this run's verification. [One-pad contract](api/README.md#one-pad-apc-route-toggle) · [Connected demo steps](connections/README.md)
+
+Ordinary `/status` readings showed 89% before each follow-on batch and 88% after pad verification, with credits unchanged at 1,652. The native and connected log remain the fallback if browser audio output is unavailable.
 
 ## Independent native proof
 
@@ -86,4 +88,4 @@ Use NevynIt/rpico-bridge as the human-reported working USB reference for later f
 - **Two independent verification seats** for the same proof. Bring in Testing and Builder when there is a runnable candidate to verify. Stagger these seven seats across the proof. The first proof does not require Linux HAL, RP2040 HAL, Musical time or frontend seats.
 - **Parallel browser slice.** Activate Web APC simulator for the initial surface. Computer connections joins for the connected keybed and output panel once the fixture is runnable. APC frontend joins when panel and LED integration fits the remaining time and allowance. Schedule independent verification when browser integration is runnable.
 - **Account usage.** Project Manager takes ordinary Codex `/status` readings around active team work, including before batching and after substantial work. Note the weekly percentage, reset and approximate active time covered by the readings. Exclude idle gaps and count overlapping work once. Use comparable readings within the same reset period and skip intervals whose active time cannot be estimated. Once there is enough movement, multiply the total percentage-point drop by 15 and divide by the total active minutes covered. Use the result as a planning estimate in account-wide weekly allowance percentage points per 15 active wall-clock minutes.
-- **Pacing.** The weekly allowance moved from 90% to 89% over roughly 12 active wall-clock minutes of this delivery, with one rounded percentage-point change. The latest reading showed 1,652 credits and a 29 November 10:04 UTC reset. There are too few comparable observations to estimate a reliable rate. Keep the existing [model and effort defaults](.team/MODEL_PLAN.md) and leave room for verification and fixes. Project Manager uses the observed allowance and rate when available and brings material pacing trade-offs to Strategist. Normal interactive readings are sufficient.
+- **Pacing.** The weekly allowance moved from 90% to 88% over roughly 23–24 measured active wall-clock minutes across the two delivery windows. The two rounded changes give a rough planning estimate of 1.3 percentage points per 15 active minutes. The latest reading showed 1,652 credits and a 29 November 10:04 UTC reset. Keep the existing [model and effort defaults](.team/MODEL_PLAN.md) and leave room for verification and fixes. Project Manager uses observed allowance and brings material pacing trade-offs to Strategist. Normal interactive readings are sufficient.

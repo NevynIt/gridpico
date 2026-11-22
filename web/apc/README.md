@@ -54,3 +54,19 @@ connections adapter calls `window.gridpicoApc.connect(sendKeybed)` after the
 - Call the returned `close()` on disconnect. For graceful shutdown call it
   while ingress can still accept releases. Transport-side ingress cleanup
   is required on link loss.
+
+## Demo route pad
+
+In the connected demo, the bottom-left **Route** pad toggles the +12 route.
+Green means the route is active. The amber outline shows when the pad is held.
+To check the toggle, hold **Q** and press the pad. Capture shows one release
+for note 72 as the pad goes dark. Release **Q**, press the pad again, and play
+a fresh **Q** to hear or capture the transposed note again.
+
+The pad-capable adapter passes an optional second argument to
+`gridpicoApc.connect(sendKeybed, sendSurface)`. The page sends `90 00 7F`
+on press and `80 00 00` on release or cancellation. Call the returned
+`receiveSurface(bytes)` with `96 00 15` for green or `96 00 00` for dark.
+The pad clears its LED state on disconnect. For browser smoke tests, use
+`#route-pad`, with `data-led` for received state and `data-held` for the
+gesture. [One-pad APC route toggle contract](../../api/README.md#one-pad-apc-route-toggle)

@@ -2,6 +2,7 @@
 #include "core/midi/native_graph.h"
 #include "core/processors/transpose.h"
 #include "core/session/session.h"
+#include "frontends/apc/apc_frontend.h"
 #include "sim/platform/midi_fixture.h"
 
 #include <signal.h>
@@ -9,7 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-enum { REQUEST_SIZE = sizeof("off 1 127 127") };
+enum { REQUEST_SIZE = sizeof("surface 239 127 127") };
 
 typedef enum {
     REQUEST_EOF,
@@ -19,9 +20,12 @@ typedef enum {
 
 typedef struct {
     gridpico_midi_fixture midi;
-    /* Overflow and disconnect can each release every reserved credit at once. */
+    gridpico_apc_frontend apc;
+    /* Disable, overflow and disconnect can release every reserved credit at once. */
     gridpico_note accepted[GRIDPICO_PROOF_RELEASE_CREDITS];
     size_t accepted_count;
+    gridpico_apc_surface_message surface_feedback;
+    bool surface_feedback_pending;
 } fixture;
 
 static gridpico_result capture_delivery(void *context, const gridpico_note_delivery *delivery)
@@ -54,6 +58,25 @@ static bool write_capture(fixture *runner)
     return true;
 }
 
+static void stage_surface_feedback(void *context, const gridpico_apc_surface_message *message)
+{
+    fixture *runner = context;
+    runner->surface_feedback = *message;
+    runner->surface_feedback_pending = true;
+}
+
+static bool write_surface_feedback(fixture *runner)
+{
+    if (!runner->surface_feedback_pending) {
+        return true;
+    }
+
+    const gridpico_apc_surface_message message = runner->surface_feedback;
+    runner->surface_feedback_pending = false;
+    return printf("surface %u %u %u\n", (unsigned)message.bytes[0],
+                  (unsigned)message.bytes[1], (unsigned)message.bytes[2]) >= 0;
+}
+
 static request_status read_request(char line[REQUEST_SIZE])
 {
     size_t length = 0;
@@ -75,14 +98,14 @@ static request_status read_request(char line[REQUEST_SIZE])
     return malformed ? REQUEST_MALFORMED : REQUEST_LINE;
 }
 
-static bool parse_midi_value(const char **cursor, uint8_t *value)
+static bool parse_byte(const char **cursor, unsigned maximum, uint8_t *value)
 {
     const char *start = *cursor;
     unsigned parsed = 0;
 
     while (**cursor >= '0' && **cursor <= '9') {
         parsed = parsed * 10u + (unsigned)(**cursor - '0');
-        if (parsed > 127u) {
+        if (parsed > maximum) {
             return false;
         }
         ++*cursor;
@@ -107,9 +130,39 @@ static bool parse_note(const char *line, gridpico_note *note)
     }
 
     note->channel_index = 0;
-    return parse_midi_value(&line, &note->key) && *line++ == ' ' &&
-           parse_midi_value(&line, &note->velocity) && *line == '\0' &&
+    return parse_byte(&line, 127, &note->key) && *line++ == ' ' &&
+           parse_byte(&line, 127, &note->velocity) && *line == '\0' &&
            (note->kind == GRIDPICO_NOTE_OFF || note->velocity != 0);
+}
+
+static bool parse_surface(const char *line, gridpico_apc_surface_message *message)
+{
+    return parse_byte(&line, 239, &message->bytes[0]) && message->bytes[0] >= 128 &&
+           *line++ == ' ' && parse_byte(&line, 127, &message->bytes[1]) &&
+           *line++ == ' ' && parse_byte(&line, 127, &message->bytes[2]) && *line == '\0';
+}
+
+static gridpico_result dispatch_request(fixture *runner, gridpico_connection source,
+                                       const char *line)
+{
+    if (strcmp(line, "surface-ready") == 0) {
+        gridpico_apc_frontend_refresh(&runner->apc);
+        return GRIDPICO_OK;
+    }
+    const char surface_prefix[] = "surface ";
+    if (strncmp(line, surface_prefix, sizeof(surface_prefix) - 1) == 0) {
+        gridpico_apc_surface_message message;
+        if (!parse_surface(line + sizeof(surface_prefix) - 1, &message)) {
+            return GRIDPICO_INVALID;
+        }
+        return gridpico_apc_frontend_receive(&runner->apc, &message);
+    }
+
+    gridpico_ingress_note input = {.source = source};
+    if (!parse_note(line, &input.note)) {
+        return GRIDPICO_INVALID;
+    }
+    return gridpico_midi_fixture_submit(&runner->midi, &input);
 }
 
 int main(void)
@@ -134,7 +187,8 @@ int main(void)
         return EXIT_FAILURE;
     }
     gridpico_session_init(&session, &graph,
-                          gridpico_midi_graph_apply_route, gridpico_midi_graph_read_route);
+                          gridpico_midi_graph_apply_route, gridpico_midi_graph_read_route,
+                          gridpico_midi_graph_set_route_enabled);
     const int8_t transpose = 12;
     const gridpico_route_request route = {
         .source = source.endpoint,
@@ -146,6 +200,9 @@ int main(void)
         fputs("Could not apply the browser fixture route\n", stderr);
         return EXIT_FAILURE;
     }
+    gridpico_apc_frontend_init(&runner.apc, &session, gridpico_session_read_route,
+                              gridpico_session_set_route_enabled, &runner,
+                              stage_surface_feedback);
 
     bool output_ok = fputs("ready\n", stdout) != EOF && fflush(stdout) == 0;
     while (output_ok) {
@@ -155,12 +212,10 @@ int main(void)
             break;
         }
 
-        gridpico_ingress_note input = {.source = source};
-        gridpico_result result = GRIDPICO_INVALID;
-        if (status == REQUEST_LINE && parse_note(line, &input.note)) {
-            result = gridpico_midi_fixture_submit(&runner.midi, &input);
-        }
-        output_ok = write_capture(&runner) &&
+        const gridpico_result result = status == REQUEST_LINE
+            ? dispatch_request(&runner, source, line)
+            : GRIDPICO_INVALID;
+        output_ok = write_capture(&runner) && write_surface_feedback(&runner) &&
                     fputs(result == GRIDPICO_OK ? "ok\n" : "error\n", stdout) != EOF &&
                     fflush(stdout) == 0;
         if (result != GRIDPICO_OK && output_ok) {

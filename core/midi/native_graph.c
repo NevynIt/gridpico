@@ -52,9 +52,8 @@ static gridpico_result cleanup_outputs(gridpico_midi_graph *graph, bool retire_s
     /* Pending releases have no remaining input references. Attempt each once. */
     for (size_t i = 0; i < GRIDPICO_PROOF_RELEASE_CREDITS; ++i) {
         if (graph->release_credits[i].release_pending) {
-            const gridpico_result released = release_output(graph, i, 0);
-            if (released != GRIDPICO_OK) {
-                result = released;
+            if (release_output(graph, i, 0) != GRIDPICO_OK) {
+                result = GRIDPICO_UNAVAILABLE;
             }
         }
     }
@@ -78,9 +77,8 @@ static gridpico_result cleanup_outputs(gridpico_midi_graph *graph, bool retire_s
         }
         graph->release_credits[index].contributors = 0;
 
-        const gridpico_result released = release_output(graph, index, 0);
-        if (released != GRIDPICO_OK) {
-            result = released;
+        if (release_output(graph, index, 0) != GRIDPICO_OK) {
+            result = GRIDPICO_UNAVAILABLE;
         }
     }
     return result;
@@ -114,12 +112,15 @@ static gridpico_result submit_press(gridpico_midi_graph *graph,
         .release_credit = NO_RELEASE_CREDIT,
     };
 
+    if (!graph->enabled) {
+        return GRIDPICO_OK;
+    }
     if (output_blocked(graph)) {
         return GRIDPICO_UNAVAILABLE;
     }
 
     gridpico_note output;
-    if (!graph->configured || !graph->transpose(graph->transpose_offset, &input->note, &output)) {
+    if (!graph->transpose(graph->transpose_offset, &input->note, &output)) {
         return GRIDPICO_OK;
     }
 
@@ -238,8 +239,26 @@ gridpico_result gridpico_midi_graph_apply_route(void *context,
     const bool retire_sounding = graph->configured && offset != graph->transpose_offset;
     const gridpico_result result = cleanup_outputs(graph, retire_sounding);
     if (result == GRIDPICO_OK) {
+        if (!graph->configured) {
+            graph->enabled = true;
+        }
         graph->configured = true;
         graph->transpose_offset = offset;
+    }
+    return result;
+}
+
+gridpico_result gridpico_midi_graph_set_route_enabled(void *context, bool enabled)
+{
+    gridpico_midi_graph *graph = context;
+    if (graph == NULL || !graph->configured) {
+        return GRIDPICO_INVALID;
+    }
+
+    const bool retire_sounding = graph->enabled && !enabled;
+    const gridpico_result result = cleanup_outputs(graph, retire_sounding);
+    if (result == GRIDPICO_OK) {
+        graph->enabled = enabled;
     }
     return result;
 }
@@ -253,10 +272,11 @@ gridpico_route_snapshot gridpico_midi_graph_read_route(void *context)
 
     return (gridpico_route_snapshot){
         .configured = true,
-        .active = graph->source_available && !output_blocked(graph),
+        .active = graph->enabled && graph->source_available && !output_blocked(graph),
         .source = graph->source.endpoint,
         .destination = graph->destination.endpoint,
         .transpose_offset = graph->transpose_offset,
+        .enabled = graph->enabled,
     };
 }
 

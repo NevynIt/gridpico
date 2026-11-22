@@ -12,7 +12,11 @@ target_include_directories(gridpico_native_fixture PUBLIC "${CMAKE_CURRENT_SOURC
 add_executable(gridpico_native_proof app/native_proof.c)
 target_link_libraries(gridpico_native_proof PRIVATE gridpico_native_fixture)
 
-add_executable(gridpico_browser_fixture app/browser_fixture.c)
+add_executable(gridpico_browser_fixture
+    app/browser_fixture.c
+    frontends/apc/apc_frontend.c
+    frontends/apc/apc_protocol.c
+)
 target_link_libraries(gridpico_browser_fixture PRIVATE gridpico_native_fixture)
 
 set_target_properties(gridpico_native_fixture gridpico_native_proof gridpico_browser_fixture

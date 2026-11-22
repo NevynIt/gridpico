@@ -8,7 +8,8 @@ const { WebSocket, WebSocketServer } = require("ws");
 
 const address = "127.0.0.1";
 const maxMessageBytes = 256;
-const maxPendingNotes = 16;
+const maxPendingRequests = 16;
+const maxCaptureRecords = 2;
 const maxBufferedOutput = 8192;
 const maxRunnerLine = 32;
 const runnerTimeoutMs = 5000;
@@ -43,10 +44,23 @@ function isNote(event) {
     event.velocity >= (event.type === "note-on" ? 1 : 0);
 }
 
+function isSurfaceBytes(bytes) {
+  return Array.isArray(bytes) && bytes.length === 3 &&
+    Number.isInteger(bytes[0]) && bytes[0] >= 128 && bytes[0] <= 239 &&
+    bytes.slice(1).every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 127);
+}
+
 function parseInput(data) {
   try {
     const event = JSON.parse(data.toString("utf8"));
-    if (isNote(event) && Object.keys(event).length === 4) return event;
+    if (isNote(event) && Object.keys(event).length === 4) {
+      const kind = event.type === "note-on" ? "on" : "off";
+      return { kind: "keybed", line: `${kind} ${event.channel} ${event.note} ${event.velocity}` };
+    }
+    if (event?.type === "apc-surface" && Object.keys(event).length === 2 &&
+        isSurfaceBytes(event.bytes)) {
+      return { kind: "surface", line: `surface ${event.bytes.join(" ")}` };
+    }
   } catch {
     // Invalid JSON is handled like any other malformed input.
   }
@@ -61,11 +75,18 @@ function parseCapture(line) {
   return isNote(event) ? event : null;
 }
 
+function parseSurface(line) {
+  const match = /^surface (\d{3}) (\d{1,3}) (\d{1,3})$/.exec(line);
+  if (!match) return null;
+  const bytes = match.slice(1).map(Number);
+  return isSurfaceBytes(bytes) ? { type: "apc-surface", bytes } : null;
+}
+
 function attach(socket, onRetired) {
   const runner = spawn(runnerPath, [], { stdio: ["pipe", "pipe", "inherit"] });
   const pending = [];
   let ready = false;
-  let inFlight = false;
+  let inFlight;
   let retiring = false;
   let partialLine = "";
   let runnerTimer;
@@ -109,47 +130,81 @@ function attach(socket, onRetired) {
       return;
     }
     socket.send(message, (error) => {
-      if (error) retire(1011, "Capture delivery failed");
+      if (error) retire(1011, "Demo delivery failed");
       if (socket.bufferedAmount === 0) {
         clearTimeout(readerTimer);
         readerTimer = undefined;
       }
     });
-    if (socket.bufferedAmount > 0 && readerTimer === undefined) {
+    if (!retiring && socket.bufferedAmount > 0 && readerTimer === undefined) {
       readerTimer = setTimeout(closeStalledReader, readerTimeoutMs);
     }
   }
 
-  function dispatchNext() {
-    if (retiring || !ready || inFlight || pending.length === 0) return;
+  function dispatch({ kind, line }) {
     if (socket.readyState !== WebSocket.OPEN) {
       retire();
       return;
     }
-
-    const { type, channel, note, velocity } = pending.shift();
-    const kind = type === "note-on" ? "on" : "off";
-    inFlight = true;
+    inFlight = { kind, captureCount: 0, feedback: null };
     deadline(() => retire(1011, "Fixture dispatch timed out"));
-    runner.stdin.write(`${kind} ${channel} ${note} ${velocity}\n`);
+    runner.stdin.write(`${line}\n`);
+  }
+
+  function dispatchNext() {
+    if (!retiring && ready && !inFlight && pending.length > 0) dispatch(pending.shift());
+  }
+
+  function finishDispatch() {
+    const { kind, feedback } = inFlight;
+    if (kind === "startup" && !feedback) {
+      retire(1011, "Missing fixture startup feedback");
+      return;
+    }
+
+    clearTimeout(runnerTimer);
+    inFlight = undefined;
+    if (kind === "startup") {
+      ready = true;
+      send({ type: "ready" });
+    }
+    if (feedback && !retiring) send(feedback);
   }
 
   function readRunnerLine(line) {
-    if (!ready && line === "ready") {
-      clearTimeout(runnerTimer);
-      ready = true;
-      send({ type: "ready" });
-    } else if (inFlight && line === "ok") {
-      clearTimeout(runnerTimer);
-      inFlight = false;
-      dispatchNext();
-    } else if (inFlight && line === "error") {
-      retire(1011, "Fixture dispatch failed");
-    } else {
-      const event = inFlight && parseCapture(line);
-      if (event) send(event);
-      else retire(1011, "Invalid fixture response");
+    if (!inFlight) {
+      if (!ready && line === "ready") dispatch({ kind: "startup", line: "surface-ready" });
+      else retire(1011, "Unsolicited fixture response");
+      return;
     }
+    if (line === "ok") {
+      finishDispatch();
+      return;
+    }
+    if (line === "error") {
+      retire(1011, "Fixture dispatch failed");
+      return;
+    }
+
+    const { kind, captureCount, feedback } = inFlight;
+    if (!feedback && kind !== "keybed") {
+      const surface = parseSurface(line);
+      if (surface) {
+        // Only a successful dispatch publishes LED feedback. Captures are sent as
+        // they arrive and must precede feedback in the fixture response.
+        inFlight.feedback = surface;
+        return;
+      }
+    }
+    if (!feedback && kind !== "startup" && captureCount < maxCaptureRecords) {
+      const event = parseCapture(line);
+      if (event && (kind === "keybed" || event.type === "note-off")) {
+        inFlight.captureCount++;
+        send(event);
+        return;
+      }
+    }
+    retire(1011, "Invalid fixture response");
   }
 
   deadline(() => retire(1011, "Fixture startup timed out"));
@@ -164,6 +219,8 @@ function attach(socket, onRetired) {
       readRunnerLine(line);
     }
     if (partialLine.length > maxRunnerLine) retire(1011, "Fixture line too long");
+    if (partialLine && ready && !inFlight) retire(1011, "Unsolicited fixture response");
+    dispatchNext();
   });
   runner.stdout.on("error", () => retire(1011, "Fixture stdout failed"));
   runner.stdin.on("error", () => retire(1011, "Fixture stdin failed"));
@@ -180,13 +237,13 @@ function attach(socket, onRetired) {
 
   socket.on("message", (data, isBinary) => {
     if (retiring) return;
-    const event = !isBinary && parseInput(data);
-    if (!ready || !event) {
-      retire(1008, "Invalid keybed message");
-    } else if (pending.length === maxPendingNotes) {
-      retire(1013, "Keybed queue full");
+    const request = ready && !isBinary && parseInput(data);
+    if (!request) {
+      retire(1008, "Invalid demo message");
+    } else if (pending.length === maxPendingRequests) {
+      retire(1013, "Demo queue full");
     } else {
-      pending.push(event);
+      pending.push(request);
       dispatchNext();
     }
   });

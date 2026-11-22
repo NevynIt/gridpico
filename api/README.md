@@ -64,6 +64,32 @@ Computer connections closes runner stdin when the socket closes or fails. On EOF
 
 Verify that playing browser key `60` on channel `1` produces an actual captured `note-on` for `72` with velocity `96`, followed by `note-off` for `72` with velocity `0`. Exercise cancellation with the link up and disconnect while a note is held. APC panel and LED traffic retain their separate path.
 
+## One-pad APC route toggle
+
+This slice controls the existing demo route `1 → 2` with `+12` transpose. Use the shared [route types](native_proof.h) and [APC surface declarations](demo_apc_surface.h). Calls are serialized with note ingress. The native four-case command and the existing browser keybed, capture and Monitor note feed retain their entry points and formats.
+
+### Route enable and release
+
+- `gridpico_set_route_enabled_fn` sets the desired enablement of the one configured route. Session/control owns command validation and revision publication. Apply configures the slot and enables it on first success. Later Apply calls preserve the slot's desired enablement. Setting enablement on an empty slot returns `GRIDPICO_INVALID`.
+- Snapshots distinguish `configured`, `enabled` and `active`. An empty slot has all three false. A configured route is active only when enabled, connected and available for delivery. Each successful enable command publishes one applied revision, including a request for the current setting. A same-setting request preserves sounding notes.
+- On disable, the graph retires the route's sounding outputs before committing the disabled state. Emit one Note Off with velocity `0` per sounding output on its original destination, channel and key, using the existing release credits. Retain retired occurrences and track presses while disabled within the existing occurrence bound. Release of a retired or suppressed occurrence adds no destination row. Enablement preserves endpoints and transpose, with new Note Ons routed from that point forward.
+- Retry pending releases on the current destination before a valid Apply or enable command can commit. If required release delivery fails, return `GRIDPICO_UNAVAILABLE`, keep the desired setting and applied revision, and retain the pending credit. The route reports inactive while output is blocked. A release already accepted remains effective.
+
+### Surface and LED
+
+Pad `0x00` is the bottom-left Clip Launch pad. The simulator emits channel 1 press `90 00 7F` and release `80 00 00`, in hex. The production APC frontend accepts nonzero channel 1 Note On for this pad as a press. A channel 1 Note Off or zero-velocity Note On for the pad clears the held gesture. The first press after release reads the Session snapshot and requests the opposite of `enabled`. Further presses while held and other well-formed surface messages have no action. The frontend owns this gesture state and the LED mapping. [Akai APC Key 25 mk2 Communications Protocol v1.1](https://cdn.inmusicbrands.com/akai/attachments/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1.pdf)
+
+The frontend reads a snapshot at surface startup and after each successful toggle. For an active route it emits solid green `96 00 15`. For an inactive route it emits dark `96 00 00`. The browser renders these as pad state, independently of its momentary pressed appearance. A failed toggle uses the existing dispatch `error` and connection cleanup path. The browser clears its received LED state on disconnect.
+
+### Connected framing and order
+
+- Keep one `/demo/midi` WebSocket and distinguish surface traffic by frame type. Surface frames in both directions are `{"type":"apc-surface","bytes":[144,0,127]}` with exactly three integers. The first byte is a channel-voice status `128–239` and the two data bytes are `0–127`. Existing note frames remain the musical and capture path. Computer connections maps a surface frame to or from the decimal runner line `surface <status> <data1> <data2>` using the existing ASCII LF and single-space framing.
+- After the runner's `ready`, the pad-capable host dispatches one internal `surface-ready` line. The runner invokes the production APC frontend's startup refresh and responds `surface 150 0 21` followed by `ok` for an active startup route. The host then sends the existing browser `ready` message followed by that LED frame. A note-only client of the runner can continue to use the original `ready`, `on` and `off` dialogue.
+- The browser adapter calls `gridpicoApc.connect(sendKeybed, sendSurface)`. The optional `sendSurface(bytes)` carries the three raw pad bytes. The returned `receiveSurface(bytes)` accepts only surface feedback. `receiveCapture(event)` continues to receive accepted destination note records. The surface remains playable as a standalone preview when no adapter is attached.
+- Assembly wires surface requests to the APC frontend and its enable/query callbacks to Session/control. Stage accepted destination releases and the frontend's feedback during each serialized dispatch. Write capture `off` lines first, then the new `surface` LED line, then `ok`. Computer connections forwards those records in that order. A pad release or ignored message responds `ok` alone.
+
+Acceptance starts with the green pad and a captured transposed Note On when `Q` is held. Press the pad. Capture one Note Off for the original note at velocity `0` before the dark LED. Then release `Q` and verify no second release. Press and release a key while off and verify no destination rows. Release and press the pad again. Check the green LED and a fresh `Q` producing the original `+12` pair. A key held through re-enable remains silent until a new press.
+
 ## Platform services
 
 | Service | Minimum contract |

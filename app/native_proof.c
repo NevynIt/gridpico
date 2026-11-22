@@ -200,7 +200,8 @@ int main(void)
     }
 
     gridpico_session_init(&demo.session, &graph,
-                          gridpico_midi_graph_apply_route, gridpico_midi_graph_read_route);
+                          gridpico_midi_graph_apply_route, gridpico_midi_graph_read_route,
+                          gridpico_midi_graph_set_route_enabled);
 
     return run_cases(&demo) ? EXIT_SUCCESS : EXIT_FAILURE;
 }

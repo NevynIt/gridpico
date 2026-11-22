@@ -190,6 +190,8 @@ Acceptance must eventually cover the same interaction through APC simulation, ph
 
 Browser Monitor verification covers a transposed note from the live destination feed, voice cleanup and channel isolation. Observe the same normalized MIDI destination trace with monitoring enabled and disabled.
 
+The approved one-pad demo separates route enablement from runtime activity. Session/control publishes committed intent, the graph completes held-note release before disabling, and the production APC frontend derives LED feedback from the route snapshot. Surface and keybed messages use distinct paths over the local connection. [One-pad route and surface contract](api/README.md#one-pad-apc-route-toggle)
+
 Maintain separate evidence for deterministic simulation, Linux x86, Linux ARM, Windows and RP2040 hardware. Test capacities/overflow, malformed configuration, SysEx concurrency, external clock transitions, device identity ambiguity and power-loss behavior where applicable.
 
 This list does not assign tasks, dates, release stages or a delivery order. The planning team determines those in the future roadmap.

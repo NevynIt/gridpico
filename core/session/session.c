@@ -2,12 +2,14 @@
 
 void gridpico_session_init(gridpico_session *session, void *graph_context,
                           gridpico_apply_route_fn reconcile_route,
-                          gridpico_read_route_fn read_graph_route)
+                          gridpico_read_route_fn read_graph_route,
+                          gridpico_set_route_enabled_fn reconcile_route_enabled)
 {
     *session = (gridpico_session){
         .graph_context = graph_context,
         .reconcile_route = reconcile_route,
         .read_graph_route = read_graph_route,
+        .reconcile_route_enabled = reconcile_route_enabled,
     };
 }
 
@@ -35,6 +37,26 @@ gridpico_result gridpico_session_apply_route(void *context,
     }
 
     const gridpico_result result = session->reconcile_route(session->graph_context, request);
+    if (result == GRIDPICO_OK) {
+        ++session->applied_revision;
+    }
+
+    return result;
+}
+
+gridpico_result gridpico_session_set_route_enabled(void *context, bool enabled)
+{
+    gridpico_session *session = context;
+
+    if (!session->read_graph_route(session->graph_context).configured) {
+        return GRIDPICO_INVALID;
+    }
+
+    if (session->applied_revision == UINT64_MAX) {
+        return GRIDPICO_CAPACITY;
+    }
+
+    const gridpico_result result = session->reconcile_route_enabled(session->graph_context, enabled);
     if (result == GRIDPICO_OK) {
         ++session->applied_revision;
     }

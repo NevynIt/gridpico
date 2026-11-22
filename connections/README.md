@@ -20,14 +20,23 @@ the host with Ctrl+C.
 
 ## Smoke check
 
-1. Wait for **Connected**. Press and release **Q** (key 60, channel 1). Check
-   **Captured MIDI output** for **Note On · 1 · 72 · 96** followed by
-   **Note Off · 1 · 72 · 0**.
-2. Hold **Q**, press Escape while still holding **Q**, then release **Q**. Check
+1. Wait for **Connected** and check that the bottom-left **Route** pad is green.
+   Hold **Q** (key 60, channel 1) and check **Captured MIDI output** for
+   **Note On · 1 · 72 · 96**.
+2. With **Q** held, press the **Route** pad. Check that **Note Off · 1 · 72 · 0**
+   arrives before the pad goes dark. Release the pad and **Q**. There should be
+   one release row. Press and release **Q** while the pad is dark. The capture
+   should stay at two rows.
+3. Hold **Q** again while the pad is dark. Press and release **Route** to turn
+   it green, then release **Q**. The capture should still have two rows. Press
+   and release **Q** again and check for a new **72 · 96** On and **72 · 0** Off.
+   To hear accepted notes, enable audio in **Monitor**.
+4. Hold **Q**, press Escape while still holding **Q**, then release **Q**. Check
    for one additional On/Off pair with the same values.
-3. Hold **Q** and disconnect the WebSocket, for example by stopping the host.
+5. Hold **Q** and disconnect the WebSocket, for example by stopping the host.
+   Check that the pad's received LED state clears.
    Start the host again if needed, then reload and wait for **Connected**.
-   Confirm the new capture starts empty and ordinary playback still works.
+   Confirm the new capture starts empty and the pad is green.
    To see the fixture's EOF release directly, submit a press and let the pipe
    close while the note is held:
 
@@ -37,9 +46,12 @@ the host with Ctrl+C.
 
    The expected lines are `ready`, `on 1 72 96`, `ok`, and `off 1 72 0`.
 
-The host sends only records reported by the fixture and preserves their order
-and velocity. It allows one runner dispatch in flight and queues up to 16
-incoming notes. On socket loss or transport saturation it closes runner stdin
-and keeps draining stdout through fixture exit, including disconnect releases.
-Browser output buffering has a byte limit and a drain timeout. The WebSocket
-framing dependency is pinned in the npm lockfile.
+The host requests startup feedback from the fixture and sends it after the
+browser is ready. Keybed and surface requests share a queue of up to 16, with
+one runner dispatch in flight. The host forwards accepted capture records in
+order and then sends LED feedback for that dispatch on success. Monitor uses
+the same accepted note records as the capture table. On socket loss or
+transport saturation, the host closes runner stdin and drains stdout through
+fixture exit, including disconnect releases. Browser output buffering has a
+byte limit and a drain timeout. The WebSocket dependency is pinned in the npm
+lockfile.
