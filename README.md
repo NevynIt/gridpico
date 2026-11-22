@@ -51,12 +51,15 @@ Use a **new gridpico container and checkout** on the same Docker daemon as the e
 
 No credentials are copied into this repository or image. The mounted Codex directory also contains existing configuration and session history; the setup does not overwrite it. Herdr runtime state uses a separate `gridpico-herdr` volume.
 
-From this directory:
+From this directory on the Docker host (for example, the M5):
 
 ```sh
-docker compose -f .devcontainer/compose.yaml up -d --build
-docker compose -f .devcontainer/compose.yaml exec dev bash
+./scripts/build.sh   # Build/update the development image
+./scripts/start.sh   # Start the container (without rebuilding)
+./scripts/herdr.sh   # Open the interactive Herdr TUI inside it
 ```
+
+The Herdr script only opens the TUI; it does **not** create/start agents. First-run authentication inside the container is available with `docker compose -f .devcontainer/compose.yaml exec dev bash` followed by `bash .devcontainer/sign-in.sh`. All scripts resolve the repository directory from their own location, so they can be run from another working directory.
 
 VS Code's **Reopen in Container** uses the same Compose definition. See [setup](docs/SETUP.md) for authentication checks and the first Session Manager prompt. No setup command automatically launches agents.
 

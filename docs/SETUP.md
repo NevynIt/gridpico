@@ -38,9 +38,18 @@ Set your Git author identity in this checkout if it is not already available; no
 ## 3. Build and enter the new development container
 
 ```sh
-docker compose -f .devcontainer/compose.yaml up -d --build
+./scripts/build.sh
+./scripts/start.sh
 docker compose -f .devcontainer/compose.yaml exec dev bash
 ```
+
+After authentication (section 4), open the interactive Herdr TUI from the host:
+
+```sh
+./scripts/herdr.sh
+```
+
+These scripts use the existing Compose definition and the current server's Docker daemon. Building does not start anything; starting does not rebuild; opening Herdr does not create an agent. They work from any working directory. If you only want to enter the container shell, use the Compose `exec dev bash` command above.
 
 Alternatively, open the folder in VS Code and select **Dev Containers: Reopen in Container**. Both paths use `.devcontainer/compose.yaml`. Closing VS Code does not automatically stop the container; lifecycle remains deliberate.
 
