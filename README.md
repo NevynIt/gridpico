@@ -59,7 +59,7 @@ From this directory on the Docker host (for example, the M5):
 ./scripts/herdr.sh   # Open the interactive Herdr TUI inside it
 ```
 
-The Herdr script only opens the TUI; it does **not** create/start agents. First-run authentication inside the container is available with `docker compose -f .devcontainer/compose.yaml exec dev bash` followed by `bash .devcontainer/sign-in.sh`. All scripts resolve the repository directory from their own location, so they can be run from another working directory.
+Run `./scripts/check-codex-sandbox.sh` before the first agent bootstrap. If it fails, follow [Codex runtime troubleshooting](docs/CODEX_RUNTIME.md). The Herdr script only opens the TUI; it does **not** create/start agents. First-run authentication inside the container is available with `docker compose -f .devcontainer/compose.yaml exec dev bash` followed by `bash .devcontainer/sign-in.sh`. All scripts resolve the repository directory from their own location, so they can be run from another working directory.
 
 VS Code's **Reopen in Container** uses the same Compose definition. See [setup](docs/SETUP.md) for authentication checks and the first Session Manager prompt. No setup command automatically launches agents.
 

@@ -86,6 +86,16 @@ The shared Codex volume contains **configuration and sessions as well as credent
 
 Herdr state is separate in `gridpico-herdr`; runtime roster metadata goes under ignored `.team/local/`. `HERDR_CONFIG_PATH` selects this checkout's `.team/herdr.toml`, which disables automatic restoration of all agents. The intended sequence is explicit human startup of Session Manager followed by requested lifecycle actions. Inspect installed behavior before relying on any Herdr session command. [S6]
 
+## 4a. Verify the Codex sandbox before launching the agent team
+
+From a **host shell** (the M5 server), while the Compose service is running:
+
+```sh
+./scripts/check-codex-sandbox.sh
+```
+
+If it fails, read [Codex runtime and approval troubleshooting](CODEX_RUNTIME.md) **before starting or resuming more agents**. A failing nested Linux sandbox causes Codex to ask approval for harmless read-only commands, as reported in several Docker/Ubuntu configurations. This check does not change host security or shared credentials.
+
 ## 5. Start only Session Manager
 
 From `/workspace/gridpico`, start Herdr's TUI:
@@ -94,13 +104,13 @@ From `/workspace/gridpico`, start Herdr's TUI:
 herdr
 ```
 
-In a pane in this checkout, start the first agent with:
+After the sandbox preflight succeeds, in a pane in this checkout, start the first agent with:
 
 ```sh
-codex "Read AGENTS.md and .team/roles/session-manager.md. You are Session Manager. Perform only the documented initial planning-team bootstrap."
+codex --sandbox workspace-write --ask-for-approval on-request "Read AGENTS.md and .team/roles/session-manager.md. You are Session Manager. Perform only the documented initial planning-team bootstrap."
 ```
 
-Session Manager creates Strategist, Architect and Project Manager using installed facilities. The human then works through Strategist. Initial startup does not create a development team, implement modules or require checkpoint files.
+Session Manager starts Strategist, Architect and Project Manager with explicit, tested Codex permission settings using installed Herdr facilities. If its sandbox prevents Herdr control, do not repeatedly approve every command: follow [the runtime guide](CODEX_RUNTIME.md) to resolve the sandbox limitation or request an explicit human choice of an alternate container-trust mode. The human then works through Strategist. Initial startup does not create a development team, implement modules or require checkpoint files.
 
 Native Codex resume accepts an explicit session ID; Session Manager records actual IDs and resumes those same sessions. Do not use a guessed pane number or an ambiguous `--last`, and do not use fork as a substitute. Herdr's native integration/session restore must be checked against the installed release. Stored conversation continuity is not an unlimited model context window. [S5, S6]
 

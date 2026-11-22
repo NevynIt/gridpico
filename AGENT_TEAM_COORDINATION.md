@@ -36,7 +36,7 @@ The three planning documents are **shared reference documents with single owners
 ## 3. Startup and expansion
 
 1. **Human starts Session Manager** in the gridpico checkout inside the development container.
-2. Session Manager reads this agreement and the initial role definitions. It checks the installed Herdr/Codex commands sufficiently to operate sessions correctly; it does not invent CLI syntax or make sandbox promises.
+2. Session Manager reads this agreement and the initial role definitions. It checks the installed Herdr/Codex commands sufficiently to operate sessions correctly; it does not invent CLI syntax or make sandbox promises. It must also run the documented Codex sandbox preflight and use explicit, verified launch permissions for all agents (see `docs/CODEX_RUNTIME.md`). If sandbox startup fails, pause further agent creation and report the limitation; disabling the inner sandbox requires an explicit human security decision.
 3. **Bootstrap exception:** without waiting for a Project Manager request, Session Manager creates the three planning sessions: Strategist, Architect and Project Manager. Each receives its role, working directory and the shared-document locations. Record each actual Codex session ID, not just the pane name.
 4. The human discusses the product through Strategist. The three planning agents collaborate directly on the brief, architecture and roadmap. This initial planning work does not authorize product implementation.
 5. The human approves the intended product/architecture, roadmap and additional roster through Strategist. The candidate roster below is not permission to instantiate it immediately.
