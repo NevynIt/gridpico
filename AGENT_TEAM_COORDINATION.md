@@ -26,7 +26,7 @@ The initial team contains exactly four agents. The human starts Session Manager;
 | --- | --- | --- |
 | **Strategist** | Human conversation, product goals, approved decisions; **`PRODUCT_BRIEF.md`** (including the business case) | Treat discussion as implementation authorization; assign implementation tasks |
 | **Architect** | **`ARCHITECTURE.md`**, public contracts under `api/`, dependency rules and technical decisions within approved scope | Implement modules; change approved boundaries without human approval |
-| **Project Manager** | **`ROADMAP.md`**, task sequencing, assignments, acceptance/integration, regular commits; decides which sessions are needed | Redefine product scope or contracts; implement modules |
+| **Project Manager** | **`ROADMAP.md`**, task sequencing, assignments, weekly Codex allowance planning, acceptance/integration, regular commits; decides which sessions are needed | Redefine product scope or contracts; implement modules |
 | **Session Manager** | Approved-agent list, original Codex session IDs, lifecycle status and requested session operations | Enforce policy or budgets, supervise agents, approve seats, assign work, choose priorities or monitor for work |
 
 The three planning documents are **shared reference documents with single owners**, not three documents each maintained in parallel by every agent. All three planning agents discuss and propose changes; the owner updates the relevant file. Cross-document conflicts are resolved between owners and, when necessary, through Strategist to the human.
@@ -130,7 +130,15 @@ Other agents do not stage, commit, reset, switch branches, rebase or push unless
 
 End with a compact result/blocker report to Project Manager, then wait. A technical escalation does not replace that completion report. No agent generates more work merely to remain busy.
 
-## 9. Session Manager's first instruction
+## 9. Codex allowance and task pacing (Project Manager)
+
+Project Manager is responsible for **managing team consumption of the account's available Codex allowance**, especially the weekly limit. Review current remaining allowance, next reset and any other relevant limit at each active planning cycle, before a large task batch, and after substantial usage. Use an interactive Codex session's `/status` or the official account usage dashboard; these are account-wide limits, not a sum of context-window token counts. Available CLI/Herdr monitoring mechanisms must be checked in the installed versions before relying on them. Never read raw credential files or assume an unattended background monitor exists.
+
+Plan within the observed remaining allowance: keep tasks bounded and prioritized; avoid duplicate agents doing the same research; stagger activation; preserve capacity for testing, integration and unexpected fixes. Choose appropriate model/effort for each task when that choice is available and authorized. If consumption risks exhausting the allowance before reset, defer nonessential work and raise the trade-off through Strategist to the human. If visibility is unavailable, report that instead of inventing figures. Do not impose arbitrary quotas or automated process controls without human approval.
+
+**Session Manager has no budget duties whatsoever.** It only performs approved agent session operations requested by Project Manager (apart from the initial three-agent bootstrap), preserving original Codex session continuity. Usage monitoring occurs when Project Manager is active; no new daemon, scheduler, telemetry collection or mandatory checkpoint is introduced.
+
+## 10. Session Manager's first instruction
 
 > Establish only the planning team in this gridpico checkout: Strategist, Architect and Project Manager, each as a persistent Codex session. Keep the approved roster and exact native session IDs. Let the three maintain their owned brief, architecture and roadmap in discussion with the human through Strategist. Do not create any other agent until Project Manager requests it after the human's approval. After bootstrap, create/start/pause/resume only on Project Manager request. Resume original Codex sessions; never add checkpoint or reconstruction procedures. You are not an enforcer, scheduler or supervisor.
 
