@@ -9,6 +9,6 @@ This initial roster authorizes planning/session setup only. Session Manager keep
 | Architect | Session Manager bootstrap | [Role](roles/architect.md) | `ARCHITECTURE.md` |
 | Project Manager | Session Manager bootstrap | [Role](roles/project-manager.md) | `ROADMAP.md`, to be created after discussion |
 
-The 19 additional seats in the diagram are the proposed later roster, not a launch list. Add approved seats only when their creation is requested by Project Manager.
+The proposed models and reasoning effort for all seats are recorded in [MODEL_PLAN.md](MODEL_PLAN.md), owned by Project Manager and applied by Session Manager. Candidate model IDs must be checked against the installed Codex CLI.\n\nThe 19 additional seats in the diagram are the proposed later roster, not a launch list. Add approved seats only when their creation is requested by Project Manager.
 
 Actual Codex session IDs, pane identifiers, working directories and lifecycle status belong in an ignored `.team/local/roster.json` (or another small local roster chosen by Session Manager). Do not fabricate IDs in this file or put credentials in any roster. The native sessions themselves remain in the mounted Codex state volume.

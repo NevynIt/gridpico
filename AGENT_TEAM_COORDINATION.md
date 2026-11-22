@@ -36,7 +36,7 @@ The three planning documents are **shared reference documents with single owners
 ## 3. Startup and expansion
 
 1. **Human starts Session Manager** in the gridpico checkout inside the development container.
-2. Session Manager reads this agreement and the initial role definitions. It checks the installed Herdr/Codex commands sufficiently to operate sessions correctly; it does not invent CLI syntax or make sandbox promises. It must also run the documented Codex sandbox preflight and use explicit, verified launch permissions for all agents (see `docs/CODEX_RUNTIME.md`). If sandbox startup fails, pause further agent creation and report the limitation; disabling the inner sandbox requires an explicit human security decision.
+2. Session Manager reads this agreement and the initial role definitions. It checks the installed Herdr/Codex commands sufficiently to operate sessions correctly; it does not invent CLI syntax or make sandbox promises. The M5 Bubblewrap and Landlock tests failed, and the human explicitly authorized Docker-only Codex execution for this container. Session Manager must apply the approved explicit launch permissions to **itself and every agent** (see `docs/CODEX_RUNTIME.md`).
 3. **Bootstrap exception:** without waiting for a Project Manager request, Session Manager creates the three planning sessions: Strategist, Architect and Project Manager. Each receives its role, working directory and the shared-document locations. Record each actual Codex session ID, not just the pane name.
 4. The human discusses the product through Strategist. The three planning agents collaborate directly on the brief, architecture and roadmap. This initial planning work does not authorize product implementation.
 5. The human approves the intended product/architecture, roadmap and additional roster through Strategist. The candidate roster below is not permission to instantiate it immediately.
@@ -138,7 +138,13 @@ Plan within the observed remaining allowance: keep tasks bounded and prioritized
 
 **Session Manager has no budget duties whatsoever.** It only performs approved agent session operations requested by Project Manager (apart from the initial three-agent bootstrap), preserving original Codex session continuity. Usage monitoring occurs when Project Manager is active; no new daemon, scheduler, telemetry collection or mandatory checkpoint is introduced.
 
-## 10. Session Manager's first instruction
+## 10. Agent model/effort plan and approved Docker-only mode
+
+Project Manager owns the per-seat Codex model and reasoning-effort choices in `.team/MODEL_PLAN.md`, including the planning team's initial defaults and proposed future owners. Session Manager applies the specified model/effort and does not decide or enforce a token budget. If a model ID is unavailable in the installed CLI, report it to Project Manager/the human rather than silently using another model.
+
+The human has explicitly approved `--sandbox danger-full-access --ask-for-approval never` **inside the existing gridpico Docker container** after nested Bubblewrap/Landlock failed on the M5. This applies from the first Session Manager process through all agent launches/resumes. It does not authorize unrestricted Codex execution on the host; the mounted credentials remain accessible inside Docker (see `docs/CODEX_RUNTIME.md`). The human may revise this launch policy later.
+
+## 11. Session Manager's first instruction
 
 > Establish only the planning team in this gridpico checkout: Strategist, Architect and Project Manager, each as a persistent Codex session. Keep the approved roster and exact native session IDs. Let the three maintain their owned brief, architecture and roadmap in discussion with the human through Strategist. Do not create any other agent until Project Manager requests it after the human's approval. After bootstrap, create/start/pause/resume only on Project Manager request. Resume original Codex sessions; never add checkpoint or reconstruction procedures. You are not an enforcer, scheduler or supervisor.
 
