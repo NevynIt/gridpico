@@ -1,0 +1,45 @@
+name: gridpico
+services:
+  dev:
+    image: gridpico-dev:latest
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    user: pico
+    init: true
+    working_dir: /workspace/gridpico
+    stdin_open: true
+    tty: true
+    command: ["sleep", "infinity"]
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+      - seccomp:unconfined
+    environment:
+      HOME: /home/pico
+      CODEX_HOME: /home/pico/.codex
+      GH_CONFIG_DIR: /home/pico/.config/gh
+      HERDR_CONFIG_PATH: /workspace/gridpico/.team/herdr.toml
+    volumes:
+      - type: bind
+        source: ..
+        target: /workspace/gridpico
+      - type: volume
+        source: codex
+        target: /home/pico/.codex
+      - type: volume
+        source: github
+        target: /home/pico/.config/gh
+      - type: volume
+        source: herdr
+        target: /home/pico/.config/herdr
+
+volumes:
+  codex:
+    external: true
+    name: pico-dev-codex
+  github:
+    external: true
+    name: pico-dev-gh
+  herdr:
+    name: gridpico-herdr

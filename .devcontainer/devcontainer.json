@@ -1,0 +1,19 @@
+{
+  "name": "gridpico",
+  "dockerComposeFile": "compose.yaml",
+  "service": "dev",
+  "workspaceFolder": "/workspace/gridpico",
+  "remoteUser": "pico",
+  "updateRemoteUserUID": false,
+  "overrideCommand": false,
+  "shutdownAction": "none",
+  "customizations": {
+    "vscode": {
+      "extensions": ["ms-vscode.cpptools", "ms-vscode.cmake-tools"],
+      "settings": {
+        "cmake.configureOnOpen": false,
+        "cmake.generator": "Ninja"
+      }
+    }
+  }
+}

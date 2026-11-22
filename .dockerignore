@@ -1,0 +1,17 @@
+.git
+.team/local
+.codex
+.config
+.ssh
+.env
+.env.*
+build*
+out
+dist
+node_modules
+**/node_modules
+.venv
+__pycache__
+*.log
+auth.json
+hosts.yml

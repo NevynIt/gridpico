@@ -1,0 +1,4 @@
+# Project-specific configuration; does not overwrite rpico-bridge settings.
+# Session Manager operates sessions only on PM request after bootstrap.
+[session]
+resume_agents_on_restore = false

@@ -1,0 +1,61 @@
+flowchart TB
+  subgraph userif["Interchangeable interfaces"]
+    web["Web APC simulator<br/>Primary graphical interface"]
+    conn["Computer connections<br/>MIDI / optional serial / local browser link"]
+    hw["Physical APC"]
+    apc["APC frontend<br/>Protocol, views, gestures, LEDs"]
+    piano["Piano frontend — later<br/>Keys / pedals / RGB feedback"]
+    cli["CLI frontend"]
+    web <-->|"APC MIDI + LED feedback"| conn
+    conn <--> apc
+    hw <-->|"MIDI via platform"| apc
+  end
+  subgraph kernel["Portable kernel — same implementation on every target"]
+    session["Session / control<br/>Commands, queries, state"]
+    midi["MIDI graph<br/>Routes, endpoints, note safety"]
+    proc["Processors<br/>Bounded transformations"]
+    time["Musical time<br/>Clock, transport, scheduling"]
+    seq["Sequencer — later<br/>Tracks, recording, patterns, scenes"]
+    projects["Projects<br/>Validation, load / save, recovery"]
+    session <--> midi
+    session <--> proc
+    session <--> time
+    session <--> seq
+    session <--> projects
+    midi <--> proc
+    time --> seq
+    midi -->|"Recording feed"| seq
+    seq -->|"Playback events"| midi
+  end
+  apc <-->|"Commands / state"| session
+  piano <-->|"Commands / state"| session
+  cli <-->|"Commands / state"| session
+  conn -.->|"Supplementary controls only"| session
+  hal["Platform contracts — api/platform<br/>MIDI • monotonic time • storage • feedback • capabilities"]
+  midi <--> hal
+  time <--> hal
+  projects <--> hal
+  piano <-->|"Feedback service"| hal
+  subgraph targets["Swappable backends"]
+    rp["RP2040 HAL<br/>PIO host + native composite USB<br/>5 MIDI pairs / CDC / read-only GRIDPICO drive"]
+    subgraph linux["One Linux HAL owner — shared OS implementation"]
+      lx["Linux x86 build / test target"]
+      la["Linux ARM build / test target<br/>Includes Raspberry Pi Zero"]
+    end
+    win["Windows HAL"]
+    sim["Simulation backend<br/>Fake MIDI / time / storage / feedback"]
+  end
+  rp -.->|"implements"| hal
+  lx -.->|"implements"| hal
+  la -.->|"implements"| hal
+  win -.->|"implements"| hal
+  sim -.->|"implements"| hal
+  assembly["Application Assembly<br/>Wiring, target profiles, build glue, HTML/docs packaging"]
+  assembly -.-> kernel
+  assembly -.-> targets
+  classDef iface fill:#e4f0ff,stroke:#4879a5,color:#10233c;
+  classDef core fill:#e7f5e8,stroke:#4a8660,color:#142d20;
+  classDef infra fill:#fff3d6,stroke:#ac8b3e,color:#3c321c;
+  class web,conn,hw,apc,piano,cli iface;
+  class session,midi,proc,time,seq,projects core;
+  class hal,rp,lx,la,win,sim,assembly infra;
