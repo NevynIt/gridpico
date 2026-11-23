@@ -2,6 +2,8 @@
 
 Gridpico routes and transforms MIDI between existing instruments. The diagram shows the verified x86_64 and connected browser slice. Dashed links mark paths that still need target or hardware verification.
 
+See the [planned hardware topology and evidence boundary](HARDWARE.md).
+
 ```mermaid
 flowchart LR
   subgraph browser[Connected Web APC in Chromium]
