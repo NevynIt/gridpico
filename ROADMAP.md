@@ -35,7 +35,7 @@ Independent Chromium checks exercised all 40 pads and 25 keys at 1440, 390 and 3
 
 **Standalone Diagnostics verified with simulated serial.** Chromium opened the file directly while offline. Independent checks covered exact LF command bytes, UTF-8 replies, bounded scrollback, pending-write cleanup and reconnect. Packaging and physical Pico CDC access from the mounted drive remain separate acceptance work. [Diagnostics page](connections/diagnostics/index.html)
 
-Start with the existing Session/control, MIDI graph, Simulation backend and Application Assembly owners once the contract is ready. Add APC frontend and Web APC where the simulator can exercise the real Patch paths. The human approved the CLI frontend seat through Strategist, with activation after timed LED verification. Computer connections is the proposed owner of the Diagnostics serial client, pending Architect's boundary check. Request RP2040 HAL approval when CDC, the mounted drive and target tests can be scheduled. Read `/status` before each batch and reserve independent Testing, Builder verification and fixes.
+Session/control, MIDI graph, Simulation backend and Application Assembly completed the native gate. The approved CLI frontend seat is active. APC frontend and Web APC are implementing the production Patch path and Computer connections owns the browser framing and Diagnostics serial client. Application Assembly owns the runner and offline packaging. Request RP2040 HAL approval when CDC, the mounted drive and target tests can be scheduled. Read `/status` before each batch and reserve independent Testing, Builder verification and fixes.
 
 ## Approved follow-ons for the rest of tonight
 
