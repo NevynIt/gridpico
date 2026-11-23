@@ -88,6 +88,20 @@
         <code>color set &lt;device-id&gt; #RRGGBB</code>
       </p>
     </form>
+    <section id="local-midi" hidden aria-labelledby="local-midi-title">
+      <h2 id="local-midi-title">APC solid / off</h2>
+      <label for="local-midi-port">MIDI output binding</label>
+      <div class="command-row">
+        <input id="local-midi-port" type="number" min="1" max="65535" step="1" value="4">
+        <button id="local-midi-connect" type="button">Connect MIDI</button>
+        <button id="local-midi-disconnect" type="button" disabled>Disconnect MIDI</button>
+      </div>
+      <p id="local-midi-status" role="status">MIDI disconnected.</p>
+      <div class="command-row">
+        <button id="local-midi-solid" type="button" disabled>Solid green · 96 00 15</button>
+        <button id="local-midi-off" type="button" disabled>Off · 96 00 00</button>
+      </div>
+    </section>
   </main>
   <script>
     "use strict";
@@ -111,11 +125,12 @@
     let connecting = false;
     let pageGeneration = 0;
     let connection;
+    let localSerial;
 
     function updateControls() {
-      const connected = connection && !connection.closing;
-      connectButton.disabled = !serial || connecting || Boolean(connection);
-      disconnectButton.disabled = !connected;
+      const connected = connection && !connection.closing && (!connection.local || connection.ready);
+      connectButton.disabled = (!serial && !localSerial) || connecting || Boolean(connection);
+      disconnectButton.disabled = !connection || connection.closing;
       command.disabled = !connected;
       sendButton.disabled = !connected || Boolean(connection?.writer);
     }
@@ -165,6 +180,10 @@
       active.closing = true;
       showStatus("Disconnecting…");
       updateControls();
+      if (active.local) {
+        active.handle.close();
+        return;
+      }
 
       // Unlock the writer even when a write is outstanding so port.close() can
       // shut down the stream. Cancel the pending read before closing the port.
@@ -182,8 +201,46 @@
       updateControls();
     }
 
+    function connectLocal() {
+      const active = { local: true, ready: false, closing: false };
+      const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
+      connection = active;
+      inputError.textContent = "";
+      showStatus("Connecting to the local CLI…");
+      updateControls();
+      try {
+        active.handle = localSerial({
+          onData(bytes) {
+            if (connection === active) appendTranscript(decoder.decode(bytes, { stream: true }));
+          },
+          onState(state, reason) {
+            if (connection !== active) return;
+            if (state === "connected" && !active.closing) {
+              active.ready = true;
+              showStatus("Local CLI connected.");
+            } else if (state === "disconnected") {
+              appendTranscript(decoder.decode());
+              connection = undefined;
+              showStatus(reason || "Local CLI disconnected.", Boolean(reason));
+            }
+            updateControls();
+            if (state === "connected" && active.ready) command.focus();
+          },
+        });
+      } catch (error) {
+        connection = undefined;
+        showStatus(`Could not connect to the local CLI: ${error.message}`, true);
+        updateControls();
+      }
+    }
+
     async function connect() {
-      if (connecting || connection || !serial) return;
+      if (connecting || connection) return;
+      if (localSerial) {
+        connectLocal();
+        return;
+      }
+      if (!serial) return;
       const generation = pageGeneration;
       let port;
       let opened = false;
@@ -247,10 +304,17 @@
         return;
       }
 
+      const bytes = encoder.encode(line + "\n");
+      if (active.local) {
+        if (active.ready && active.handle.send(bytes)) command.value = "";
+        else inputError.textContent = "The local CLI could not send this line.";
+        return;
+      }
+
       try {
         active.writer = active.port.writable.getWriter();
         updateControls();
-        await active.writer.write(encoder.encode(line + "\n"));
+        await active.writer.write(bytes);
         if (connection === active && !active.closing && command.value === line) command.value = "";
       } catch (error) {
         if (!active.closing) await disconnect(active, `Serial write failed: ${error.message}`, true);
@@ -283,6 +347,14 @@
     window.addEventListener("pagehide", () => {
       pageGeneration++;
       if (connection) void disconnect(connection);
+    });
+
+    window.addEventListener("DOMContentLoaded", () => {
+      if (!window.gridpicoLocal) return;
+      localSerial = window.gridpicoLocal.openSerial;
+      connectButton.textContent = "Connect local CLI";
+      showStatus("Local CLI disconnected.");
+      updateControls();
     });
 
     if (!serial) showStatus("Web Serial is unavailable in this browser or context.", true);

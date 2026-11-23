@@ -8,6 +8,10 @@ See the [Patchbay, inventory and Diagnostics proposal](patchbay.md) for the next
 
 The [Web Monitor destination contract](web-monitor-proposal.md) defines the named virtual Patch output, receiver lifecycle and destination-tagged delivery.
 
+The [local production router contract](local-router.md) defines the shared runtime, registered MIDI bindings and serial route control for the MIDI and CLI-only product path.
+
+The [Linux ALSA MIDI adapter](linux-midi-adapter.md) binds native sequencer ports to that router for the separate Linux↔Linux gate.
+
 ## Session/control
 
 - Accept intent to change a binding, route or processor setting. Return an outcome that distinguishes invalid input, unsupported features, resource limits and temporary unavailability. An accepted route may be pending if its binding is unresolved. Queries expose the reason it is pending and which routes are active.

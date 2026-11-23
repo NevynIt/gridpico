@@ -1,7 +1,7 @@
 #ifndef GRIDPICO_MIDI_PATCH_GRAPH_H
 #define GRIDPICO_MIDI_PATCH_GRAPH_H
 
-#include "api/patchbay.h"
+#include "api/local_router.h"
 
 enum {
     GRIDPICO_PATCH_BROWSER_NOTE_OCCURRENCES = 25,
@@ -16,6 +16,7 @@ typedef struct {
 typedef struct {
     size_t source;
     size_t destination;
+    gridpico_local_route_mode mode;
     bool enabled;
 } gridpico_patch_graph_branch;
 
@@ -36,8 +37,10 @@ typedef struct {
     gridpico_patch_inventory inventory;
     gridpico_revision revision;
     gridpico_deliver_note_fn deliver;
+    gridpico_local_deliver_raw_fn deliver_raw;
     void *delivery_context;
     gridpico_patch_port_runtime ports[GRIDPICO_PATCH_MAX_PORTS];
+    gridpico_local_port_capability port_capabilities[GRIDPICO_LOCAL_PORTS];
     gridpico_patch_graph_branch branches[GRIDPICO_PATCH_MAX_BRANCHES];
     size_t branch_limit;
     size_t occurrence_limit;
@@ -63,11 +66,21 @@ gridpico_result gridpico_patch_graph_init_monitor(gridpico_patch_graph *graph,
                                                  const gridpico_patch_inventory *inventory,
                                                  gridpico_deliver_note_fn deliver,
                                                  void *delivery_context);
+gridpico_result gridpico_patch_graph_init_local(gridpico_patch_graph *graph,
+                                               const gridpico_local_registry *registry,
+                                               gridpico_deliver_note_fn deliver_note,
+                                               gridpico_local_deliver_raw_fn deliver_raw,
+                                               void *delivery_context);
 gridpico_result gridpico_patch_graph_update_port(void *context,
                                                 const gridpico_patch_port_update *update);
 gridpico_result gridpico_patch_graph_set_route(void *context,
                                                const gridpico_patch_route_request *request);
 gridpico_result gridpico_patch_graph_read_graph(void *context, gridpico_patch_graph_state *out);
 gridpico_result gridpico_patch_graph_submit_note(void *context, const gridpico_ingress_note *input);
+gridpico_result gridpico_patch_graph_set_local_route(void *context,
+                                                    const gridpico_local_route_request *request);
+gridpico_result gridpico_patch_graph_read_local_route(void *context, const gridpico_local_route *route,
+                                                     gridpico_local_route_status *out);
+gridpico_result gridpico_patch_graph_submit_raw(void *context, const gridpico_local_raw_ingress *input);
 
 #endif

@@ -45,6 +45,19 @@
   .patch-status[data-error] { color: #8b3d2b; }
   .patch-assignments, .patch-devices { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
   .fixture[hidden], .patch-assignments[hidden] { display: none; }
+  .local-bindings {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+    gap: .55rem; margin-top: .75rem;
+  }
+  .local-binding { min-width: 0; padding: .55rem; border: 1px solid var(--line); border-radius: .45rem; }
+  .local-binding label { display: block; margin-bottom: .35rem; font-size: .875rem; font-weight: 650; }
+  .local-binding .lab-actions { align-items: center; }
+  .local-binding input {
+    width: 4.15rem; min-width: 0; padding: .32rem; border: 1px solid var(--line); border-radius: .35rem; font: inherit;
+  }
+  .local-log td:nth-child(3) { white-space: nowrap; }
+  .control[data-local-led], .control[data-local-led][data-held] { background: var(--local-led-color); }
+  .control[data-local-led][data-held] { box-shadow: inset 0 0 0 3px var(--accent); }
   .patch-assignments > div, .patch-device { min-width: 0; margin-top: .65rem; }
   .patch-assignments ul, .patch-device ul { list-style: none; margin: 0; padding: 0; }
   .patch-assignments li, .patch-device li { font-size: .875rem; overflow-wrap: anywhere; }
@@ -314,6 +327,11 @@
       <div><h3>Destination columns</h3><ul id="patch-columns"></ul></div>
     </div>
   </section>
+  <section class="patch-section" id="local-port-view" aria-labelledby="local-port-title" hidden>
+    <h2 id="local-port-title">MIDI ports</h2>
+    <p class="patch-status" id="local-port-guide">Use the port IDs from <a href="/diagnostics/">Diagnostics</a> inventory. Bind each direction separately.</p>
+    <div class="local-bindings" id="local-bindings"></div>
+  </section>
 
   <div class="workspace">
     <section class="surface" aria-labelledby="surface-title">
@@ -343,6 +361,7 @@
         </div>
         <p class="playing-help">Source rows run top to bottom. Destination columns run left to right.</p>
       </div>
+      <p class="mapping-note" id="local-face-help" hidden>Keybed sends on Port 0. Panel buttons send on Port 1. The LEDs show received Port 1 feedback.</p>
       <section class="patch-section patch-inventory" id="patch-color" aria-labelledby="patch-color-title" hidden>
         <div class="patch-heading">
           <h2 id="patch-color-title">Device colors</h2>
@@ -378,6 +397,16 @@
             <thead><tr><th scope="col">Event</th><th scope="col">Ch</th><th scope="col">Note</th><th scope="col">Vel</th><th scope="col" id="capture-destination" hidden>Destination</th></tr></thead>
             <tbody id="capture-rows"></tbody>
           </table>
+        </div>
+        <div id="local-log-view" hidden>
+          <h2>MIDI Log</h2>
+          <p class="patch-status">Receipt time is measured from page load.</p>
+          <div class="capture-results local-log">
+            <table aria-label="Received MIDI messages">
+              <thead><tr><th scope="col">Port</th><th scope="col">ms</th><th scope="col">Hex</th><th scope="col">Message</th></tr></thead>
+              <tbody id="local-log-rows"></tbody>
+            </table>
+          </div>
         </div>
       </div>
       <div class="activity-panel" id="monitor-panel" role="tabpanel" aria-labelledby="monitor-tab" hidden>
@@ -438,7 +467,7 @@
         </details>
         <details class="lab-detail" open>
           <summary>Manual bytes</summary>
-          <p class="lab-status">Live fixtures receive the keybed and Route pad. Other controls emit local protocol bytes.</p>
+          <p class="lab-status" id="manual-binding-note">Live fixtures receive the keybed and Route pad. Other controls emit local protocol bytes.</p>
           <p class="lab-status">Knob detents use fixture values 01 and 7F. Hardware direction and modes are unverified.</p>
           <div class="lab-table">
             <table aria-label="Manual protocol bytes">
@@ -460,6 +489,7 @@
 
 const panel = document.querySelector("#panel");
 const patchMode = /^\/patch(?:\/|$)/.test(location.pathname);
+const localPage = location.protocol === "http:" && /^\/apc(?:\/|$)/.test(location.pathname);
 const transport = document.querySelector("#transport");
 const knobs = document.querySelector(".knobs");
 const keys = document.querySelector("#keys");
@@ -483,6 +513,7 @@ const keyVelocity = 96;
 let firstNote = 48;
 let connection = null;
 let connectedSequence = null;
+let localClient = null;
 const knobState = new Map();
 
 function addButton(parent, label, classes, accessibleName = label) {
@@ -533,7 +564,7 @@ for (let row = 0; row < 5; row++) {
 const routePad = panel.querySelector('.pad[data-apc-note="0"]');
 const routePadStatus = document.querySelector("#route-pad-status");
 routePad.id = "route-pad";
-if (!patchMode) {
+if (!patchMode && !localPage) {
   routePad.classList.add("route-pad");
   routePad.setAttribute("aria-label", "Route toggle, pad row 5, column 1");
   routePad.setAttribute("aria-describedby", "route-pad-status");
@@ -670,14 +701,25 @@ function panelBytes(note, pressed) {
   return [pressed ? 0x90 : 0x80, note, pressed ? 0x7f : 0];
 }
 
+function localControlRole(button) {
+  if (!button) return null;
+  if (button.matches(".key")) return "keybed";
+  if (button.dataset.apcNote !== undefined) return "panel";
+  return null;
+}
+
 function emitControl(button, note, pressed) {
   if (note !== null) {
-    recordManual(button.getAttribute("aria-label"), "TX", "Port 0", [pressed ? 0x90 : 0x80, note, pressed ? keyVelocity : 0]);
-    sendKeybed(note, pressed);
+    const bytes = [pressed ? 0x90 : 0x80, note, pressed ? keyVelocity : 0];
+    recordManual(button.getAttribute("aria-label"), "TX", "Port 0", bytes);
+    if (localPage) localClient?.send("keybed", bytes);
+    else sendKeybed(note, pressed);
   } else if (button.dataset.apcNote !== undefined) {
     const address = Number(button.dataset.apcNote);
-    recordManual(button.getAttribute("aria-label"), "TX", "Port 1", panelBytes(address, pressed));
-    if (patchView) patchView.sendPanel(button, address, pressed);
+    const bytes = panelBytes(address, pressed);
+    recordManual(button.getAttribute("aria-label"), "TX", "Port 1", bytes);
+    if (localPage) localClient?.send("panel", bytes);
+    else if (patchView) patchView.sendPanel(button, address, pressed);
     else if (button === routePad) sendRoutePad(pressed);
   } else if (button === sustain) {
     recordManual("Sustain", "TX", "Port 0", [0xb0, 0x40, pressed ? 0x7f : 0]);
@@ -686,6 +728,8 @@ function emitControl(button, note, pressed) {
 
 function press(input, button) {
   if (connectedSequence || heldInputs.has(input)) return;
+  const role = localPage ? localControlRole(button) : null;
+  if (role && !localClient?.isReady(role)) return;
   let held = heldControls.get(button);
   if (!held) {
     held = { count: 0, note: button.matches(".key") ? firstNote + Number(button.dataset.keyIndex) : null };
@@ -697,7 +741,7 @@ function press(input, button) {
   if (held.count === 1) emitControl(button, held.note, true);
 }
 
-function release(input) {
+function release(input, transmit = true) {
   const button = heldInputs.get(input);
   if (!button) return;
   heldInputs.delete(input);
@@ -705,7 +749,7 @@ function release(input) {
   if (--held.count > 0) return;
   heldControls.delete(button);
   delete button.dataset.held;
-  emitControl(button, held.note, false);
+  if (transmit) emitControl(button, held.note, false);
 }
 
 function releaseAll() {
@@ -759,7 +803,8 @@ surface.addEventListener("focusout", (event) => {
 // Assistive technologies can activate a button with a click and no pointer/key sequence.
 surface.addEventListener("click", (event) => {
   const button = event.target.closest(".control, .key");
-  const routedPanelButton = patchView ? patchView.isPanelControl(button) : button === routePad;
+  const routedPanelButton = localPage ? localControlRole(button) === "panel"
+    : patchView ? patchView.isPanelControl(button) : button === routePad;
   if (routedPanelButton && (event.pointerType || event.detail > 0)) {
     // Finish the live panel gesture if its pointer release events missed the page.
     if (heldInputs.get(event.pointerId) === button) release(event.pointerId);
@@ -1291,7 +1336,7 @@ function idleSequence() {
   sequence = null;
   renderSequence();
   const instructions = {
-    route: patchMode ? "Available in the separate one-pad Web APC view."
+    route: patchMode || localPage ? "Available in the separate one-pad Web APC view."
       : "Requires a fresh connection with a green Route pad. Reload Web APC after a run.",
     leds: "Applies fixture bytes to the isolated surface.",
     timed: "Step leaves each LED running. Replay holds the timed preview before cleanup.",
@@ -1867,6 +1912,225 @@ function updatePatchMonitor(active, frame) {
   silenceMonitor();
   active.monitor = { portId, generation, attached };
   renderPatchMonitorStatus(active.monitor);
+}
+
+// This view binds the controller and its listeners independently to the local
+// adapter. IDs come from the router's CLI inventory, not from browser state.
+function mountLocalMidi(adapter) {
+  document.querySelector(".fixture").hidden = true;
+  document.querySelector(".mapping-note").hidden = true;
+  document.querySelector("#local-port-view").hidden = false;
+  document.querySelector("#local-face-help").hidden = false;
+  document.querySelector("#connection").hidden = true;
+  document.querySelector("#capture-tab").textContent = "MIDI Log";
+  document.querySelector("#capture-title").hidden = true;
+  empty.hidden = true;
+  document.querySelector("#local-log-view").hidden = false;
+  document.querySelector("#manual-binding-note").textContent =
+    "Bound keybed notes and panel buttons send MIDI. Sustain and fixture detents stay in the Protocol Lab.";
+  if (typeof adapter?.openMidi !== "function") {
+    document.querySelector("#local-port-guide").textContent = "The local MIDI adapter is unavailable.";
+    return null;
+  }
+
+  const definitions = [
+    ["keybed", "Port 0 keybed TX", "send"],
+    ["panel", "Port 1 panel TX", "send"],
+    ["led", "Port 1 LED RX", "receive"],
+    ["monitor", "Monitor RX", "receive"],
+    ["log", "MIDI Log RX", "receive"],
+  ];
+  const choices = new Map();
+  const bindings = new Map();
+  const ledger = document.querySelector("#local-log-rows");
+  const controls = new Map(
+    Array.from(surface.querySelectorAll("button[data-apc-note]"), button => [Number(button.dataset.apcNote), button])
+  );
+
+  function setBindingStatus(role, state, message) {
+    const { status, disconnect } = choices.get(role);
+    status.textContent = message;
+    status.dataset.state = state;
+    status.toggleAttribute("data-error", state === "error");
+    disconnect.disabled = !bindings.has(role);
+  }
+
+  function clearLocalOutput(role, transmit) {
+    for (const [input, button] of heldInputs) {
+      if (localControlRole(button) === role) release(input, transmit);
+    }
+  }
+
+  function clearBindingState(role) {
+    clearLocalOutput(role, false);
+    if (role === "monitor") silenceMonitor();
+    if (role === "led") {
+      for (const button of controls.values()) {
+        delete button.dataset.localLed;
+        button.style.removeProperty("--local-led-color");
+      }
+    }
+  }
+
+  function retire(role, binding, graceful, reason = "") {
+    if (bindings.get(role) !== binding) return;
+    if (graceful && binding.state === "connected") clearLocalOutput(role, true);
+    // A refused release can retire the same binding before this call resumes.
+    if (bindings.get(role) !== binding) return;
+    bindings.delete(role);
+    clearBindingState(role);
+    binding.handle?.close();
+    setBindingStatus(role, reason ? "error" : "disconnected", reason || "Disconnected");
+  }
+
+  function send(role, bytes) {
+    const binding = bindings.get(role);
+    if (binding?.state !== "connected") return;
+    let accepted;
+    try {
+      accepted = binding.handle.send(Uint8Array.from(bytes));
+    } catch {
+      accepted = false;
+    }
+    if (!accepted) retire(role, binding, false, "Could not send MIDI. Bind the port again.");
+  }
+
+  function noteMessage(bytes) {
+    const kind = bytes[0] & 0xf0;
+    if (kind !== 0x80 && kind !== 0x90) return null;
+    return {
+      type: kind === 0x80 || bytes[2] === 0 ? "note-off" : "note-on",
+      channel: (bytes[0] & 0x0f) + 1, note: bytes[1], velocity: bytes[2],
+    };
+  }
+
+  function showLocalLed(bytes) {
+    const led = decodeLed(bytes);
+    if (!led || led.period) return;
+    const button = controls.get(led.note);
+    if (!button) return;
+    button.dataset.localLed = led.mode;
+    const color = led.mode === "off" ? ledDark : led.color;
+    button.style.setProperty("--local-led-color", `color-mix(in srgb, ${color} ${led.brightness}%, ${ledDark})`);
+  }
+
+  function logReceipt(binding, bytes, note) {
+    const row = ledger.insertRow();
+    const summary = note ? `${note.type === "note-on" ? "Note On" : "Note Off"} · Ch ${note.channel} · ${note.note} · Vel ${note.velocity}`
+      : (bytes[0] & 0xf0) === 0xb0 ? `CC ${bytes[1]} · Ch ${(bytes[0] & 0x0f) + 1} · ${bytes[2]}` : "MIDI";
+    for (const value of [binding.id, performance.now().toFixed(1), hexBytes(Array.from(bytes)), summary]) {
+      row.insertCell().textContent = value;
+    }
+    if (ledger.rows.length > 100) ledger.deleteRow(0);
+    const scroller = ledger.closest(".capture-results");
+    scroller.scrollTop = scroller.scrollHeight;
+  }
+
+  function receive(role, binding, bytes) {
+    if (bindings.get(role) !== binding || binding.state !== "connected" ||
+        !(bytes instanceof Uint8Array) || bytes.length !== 3 ||
+        ![0x80, 0x90, 0xa0, 0xb0, 0xe0].includes(bytes[0] & 0xf0) ||
+        bytes[1] > 127 || bytes[2] > 127) return;
+    if (role === "led") {
+      showLocalLed(bytes);
+      return;
+    }
+    const note = noteMessage(bytes);
+    if (role === "log") logReceipt(binding, bytes, note);
+    else if (role === "monitor" && note) {
+      try {
+        monitorDelivery(note, binding);
+      } catch {
+        disableAudio("Audio unavailable");
+      }
+    }
+  }
+
+  function bind(role, direction, field) {
+    const id = Number(field.value);
+    if (!/^[1-9]\d{0,4}$/.test(field.value) || id > 0xffff) {
+      field.setCustomValidity("Enter a port ID from 1 to 65535.");
+      field.reportValidity();
+      return;
+    }
+    const previous = bindings.get(role);
+    if (previous?.id === id) return;
+    if (previous) retire(role, previous, true);
+    const binding = { id, state: "connecting", handle: null };
+    bindings.set(role, binding);
+    setBindingStatus(role, "connecting", `Binding port ${id}…`);
+    try {
+      binding.handle = adapter.openMidi(id, {
+        direction,
+        onData: bytes => receive(role, binding, bytes),
+        onState(state, reason) {
+          if (bindings.get(role) !== binding) return;
+          if (state === "connected") {
+            binding.state = state;
+            setBindingStatus(role, state, `Port ${id} bound`);
+          } else if (state === "disconnected") {
+            retire(role, binding, false, typeof reason === "string" ? reason : "");
+          }
+        },
+      });
+      if (bindings.get(role) !== binding) binding.handle.close();
+    } catch {
+      retire(role, binding, false, `Could not bind port ${id}.`);
+    }
+  }
+
+  const container = document.querySelector("#local-bindings");
+  for (const [role, name, direction] of definitions) {
+    const id = `local-${role}-port`;
+    const form = document.createElement("form");
+    form.className = "local-binding";
+    const label = document.createElement("label");
+    label.htmlFor = id;
+    label.textContent = name;
+    const actions = document.createElement("div");
+    actions.className = "lab-actions";
+    const field = document.createElement("input");
+    field.id = id;
+    field.type = "text";
+    field.inputMode = "numeric";
+    field.autocomplete = "off";
+    field.maxLength = 5;
+    field.placeholder = "Port ID";
+    field.required = true;
+    field.addEventListener("input", () => field.setCustomValidity(""));
+    actions.append(field);
+    const submit = addButton(actions, "Bind", "", `Bind ${name}`);
+    submit.type = "submit";
+    const disconnect = addButton(actions, "Disconnect", "", `Disconnect ${name}`);
+    const status = document.createElement("p");
+    status.className = "patch-status";
+    status.setAttribute("role", "status");
+    status.id = `local-${role}-status`;
+    field.setAttribute("aria-describedby", status.id);
+    choices.set(role, { status, disconnect });
+    setBindingStatus(role, "disconnected", "Disconnected");
+    form.append(label, actions, status);
+    form.addEventListener("submit", event => {
+      event.preventDefault();
+      bind(role, direction, field);
+    });
+    disconnect.addEventListener("click", () => {
+      const binding = bindings.get(role);
+      if (binding) retire(role, binding, true);
+    });
+    container.append(form);
+  }
+
+  window.addEventListener("pagehide", () => {
+    for (const [role, binding] of bindings) retire(role, binding, true);
+  });
+  return { isReady: role => bindings.get(role)?.state === "connected", send };
+}
+
+if (localPage) {
+  window.addEventListener("DOMContentLoaded", () => {
+    localClient = mountLocalMidi(window.gridpicoLocal);
+  }, { once: true });
 }
 
 function setConnectionState(connected) {

@@ -14,6 +14,11 @@ typedef struct {
     gridpico_patch_session session;
 } monitor_fixture;
 
+typedef struct {
+    gridpico_patch_graph graph;
+    gridpico_patch_session session;
+} local_fixture;
+
 static void capture(void *context, const char *bytes, size_t size)
 {
     transcript *out = context;
@@ -142,6 +147,109 @@ static void test_monitor_cli(transcript *terminal)
     compare_terminal_reply(&cli, terminal, "color get 3", GRIDPICO_OK);
 }
 
+static gridpico_result accept_managed_delivery(void *context,
+                                              const gridpico_note_delivery *delivery)
+{
+    (void)context;
+    (void)delivery;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result accept_raw_delivery(void *context,
+                                           const gridpico_local_raw_delivery *delivery)
+{
+    (void)context;
+    (void)delivery;
+    return GRIDPICO_OK;
+}
+
+static void test_local_route_cli(transcript *terminal)
+{
+    local_fixture local = {0};
+    const gridpico_local_registry registry = {
+        .inventory = {
+            .device_count = 4,
+            .port_count = GRIDPICO_LOCAL_PORTS,
+            .devices = {
+                {1, "Keybed", GRIDPICO_PATCH_DISCONNECTED},
+                {2, "Managed output", GRIDPICO_PATCH_DISCONNECTED},
+                {3, "Raw input", GRIDPICO_PATCH_DISCONNECTED},
+                {4, "Raw output", GRIDPICO_PATCH_DISCONNECTED},
+            },
+            .ports = {
+                {1, 1, "Keys", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+                {2, 2, "MIDI", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+                {3, 3, "Raw in", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, false},
+                {4, 4, "Raw out", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, false},
+                {5, 1, "Panel", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, false},
+                {6, 2, "MIDI 2", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+            },
+        },
+        .port_capabilities = {
+            GRIDPICO_LOCAL_PORT_MANAGED,
+            GRIDPICO_LOCAL_PORT_MANAGED,
+            GRIDPICO_LOCAL_PORT_RAW,
+            GRIDPICO_LOCAL_PORT_RAW,
+            GRIDPICO_LOCAL_PORT_PANEL,
+            GRIDPICO_LOCAL_PORT_MANAGED,
+        },
+    };
+    assert(gridpico_patch_graph_init_local(&local.graph, &registry,
+                                          accept_managed_delivery,
+                                          accept_raw_delivery, NULL) == GRIDPICO_OK);
+    gridpico_patch_session_init(&local.session, &local.graph,
+                                gridpico_patch_graph_read_graph,
+                                gridpico_patch_graph_set_route);
+    gridpico_patch_session_bind_local_routes(&local.session,
+                                             gridpico_patch_graph_set_local_route,
+                                             gridpico_patch_graph_read_local_route);
+    for (gridpico_port_id id = 1; id <= 6; ++id) {
+        if (id == 5) continue;
+        const gridpico_patch_port_update connect = {
+            .connection = {.endpoint = id, .generation = 2},
+            .state = GRIDPICO_PATCH_CONNECTED,
+        };
+        assert(gridpico_patch_graph_update_port(&local.graph, &connect) == GRIDPICO_OK);
+    }
+
+    gridpico_cli_frontend cli;
+    assert(gridpico_cli_init(&cli, &local.session,
+                             gridpico_patch_session_read_snapshot,
+                             gridpico_session_read_device_color,
+                             gridpico_session_set_device_color,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    cli.set_local_route = gridpico_patch_session_set_local_route;
+    cli.read_local_route = gridpico_patch_session_read_local_route;
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "route 1 2 managed", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "ROUTE 1 2 MANAGED OFF\r\nOK\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "route 1 2 managed on", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "ROUTE 1 2 MANAGED ACTIVE\r\nOK\r\n") == 0);
+    compare_terminal_reply(&cli, terminal, "route 1 2 managed off", GRIDPICO_OK);
+    assert(contains(terminal, "ROUTE 1 2 MANAGED OFF\r\nOK\r\n"));
+    compare_terminal_reply(&cli, terminal, "route 1 2 managed", GRIDPICO_OK);
+    assert(contains(terminal, "ROUTE 1 2 MANAGED OFF\r\nOK\r\n"));
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "route 3 4 raw on", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "ROUTE 3 4 RAW ACTIVE\r\nOK\r\n") == 0);
+    compare_terminal_reply(&cli, terminal, "route 3 4 raw off", GRIDPICO_OK);
+    assert(contains(terminal, "ROUTE 3 4 RAW OFF\r\nOK\r\n"));
+    compare_terminal_reply(&cli, terminal, "route 3 4 raw", GRIDPICO_OK);
+    assert(contains(terminal, "ROUTE 3 4 RAW OFF\r\nOK\r\n"));
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "route 1 4 managed on", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "route 1 2 managed enabled", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+}
+
 int main(void)
 {
     patch_runtime runtime;
@@ -150,6 +258,10 @@ int main(void)
     transcript terminal = {0};
     gridpico_cli_frontend cli;
     assert(patch_runtime_bind_cli(&runtime, &cli, capture, &terminal) == GRIDPICO_OK);
+    assert(cli.set_local_route == NULL && cli.read_local_route == NULL);
+    assert(gridpico_cli_execute_line(&cli, "route 1 2 managed", capture, &terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal.output, "ERR INVALID\r\n") == 0);
 
     const gridpico_patch_route_request route = {
         .source = 1,
@@ -238,5 +350,6 @@ int main(void)
     gridpico_cli_process(&cli);
     assert(contains(&terminal, "ERR CAPACITY\r\n"));
     test_monitor_cli(&terminal);
+    test_local_route_cli(&terminal);
     return 0;
 }

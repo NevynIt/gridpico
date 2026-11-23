@@ -421,6 +421,109 @@ static gridpico_result execute_logs(gridpico_cli_frontend *frontend,
     return GRIDPICO_OK;
 }
 
+static const char *local_mode_name(gridpico_local_route_mode mode)
+{
+    switch (mode) {
+    case GRIDPICO_LOCAL_MANAGED: return "MANAGED";
+    case GRIDPICO_LOCAL_RAW: return "RAW";
+    }
+    return NULL;
+}
+
+static const char *local_route_state_name(gridpico_patch_route_state state)
+{
+    switch (state) {
+    case GRIDPICO_PATCH_ROUTE_OFF: return "OFF";
+    case GRIDPICO_PATCH_ROUTE_PENDING: return "PENDING";
+    case GRIDPICO_PATCH_ROUTE_ACTIVE: return "ACTIVE";
+    }
+    return NULL;
+}
+
+static bool parse_local_route_command(const char *line, gridpico_local_route *route,
+                                     bool *has_enabled, bool *enabled)
+{
+    char command[GRIDPICO_CLI_LINE_BYTES];
+    const size_t length = strlen(line);
+    if (length >= sizeof command) return false;
+    memcpy(command, line, length + 1);
+
+    char *tokens[5];
+    size_t count = 0;
+    char *cursor = command;
+    while (*cursor != '\0') {
+        if (*cursor == ' ' || count == sizeof tokens / sizeof tokens[0]) return false;
+        tokens[count++] = cursor;
+        char *space = strchr(cursor, ' ');
+        if (space == NULL) break;
+        *space = '\0';
+        cursor = space + 1;
+        if (*cursor == '\0' || *cursor == ' ') return false;
+    }
+    if ((count != 4 && count != 5) || strcmp(tokens[0], "route") != 0) return false;
+
+    gridpico_device_id source;
+    gridpico_device_id destination;
+    if (!decimal_device_id(tokens[1], strlen(tokens[1]), &source) ||
+        !decimal_device_id(tokens[2], strlen(tokens[2]), &destination)) {
+        return false;
+    }
+    if (strcmp(tokens[3], "managed") == 0) route->mode = GRIDPICO_LOCAL_MANAGED;
+    else if (strcmp(tokens[3], "raw") == 0) route->mode = GRIDPICO_LOCAL_RAW;
+    else return false;
+    route->source = source;
+    route->destination = destination;
+
+    *has_enabled = count == 5;
+    if (count == 5) {
+        if (strcmp(tokens[4], "on") == 0) *enabled = true;
+        else if (strcmp(tokens[4], "off") == 0) *enabled = false;
+        else return false;
+    }
+    return true;
+}
+
+static gridpico_result write_local_route_record(gridpico_cli_write_fn write, void *context,
+                                                const gridpico_local_route *route,
+                                                const gridpico_local_route_status *status)
+{
+    const char *mode = local_mode_name(route->mode);
+    const char *state = local_route_state_name(status->state);
+    if (mode == NULL || state == NULL) return GRIDPICO_INVALID;
+
+    char record[GRIDPICO_CLI_RECORD_BYTES];
+    const int size = snprintf(record, sizeof record, "ROUTE %u %u %s %s",
+                              (unsigned)route->source, (unsigned)route->destination,
+                              mode, state);
+    if (size < 0 || (size_t)size >= sizeof record) return GRIDPICO_CAPACITY;
+    return write_record(write, context, record, (size_t)size)
+               ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
+}
+
+static gridpico_result execute_local_route(gridpico_cli_frontend *frontend, const char *line,
+                                           gridpico_cli_write_fn write, void *context)
+{
+    gridpico_local_route route = {0};
+    bool has_enabled = false;
+    bool enabled = false;
+    if (!parse_local_route_command(line, &route, &has_enabled, &enabled)) {
+        return GRIDPICO_INVALID;
+    }
+
+    if (has_enabled) {
+        const gridpico_local_route_request request = {.route = route, .enabled = enabled};
+        const gridpico_result result = frontend->set_local_route(frontend->session_context,
+                                                                 &request);
+        if (result != GRIDPICO_OK) return result;
+    }
+
+    gridpico_local_route_status status = {0};
+    const gridpico_result result = frontend->read_local_route(frontend->session_context,
+                                                              &route, &status);
+    if (result != GRIDPICO_OK) return result;
+    return write_local_route_record(write, context, &route, &status);
+}
+
 static const char *error_record(gridpico_result result)
 {
     switch (result) {
@@ -453,6 +556,9 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
         result = execute_logs(frontend, write, write_context);
     else if (result == GRIDPICO_INVALID && strncmp(line, "color ", 6) == 0)
         result = execute_color(frontend, line, write, write_context);
+    else if (result == GRIDPICO_INVALID && strncmp(line, "route ", 6) == 0 &&
+             frontend->set_local_route != NULL && frontend->read_local_route != NULL)
+        result = execute_local_route(frontend, line, write, write_context);
     (void)write_record(write, write_context,
                        result == GRIDPICO_OK ? "OK" : error_record(result),
                        strlen(result == GRIDPICO_OK ? "OK" : error_record(result)));

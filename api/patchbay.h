@@ -26,7 +26,7 @@ enum {
 
 /* Shared storage bounds. The active profile determines actual counts. */
 enum {
-    GRIDPICO_PATCH_MAX_DEVICES = 3,
+    GRIDPICO_PATCH_MAX_DEVICES = 4,
     GRIDPICO_PATCH_MAX_PORTS = 6,
     GRIDPICO_PATCH_MAX_BRANCHES = 3,
     GRIDPICO_PATCH_SOURCE_ROWS = 5,

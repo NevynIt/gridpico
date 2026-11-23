@@ -11,6 +11,14 @@ void gridpico_patch_session_init(gridpico_patch_session *session, void *graph_co
     };
 }
 
+void gridpico_patch_session_bind_local_routes(gridpico_patch_session *session,
+                                             gridpico_local_set_route_fn set_route,
+                                             gridpico_local_read_route_fn read_route)
+{
+    session->set_local_graph_route = set_route;
+    session->read_local_graph_route = read_route;
+}
+
 static gridpico_result read_graph(const gridpico_patch_session *session,
                                  gridpico_patch_graph_state *state)
 {
@@ -120,6 +128,47 @@ gridpico_result gridpico_patch_session_set_route(void *context,
     }
 
     return session->set_graph_route(session->graph_context, request);
+}
+
+static bool valid_local_route(const gridpico_local_route *route)
+{
+    return route != NULL && route->source != 0 && route->destination != 0 &&
+           route->source != route->destination &&
+           (route->mode == GRIDPICO_LOCAL_MANAGED || route->mode == GRIDPICO_LOCAL_RAW);
+}
+
+gridpico_result gridpico_patch_session_set_local_route(void *context,
+                                                     const gridpico_local_route_request *request)
+{
+    const gridpico_patch_session *session = context;
+    if (session == NULL || request == NULL || !valid_local_route(&request->route)) {
+        return GRIDPICO_INVALID;
+    }
+    if (session->set_local_graph_route == NULL) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+
+    return session->set_local_graph_route(session->graph_context, request);
+}
+
+gridpico_result gridpico_patch_session_read_local_route(void *context, const gridpico_local_route *route,
+                                                      gridpico_local_route_status *out)
+{
+    const gridpico_patch_session *session = context;
+    if (session == NULL || out == NULL || !valid_local_route(route)) {
+        return GRIDPICO_INVALID;
+    }
+    if (session->read_local_graph_route == NULL) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+
+    gridpico_local_route_status status;
+    const gridpico_result result = session->read_local_graph_route(session->graph_context, route,
+                                                                  &status);
+    if (result == GRIDPICO_OK) {
+        *out = status;
+    }
+    return result;
 }
 
 static gridpico_result find_device_slot(const gridpico_patch_session *session,

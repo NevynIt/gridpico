@@ -122,6 +122,43 @@ audio and channel settings in effect. A full connection loss still turns
 audio off and clears voices. Route view retains its original capture feed.
 [Patch browser contract](../../api/patchbay-controls.md#read-only-browser-inventory) · [Web Monitor contract](../../api/web-monitor-proposal.md#framing-and-readiness-order)
 
+## Local router
+
+Open Web APC at the local router host's `/apc/` page. Read the port IDs
+and directions with `inventory` in Diagnostics. Bind each field to its
+own port. Browser TX binds a router input and browser RX binds a router
+output. The first local application uses the following defaults. Enter
+the IDs reported by the running router.
+
+| Web APC control | Default router port |
+| --- | --- |
+| Port 0 keybed TX | `1` Keybed |
+| Port 1 panel TX | `2` Panel |
+| Port 1 LED RX | `3` LED feedback |
+| Monitor RX | `5` Monitor |
+| MIDI Log RX | `6` Log |
+
+Set managed routes in Diagnostics before playing. For the default ports,
+`route 1 5 managed on` feeds Monitor and `route 1 6 managed on` separately
+feeds MIDI Log. Both read their own received MIDI messages. Enable audio
+explicitly and use the existing channel filter or per-channel mute.
+MIDI Log records its own port, elapsed page time, exact hex and decoded
+note or CC when applicable.
+
+Keybed notes and panel button pairs use separate TX links. Rebinding sends
+releases on the old available link. A lost link clears its held controls.
+Changing LED RX clears its display until fresh feedback arrives. Changing
+Monitor RX clears its voices and waits for fresh notes. Other bindings
+stay active when one link changes. Bind again explicitly after a loss.
+
+Bind the LED RX port to see production feedback. For a solid/off
+Diagnostics run, bind the Diagnostics LED Sequence port and enable the
+compatible Raw route, `route 4 3 raw on` with the default IDs. Verify the
+received green `96 00 15` and dark `96 00 00` on pad 00. This view displays
+solid feedback and uses the production restore after Raw ownership ends.
+The standalone Protocol Lab still provides its isolated timed preview.
+[Local production router contract](../../api/local-router.md)
+
 ## Protocol lab
 
 **Protocol** shows direction, logical port, and exact hex for manual input.

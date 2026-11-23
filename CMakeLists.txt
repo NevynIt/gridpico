@@ -42,6 +42,19 @@ target_include_directories(gridpico_patch_runtime PUBLIC "${CMAKE_CURRENT_SOURCE
 add_executable(gridpico_patch_runner app/patch_runner.c app/runner_io.c)
 target_link_libraries(gridpico_patch_runner PRIVATE gridpico_patch_runtime)
 
+add_library(gridpico_local_runtime STATIC
+    app/local_runtime.c
+    core/midi/patch_graph.c
+    core/session/patch_session.c
+    frontends/apc/apc_patch.c
+    frontends/apc/apc_protocol.c
+    frontends/cli/cli_frontend.c
+)
+target_include_directories(gridpico_local_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_executable(gridpico_local_router app/local_router.c)
+target_link_libraries(gridpico_local_router PRIVATE gridpico_local_runtime)
+
 set(gridpico_asset_dir "${CMAKE_CURRENT_BINARY_DIR}/GRIDPICO")
 add_custom_target(gridpico_offline_assets
     COMMAND "${CMAKE_COMMAND}"
@@ -63,6 +76,8 @@ set(fixture_targets
     gridpico_patch_demo
     gridpico_patch_runtime
     gridpico_patch_runner
+    gridpico_local_runtime
+    gridpico_local_router
 )
 set_target_properties(${fixture_targets}
     PROPERTIES

@@ -108,3 +108,41 @@ dispatch, 160 queued requests and the original untagged capture format.
 Browser playback is silent in this profile. Default Patch plays through
 the attached **Web Monitor** destination. The one-pad view keeps its own
 browser audio on the `/demo/midi` connection.
+
+## Local router
+
+From the repository root:
+
+```sh
+cmake -S . -B build/local-router
+cmake --build build/local-router --target gridpico_local_router
+npm --prefix connections ci --ignore-scripts
+node connections/local-host.js build/local-router/gridpico_local_router
+```
+
+Open [Web APC](http://127.0.0.1:8767/apc/) and
+[Diagnostics](http://127.0.0.1:8767/diagnostics/). An optional port argument
+overrides 8767. Diagnostics connects to the local CLI and MIDI independently.
+Open the standalone Diagnostics file directly for Web Serial.
+
+Use the CLI's `inventory` command to identify the configured MIDI bindings.
+For the default fixture, Web APC can bind Keybed TX to port 1, Panel TX to
+port 2 and LED RX to port 3. Monitor and MIDI Log can receive on ports 5 and
+6. To enable their independent keybed routes:
+
+```text
+route 1 5 managed on
+route 1 6 managed on
+```
+
+For the solid/off check, connect Diagnostics MIDI to port 4 and Web APC LED
+RX to port 3. Run `route 4 3 raw on` in the local CLI, then click
+**Solid green** and **Off** and check the bottom-left APC pad. Run
+`route 4 3 raw off` to end the run and restore committed APC feedback.
+A new run requires a fresh Diagnostics MIDI connection and an explicit
+`on`. The Raw lease also ends after 30 seconds or if an affected MIDI
+peer disconnects.
+
+The local host keeps one router running for all bindings. It accepts MIDI
+as three-byte binary frames at `/midi/<port-id>` and serial CLI bytes at
+`/serial`. The serial connection has its own input and output limits.
