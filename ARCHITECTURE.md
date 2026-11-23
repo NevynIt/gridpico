@@ -1,6 +1,6 @@
 # gridpico — initial architecture
 
-**Status:** planning baseline with draft public contracts.
+**Status:** architecture baseline with approved transport contracts.
 **Owner:** Architect. **Product authority:** human, through Strategist.
 **Baseline:** decisions agreed on 22 November 2026.
 **Related:** [Product brief](PRODUCT_BRIEF.md), [public contracts](api/README.md), [team coordination](AGENT_TEAM_COORDINATION.md), [diagrams](docs/diagrams/README.md).
@@ -95,19 +95,19 @@ The computer-visible read-only filesystem is **not** this writable project store
 | **Piano frontend** `frontends/piano/` | Later: interpret 88-key/pedal control gestures and render feedback through an abstract RGB strip; distinguish control consumption from musical forwarding |
 | **CLI frontend** `frontends/cli/` | Translate text into the common commands and present queries/state; no musical logic duplicated in the parser |
 | **Web APC simulator** `web/apc/` | Emulate APC controls, keybed and received LED feedback, and present the destination capture and optional browser Monitor |
-| **Computer connections** `connections/` | Optional CDC/serial and local browser transports, framing and connection lifecycle; no musical state or controller semantics |
+| **Computer connections** `connections/` | Local serial and WebSocket MIDI transports, network admission, framing and connection lifecycle |
 
 Inside the APC frontend, keep protocol decoding/encoding separate from view/gesture interpretation even though one owner initially owns both. Other frontends neither impersonate the APC nor import its view implementation.
 
 The preferred browser configuration experience is the APC simulator. Physical and simulated panel messages reach the production APC frontend through Computer connections or platform MIDI. The frontend translates panel gestures into Session/control commands and sends state-derived LED feedback on the surface connection. Keybed notes enter the production MIDI graph through musical ingress.
 
-On RP2040, the browser can use the computer-visible MIDI ports. A desktop build can carry equivalent APC MIDI messages over a local connection into the same frontend. Supplementary browser tools, when a task truly does not fit the APC surface, use the common kernel API through Computer connections. Examples include file import/export and long text entry. These are additions, not an independently authoritative configurator.
+Independently running components exchange MIDI or the serial CLI byte stream. On RP2040, the browser can select computer-visible MIDI ports. The desktop WebSocket adapter carries the same APC messages to the production frontend. Router inventory, status and route control are available through the local serial CLI. Typed routing, port registration and delivery accounting stay within the production runtime.
 
 The piano frontend must remember whether a press/pedal transition was consumed or forwarded until its matching release, even across mode changes. Gesture interpretation is frontend-owned; ordinary MIDI note/sustain cleanup stays graph-owned. RGB-strip drawing describes logical feedback; the physical strip driver is a platform service.
 
 ### Browser Monitor
 
-The Monitor tab consumes the same newly accepted destination events as Captured MIDI output. Its read-only feed starts audio from live destination Note On events and releases voices on the corresponding destination Note Off, including a release caused by cancelling a key interaction. The monitor starts disabled and sound starts after explicit user enablement. Master volume, per-channel sound or mute, lightweight presets and bounded voice state belong to Web APC. Monitor settings are local to the browser.
+In the shared production router, Monitor and the visible MIDI Log bind independently to selectable MIDI inputs. Monitor starts audio from live Note On and releases voices on the corresponding Note Off for its binding. MIDI Log shows its own received bytes. Monitor audio starts after explicit enablement. Master volume, per-channel sound or mute, lightweight presets and bounded voice state belong to Web APC. Monitor settings are local to the browser. The earlier Route and Patch demos retain their verified Capture paths. [Local router](api/local-router.md)
 
 Track voices by destination, MIDI channel and key so two channels using the same key can sound and release independently. Muting a channel releases its voices. Disabling audio or losing the connection releases all browser voices. The graph continues to own MIDI cleanup, including releases that occur after the browser has disconnected. The Monitor uses the existing routed MIDI delivery path and runs independently of its timing and acceptance.
 
@@ -124,7 +124,7 @@ Preserve GridZero's useful interaction ideas without inheriting its synth requir
 
 Final gestures, mappings and behavior-baseline versions belong in later approved specifications, not guessed implementations.
 
-The standalone Diagnostics page exposes the serial CLI and connection status offline. Computer connections owns the serial stream and browser client. The CLI frontend owns command text and calls Session/control for typed inventory and device colors. Application Assembly packages Diagnostics on the read-only `GRIDPICO` drive. [Patchbay and Diagnostics proposal](api/patchbay.md)
+The standalone Diagnostics page exposes the local serial CLI and connection status offline. Its MIDI controls send sequences through a separately selected MIDI port. Computer connections owns both transports and the browser client. The CLI frontend owns command text and calls Session/control for inventory, device colors and route commands. Application Assembly packages Diagnostics on the read-only `GRIDPICO` drive. [Diagnostics and local router](api/local-router.md)
 
 ## 5. Platform contracts and five platform-group owners
 
@@ -141,6 +141,15 @@ The [platform contracts](api/README.md#platform-services) cover MIDI endpoints a
 Linux must distinguish architectures from the start, but **does not need duplicate Linux implementations or separate agents**. Suggested structure is `platform/linux/common/`, `platform/linux/x86/` and `platform/linux/arm/`, with target-specific build settings and genuinely necessary differences isolated. The exact x86/ARM ABI profiles and Raspberry Pi generation remain explicit planning decisions. A Linux ARM build/test result must not be inferred from an x86 pass.
 
 Raspberry Pi Zero runs the Linux application. It is not required to emulate RP2040 USB device behavior, CDC or a mounted disk. A Windows or Linux application talks to devices through the OS and distributes/serves UI assets locally. Direct USB hosting here means using OS services, not writing a desktop USB host stack.
+
+### Network MIDI transports
+
+Gridpico supports two product transports for production routes and selectable MIDI ports. Each has independent acceptance evidence.
+
+- **RTP-MIDI** uses native OS-presented MIDI ports and the selected platform's RTP service. On Linux, the production router binds ALSA sequencer ports provided by `rtpmidid`. The real Linux↔Linux gate is underway. Windows uses native OS-presented RTP ports with acceptance deferred to the nominated Windows target. [Linux ALSA adapter](api/linux-midi-adapter.md) · [Windows RTP endpoints](https://microsoft.github.io/MIDI/sdk-reference/Transports/Rtp/)
+- **WebSocket MIDI** defaults to the verified IPv4 loopback profile. The opt-in cross-host profile binds a selected LAN address and authenticates standard browser and native clients over TLS. Both listeners use the same directional binary MIDI bindings and production route and cleanup rules. The cross-host listener serves MIDI controls. The local serial listener retains its independent CLI byte stream. [WebSocket MIDI contract](api/websocket-midi.md)
+
+The operator selects available ports and routes explicitly. A local adapter's acceptance establishes its own delivery boundary. Actual remote receipt and peer loss require evidence for the selected transport.
 
 ### RP2040 computer connection
 
@@ -163,7 +172,7 @@ The reference records a complete read of its 512 KiB drive and reported write pr
 
 ## 6. Dependencies and replaceability
 
-- Frontends consume the session command, query and state contracts. APC frontend owns APC interpretation. The web simulator emulates APC protocol traffic and feedback. Computer connections delivers transport data to the appropriate frontend or to Session/control for authorized supplementary commands.
+- In-process frontends consume the Session command, query and state contracts. APC frontend owns APC interpretation. The web simulator emulates APC protocol traffic and feedback. Computer connections delivers MIDI to the appropriate ingress and local serial text to the production CLI. The kernel is independent of HTTP, WebSocket and RTP session handling.
 - Session/control consumes domain contracts. It coordinates validation, application and coherent state reads. Projects consumes portable configuration values and the storage service. Session/control coordinates capture and restore so Projects has no dependency on live domain implementations.
 - MIDI graph consumes the processor and platform MIDI contracts. Processors receive event and instance context from the graph. Musical time consumes the platform clock and wakeup contract.
 - When present, Sequencer consumes the musical time and graph contracts. Time dispatch and graph recording feeds reach Sequencer through assembly wiring and public contracts, keeping the graph and clock independent of Sequencer implementation.
@@ -197,12 +206,14 @@ The approved one-pad demo separates route enablement from runtime activity. Sess
 
 Maintain separate evidence for deterministic simulation, Linux x86, Linux ARM, Windows and RP2040 hardware. Test capacities/overflow, malformed configuration, SysEx concurrency, external clock transitions, device identity ambiguity and power-loss behavior where applicable.
 
+Maintain separate transport results for verified WebSocket loopback, cross-host browser and native WebSocket, Linux RTP-MIDI and Windows RTP-MIDI. Verify actual MIDI receipts and scoped cleanup. Cross-host WebSocket acceptance also exercises TLS client admission, origin checks, port authorization and isolation of the local CLI. [WebSocket MIDI acceptance](api/websocket-midi.md#integration-handoff-and-acceptance)
+
 This list does not assign tasks, dates, release stages or a delivery order. The planning team determines those in the future roadmap.
 
 ## 9. Decisions intentionally left to planning
 
 The native Linux x86_64 proof uses portable C11 and shared in-process types for route Apply, state queries and note delivery. [Native proof contract](api/README.md#linux-x86_64-route-and-transpose-proof)
 
-The planning team still needs to resolve the API and build profiles beyond this proof, measured target capacity values and timing thresholds, the selected Circuit behavior baseline, platform transport choices and physical deployment wiring.
+The planning team still needs to resolve additional target build profiles, measured capacity and timing thresholds, the selected Circuit behavior baseline and physical deployment wiring.
 
 The initial documents are maintained collaboratively with single-file ownership. Human-approved changes to product scope, module boundaries or agent seats flow through Strategist. References and experimental evidence are recorded in [Sources](docs/SOURCES.md).

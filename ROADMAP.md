@@ -8,7 +8,7 @@
 
 ## Approved delivery: MIDI and serial CLI across Gridpico hosts
 
-**State** — The human approved the local product path, timed Diagnostics replay, Linux↔Linux RTP-MIDI, and Pico USB/Wi-Fi and mounted-drive acceptance when physically connected. Local contracts and bench access checks proceed in parallel. The Windows keyboard investigation remains an independent evidence track. Windows RTP acceptance and preview installation are deferred until a Windows test host is available. Protect the published Route, Patch, Monitor, CLI and offline asset baselines throughout.
+**State** — RTP-MIDI and WebSocket MIDI are both approved product transports. They share production routing and selectable MIDI ports. The local WebSocket product path and timed Diagnostics replay are verified. The Linux↔Linux RTP bench is next, with Pico USB/Wi-Fi and mounted-drive acceptance when physically connected. Windows RTP remains a product path. Target acceptance and preview installation await a Windows test host. The Windows keyboard investigation remains a separate evidence track.
 
 ### 0. Investigate the reported five- or six-note Windows symptom
 
@@ -42,11 +42,15 @@ After the solid/off route passes independently, add named timed examples using d
 
 **Timed gate verified.** Independent Chromium matched all five RGB pad triplets at Diagnostics ingress, accepted router egress and live APC receipt. The measured Replay dwell met the declared minimums even after a main-thread stall. Stop, Reset, expiry and peer loss cleared queued work and restored the current 40-pad committed page. Local solid/off, Route, Patch, CLI and staged asset regressions passed. [Timed replay contract](api/local-router.md#timed-diagnostics-replay)
 
-### 4. Schedule a two-machine RTP-MIDI product gate
+### 4. Verify RTP-MIDI and productize cross-host WebSocket MIDI
+
+**RTP-MIDI.** Finish the real two-router Linux bench first. Attach through OS-presented MIDI ports and use the existing production routes and CLI.
 
 Run actual Gridpico routers on two Linux machines. Use stock `rtpmidid` with ALSA sequencer ports and real RTP/AppleMIDI sessions. Simulated instruments only supply and receive MIDI at the ends. Configure the routes explicitly on both routers through their local CLIs. Use OS-presented RTP endpoints. Cross-OS verification remains deferred. A later run would nominate an x64 Windows 11 25H2+ host and separately approve a Microsoft Windows MIDI Services RTP preview build and install policy. Network MIDI 2.0 is a separate choice. [Linux adapter](https://github.com/davidmoreno/rtpmidid) · [Microsoft RTP preview](https://github.com/microsoft/MIDI/releases/tag/inbox-preview-14) · [RTP-MIDI payload standard](https://www.rfc-editor.org/rfc/rfc6295/)
 
 Check observed OS and permitted browser port enumeration, selected peer session lifecycle, note and frame parity, and actual remote receipts. An ALSA port can remain advertised after session loss. Verify a real session-loss signal before relying on it. While the session remains up, distinguish a source that deliberately omits Note Off from a captured, controlled transport drop of a real Off. Measure whether the selected adapter recovers the drop. Upstream `rtpmidid` documents missing recovery journaling. Record recovery failures as limits of verified use. When a bounded fault is confirmed, mark the affected branch pending, retire that stream's generation and clean only its owed notes. Reconnect on a fresh generation without replay. Report local adapter acceptance and actual remote receipt separately. Keep fault and receipt traces internal.
+
+**WebSocket MIDI.** Retain the verified loopback listener as the default. Add an opt-in cross-host deployment using the same binary MIDI and directed port bindings, subject to Architect's transport security contract. Verify a standard browser and an independently written compatible native client against the same live production routes. Check visible port selection, exact bytes, bounded queues, rejected access, disconnect cleanup and fresh binding without replay. Bind only the explicitly configured interface. Pin TLS, authentication, origin handling and deployment instructions before enabling the cross-host listener. Serial CLI stays on its independently bounded local path. This gate needs an approved cross-host setup. It does not require access to the container host or replace the Linux RTP evidence.
 
 ### 5. Bridge the Pico bench over Wi-Fi and verify offline pages
 
@@ -58,7 +62,7 @@ Measure the first Wi-Fi run before proposing performance criteria. Send repeated
 
 **Execution dependencies.** Pin the bounded CLI route command and exclusive receiver restore before integration. Confirm two reachable Linux hosts with usable ALSA sequencer ports, then confirm Pico visibility, Wi-Fi topology, USB pairs, RTP sessions and the narrow return routes. Apply only existing authorized bench permissions. Bring a one-time action or privilege gap to the human through Strategist. Use B-local CLI. Remote Pico serial and the deferred Windows gates retain their separate approval and evidence needs.
 
-**Delivery roster.** Assembly and Computer connections own the local runtime and transports. Web APC owns the surface. MIDI graph, Session/control and CLI own routing semantics and the scoped route command. Reuse APC frontend feedback and bring its owner in for changes to feedback ownership. Testing independently accepts each gate. Architect and Project Manager settle contracts and sequencing. No additional seat is needed for the one-router gate. Add an approved platform or bench role only when integration needs its ownership. Use ordinary `/status` checks before approved batches.
+**Delivery roster.** Assembly and Linux HAL finish the current RTP integration. Architect pins the opt-in WebSocket deployment contract in parallel. Bring Computer connections and independent Testing in when that contract and a runnable candidate are ready. Reuse the production router, CLI and Web APC bindings. Add an approved platform or bench role only when integration needs its ownership. Use ordinary `/status` checks before approved batches and keep reserve for verification and fixes.
 
 ## Demo sequence for 23 November at 09:00 CET (08:00 UTC)
 

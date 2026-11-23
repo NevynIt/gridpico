@@ -35,6 +35,8 @@ The Web APC and Diagnostics pages must work offline when opened directly from th
 
 Linux x86, Linux ARM (including Raspberry Pi Zero) and Windows run the same musical application with appropriate platform backends. They do not imitate an embedded USB device where the host OS makes that unnecessary.
 
+Gridpico supports two network MIDI transports. RTP-MIDI is a product path for native Linux and Windows routers and compatible MIDI applications. WebSocket MIDI is a product path for the Web APC, Diagnostics, Monitor, and other compatible browser or native clients. Both connect to the production routing system through selectable MIDI ports. Separately running components exchange MIDI or the serial CLI byte stream.
+
 ## Value
 
 The value is reuse and integration of instruments already owned: deliberate routing, useful transformations, visible control and eventual recording/pattern workflows. A common kernel makes controller experiments and hardware-free tests possible without separate products or inconsistent implementations.

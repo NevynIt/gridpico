@@ -1,6 +1,6 @@
 # Local production router contract
 
-**Owner** Architect. **Status** Approved first local gate. [C11 declarations](local_router.h) · [Roadmap](../ROADMAP.md#proposal-for-approval-midi-and-serial-cli-across-gridpico-hosts).
+**Owner** Architect. **Status** Verified local product profile. [C11 declarations](local_router.h) · [Roadmap](../ROADMAP.md#approved-delivery-midi-and-serial-cli-across-gridpico-hosts).
 
 MIDI and the serial CLI byte stream are the external product interfaces. Session and Graph own the internal registry, generations, route state, accepted-delivery traces and note-release accounting. One Assembly-owned router serves independent Connections peers. Each peer can leave while the runtime and other peers continue. The published Route, Patch and native proof runners retain their separate profiles and entry points.
 
@@ -71,7 +71,7 @@ For acceptance, compare the five literals in order at private router ingress and
 
 ## Loopback transport
 
-Use the [standard WebSocket upgrade](https://www.rfc-editor.org/info/rfc6455/) on IPv4 loopback, with the URL path selecting the binding. Served pages and compatible native WebSocket clients use the same wire. The host accepts the exact `Host` and `Origin` of its own served pages. For a host listening at `127.0.0.1:8767`, a native client connects to `ws://127.0.0.1:8767` and supplies `Origin: http://127.0.0.1:8767`. The browser supplies the origin when it opens the socket from a served page. Direct-file HTML uses Web MIDI and Web Serial where supported. A network-facing listener and OS-visible virtual ports are separate follow-on proposals.
+Use the [standard WebSocket upgrade](https://www.rfc-editor.org/info/rfc6455/) on IPv4 loopback, with the URL path selecting the binding. Served pages and compatible native WebSocket clients use the same wire. The host accepts the exact `Host` and `Origin` of its own served pages. For a host listening at `127.0.0.1:8767`, a native client connects to `ws://127.0.0.1:8767` and supplies `Origin: http://127.0.0.1:8767`. The browser supplies the origin when it opens the socket from a served page. Direct-file HTML uses Web MIDI and Web Serial where supported. The opt-in [cross-host WebSocket MIDI profile](websocket-midi.md) reuses the MIDI bindings and keeps serial on loopback.
 
 | Path | Payload | Binding |
 | --- | --- | --- |

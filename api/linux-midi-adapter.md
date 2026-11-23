@@ -1,8 +1,10 @@
 # Linux ALSA MIDI adapter scope
 
-**Owner** Architect. **Status** Integration ABI for the Linux↔Linux gate. [C11 declarations](linux_midi.h) · [Local router](local-router.md).
+**Owner** Architect. **Status** Integration ABI for the ongoing Linux↔Linux RTP-MIDI gate. [C11 declarations](linux_midi.h) · [Local router](local-router.md).
 
 Linux HAL supplies one ALSA sequencer adapter. Assembly owns its lifetime, selected endpoint bindings and serialized calls into the production router. The production CLI retains inventory, route selection and committed status. `rtpmidid` provides the standard RTP-MIDI sessions as an installed OS peer. The adapter deals only with ALSA ports and MIDI bytes. [ALSA sequencer](https://www.alsa-project.org/alsa-doc/alsa-lib/seq.html) · [rtpmidid](https://github.com/davidmoreno/rtpmidid)
+
+Windows RTP-MIDI is an approved product path through native OS-presented MIDI ports, with acceptance deferred to its nominated target. The [WebSocket MIDI profile](websocket-midi.md) has its own wire and acceptance gate. [Windows RTP-MIDI endpoints](https://microsoft.github.io/MIDI/sdk-reference/Transports/Rtp/)
 
 - `open` and `close` own the native adapter handle. `list` copies a bounded set of current port addresses, readable names and permissions into caller storage. Count-only with capacity zero is valid. For an undersized buffer, return `GRIDPICO_CAPACITY` and the required count without a partial list. A listed address is a current OS selection. Assembly resolves a fresh, unambiguous address for each attachment and retains router logical IDs independently.
 - `bind` checks the selected port's direction and successful subscription. A port that can be read feeds a graph input. A port that can be written accepts graph output. A bidirectional port can bind both independently to distinct logical connections. Assembly supplies the connection's generation and uses the existing graph lifecycle updates. `unbind` removes only that exact connection. A stale address or generation leaves live bindings untouched.

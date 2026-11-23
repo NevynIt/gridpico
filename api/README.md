@@ -10,7 +10,7 @@ The [Web Monitor destination contract](web-monitor-proposal.md) defines the name
 
 The [local production router contract](local-router.md) defines the shared runtime, registered MIDI bindings and serial route control for the MIDI and CLI-only product path.
 
-The [Linux ALSA MIDI adapter](linux-midi-adapter.md) binds native sequencer ports to that router for the separate Linux↔Linux gate.
+The [WebSocket MIDI contract](websocket-midi.md) covers the verified loopback profile and the opt-in authenticated cross-host profile. The [Linux ALSA MIDI adapter](linux-midi-adapter.md) binds native sequencer ports to that router for the separate Linux↔Linux RTP-MIDI gate. Windows RTP-MIDI acceptance is deferred.
 
 ## Session/control
 
@@ -51,7 +51,7 @@ Keep stable track and pattern identifiers independent of pad position when Seque
 
 - Physical and simulated APC surface messages enter the same production APC frontend and its feedback follows the corresponding surface connection. Keybed messages enter the graph as musical input. The browser simulator interprets the feedback it receives and sends APC MIDI gestures. APC page and gesture state belongs to the frontend.
 - CLI and any later piano frontend use the same session contracts. Piano gesture handling retains the consume-or-forward choice through the matching release. The platform drives the physical feedback device from logical updates.
-- Computer connections owns framing and connection lifecycle. It delivers APC traffic to the production frontend and authorized supplementary commands to Session/control. The receiving module validates and interprets the payload.
+- Computer connections owns framing and connection lifecycle. Independently running product peers exchange MIDI or the serial CLI byte stream. The production APC and CLI frontends translate those inputs to typed Session/control calls. The receiving module validates and interprets the payload.
 
 ## Local browser demo connection
 
