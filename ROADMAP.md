@@ -33,6 +33,8 @@ Independent Chromium checks exercised all 40 pads and 25 keys at 1440, 390 and 3
 
 **Native Patch fixture verified.** Run `./scripts/demo-patch.sh`. Independent testing confirmed one source delivers to both outputs, disabling one branch releases only that branch, and disconnect and reconnect retain assignments while reconciling one owed release. The four cases produce 16 captured deliveries. The original native proof, connected one-pad demo and Monitor also passed. Browser Patch, shared color integration and mounted-drive testing follow their own acceptance gates. [Patch fixture contract](api/patchbay.md#stage-one-native-patch-fixture) · [Production controls and Diagnostics contract](api/patchbay-controls.md)
 
+**Standalone Diagnostics verified with simulated serial.** Chromium opened the file directly while offline. Independent checks covered exact LF command bytes, UTF-8 replies, bounded scrollback, pending-write cleanup and reconnect. Packaging and physical Pico CDC access from the mounted drive remain separate acceptance work. [Diagnostics page](connections/diagnostics/index.html)
+
 Start with the existing Session/control, MIDI graph, Simulation backend and Application Assembly owners once the contract is ready. Add APC frontend and Web APC where the simulator can exercise the real Patch paths. The human approved the CLI frontend seat through Strategist, with activation after timed LED verification. Computer connections is the proposed owner of the Diagnostics serial client, pending Architect's boundary check. Request RP2040 HAL approval when CDC, the mounted drive and target tests can be scheduled. Read `/status` before each batch and reserve independent Testing, Builder verification and fixes.
 
 ## Approved follow-ons for the rest of tonight

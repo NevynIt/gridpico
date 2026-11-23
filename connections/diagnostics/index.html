@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Gridpico Diagnostics</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font: 1rem/1.5 system-ui, sans-serif;
+      background: #121617;
+      color: #eef1ef;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    main { max-width: 64rem; padding: clamp(1rem, 4vw, 3rem); margin: auto; }
+    h1 { font-size: clamp(1.65rem, 4vw, 2.25rem); margin: 0 0 1.25rem; }
+    .connection, .transcript-heading, .command-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: .65rem;
+    }
+    .connection { margin-bottom: 1.5rem; }
+    .transcript-heading { justify-content: space-between; }
+    h2 { font-size: 1rem; margin: 0; }
+    button, input {
+      min-height: 2.65rem;
+      border: 1px solid #66726e;
+      border-radius: .35rem;
+      background: #242b2a;
+      color: inherit;
+      font: inherit;
+      padding: .35rem .75rem;
+    }
+    button { cursor: pointer; }
+    button:disabled { cursor: default; opacity: .55; }
+    button:enabled:hover { background: #344540; }
+    :focus-visible { outline: 2px solid #8fe0b6; outline-offset: 3px; }
+    #status { flex: 1 1 18rem; margin: 0; color: #b8c8c1; }
+    #status[data-error], #input-error { color: #ffad9e; }
+    pre, input, code { font-family: ui-monospace, "Courier New", monospace; }
+    pre {
+      height: clamp(12rem, 49vh, 33rem);
+      overflow: auto;
+      margin: .65rem 0 1rem;
+      padding: .85rem;
+      border: 1px solid #56615e;
+      border-radius: .35rem;
+      background: #0b0f10;
+      color: #d9e9df;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    label { display: block; margin-bottom: .4rem; }
+    input { flex: 1 1 12rem; min-width: 0; }
+    #examples, #input-error { margin: .6rem 0 0; font-size: .875rem; }
+    #examples { color: #b8c8c1; }
+    #input-error:empty { margin: 0; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Gridpico Diagnostics</h1>
+    <div class="connection">
+      <button id="connect" type="button" disabled>Connect</button>
+      <button id="disconnect" type="button" disabled>Disconnect</button>
+      <p id="status" role="status">Serial disconnected.</p>
+    </div>
+    <section aria-labelledby="transcript-heading">
+      <div class="transcript-heading">
+        <h2 id="transcript-heading">Serial transcript</h2>
+        <button id="clear" type="button">Clear</button>
+      </div>
+      <pre id="transcript" tabindex="0" aria-labelledby="transcript-heading"></pre>
+    </section>
+    <form id="terminal" autocomplete="off">
+      <label for="command">CLI command</label>
+      <div class="command-row">
+        <input id="command" type="text" aria-describedby="examples input-error"
+               autocapitalize="off" spellcheck="false" disabled>
+        <button id="send" type="submit" disabled>Send</button>
+      </div>
+      <p id="input-error" role="alert"></p>
+      <p id="examples">
+        <code>inventory</code> · <code>status</code> · <code>logs</code> ·
+        <code>color get &lt;device-id&gt;</code> ·
+        <code>color set &lt;device-id&gt; #RRGGBB</code>
+      </p>
+    </form>
+  </main>
+  <script>
+    "use strict";
+
+    const serial = navigator.serial;
+    const settings = {
+      baudRate: 115200, dataBits: 8, parity: "none", stopBits: 1, flowControl: "none",
+    };
+    const commandLimit = 63;
+    const transcriptLimit = 16384;
+    const encoder = new TextEncoder();
+    const connectButton = document.querySelector("#connect");
+    const disconnectButton = document.querySelector("#disconnect");
+    const status = document.querySelector("#status");
+    const transcript = document.querySelector("#transcript");
+    const text = transcript.appendChild(document.createTextNode(""));
+    const form = document.querySelector("#terminal");
+    const command = document.querySelector("#command");
+    const sendButton = document.querySelector("#send");
+    const inputError = document.querySelector("#input-error");
+    let connecting = false;
+    let pageGeneration = 0;
+    let connection;
+
+    function updateControls() {
+      const connected = connection && !connection.closing;
+      connectButton.disabled = !serial || connecting || Boolean(connection);
+      disconnectButton.disabled = !connected;
+      command.disabled = !connected;
+      sendButton.disabled = !connected || Boolean(connection?.writer);
+    }
+
+    function showStatus(message, error = false) {
+      status.textContent = message;
+      status.toggleAttribute("data-error", error);
+    }
+
+    function appendTranscript(chunk) {
+      if (!chunk) return;
+      const follow = transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop < 8;
+      text.appendData(chunk);
+
+      const excess = text.length - transcriptLimit;
+      if (excess > 0) {
+        // Drop the whole code point when the bound falls inside a surrogate pair.
+        const firstRetained = text.data.charCodeAt(excess);
+        const splitPair = firstRetained >= 0xdc00 && firstRetained <= 0xdfff;
+        text.deleteData(0, excess + Number(splitPair));
+      }
+      if (follow) transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    async function readTranscript(reader) {
+      const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          appendTranscript(decoder.decode(value, { stream: true }));
+        }
+      } finally {
+        appendTranscript(decoder.decode());
+        reader.releaseLock();
+      }
+    }
+
+    function releaseWriter(active) {
+      if (!active.writer) return;
+      active.writer.releaseLock();
+      active.writer = undefined;
+    }
+
+    async function disconnect(active, message = "Serial disconnected.", error = false) {
+      if (active.closing) return;
+      active.closing = true;
+      showStatus("Disconnecting…");
+      updateControls();
+
+      // Unlock the writer even when a write is outstanding so port.close() can
+      // shut down the stream. Cancel the pending read before closing the port.
+      releaseWriter(active);
+      await Promise.allSettled([active.reader.cancel(), active.reading]);
+      try {
+        await active.port.close();
+      } catch (failure) {
+        message = `${message} Port close failed: ${failure.message}`;
+        error = true;
+      }
+
+      connection = undefined;
+      showStatus(message, error);
+      updateControls();
+    }
+
+    async function connect() {
+      if (connecting || connection || !serial) return;
+      const generation = pageGeneration;
+      let port;
+      let opened = false;
+      connecting = true;
+      inputError.textContent = "";
+      showStatus("Choose a serial port…");
+      updateControls();
+
+      try {
+        port = await serial.requestPort();
+        if (generation !== pageGeneration) return;
+        showStatus("Opening serial port…");
+        await port.open(settings);
+        opened = true;
+        if (generation !== pageGeneration) {
+          await port.close();
+          return;
+        }
+
+        const reader = port.readable.getReader();
+        const active = { port, reader, reading: readTranscript(reader), closing: false };
+        connection = active;
+        active.reading.then(
+          () => {
+            if (!active.closing) void disconnect(active, "Serial stream ended.", true);
+          },
+          (error) => {
+            if (!active.closing) void disconnect(active, `Serial read failed: ${error.message}`, true);
+          },
+        );
+        showStatus("Serial connected · 115200 8N1");
+        updateControls();
+        command.focus();
+      } catch (error) {
+        const canceled = !port && error.name === "NotFoundError";
+        let message = canceled ? "No serial port selected." : `Could not connect: ${error.message}`;
+        if (opened) {
+          try {
+            await port.close();
+          } catch (failure) {
+            message += ` Port close failed: ${failure.message}`;
+          }
+        }
+        if (generation === pageGeneration) showStatus(message, !canceled);
+      } finally {
+        connecting = false;
+        if (generation !== pageGeneration && !connection) showStatus("Serial disconnected.");
+        updateControls();
+      }
+    }
+
+    async function sendCommand(event) {
+      event.preventDefault();
+      const active = connection;
+      if (!active || active.closing || active.writer) return;
+      const line = command.value;
+      inputError.textContent = "";
+      if (!line) return;
+      if (line.length > commandLimit || !/^[\t\x20-\x7e]+$/.test(line)) {
+        inputError.textContent = "Enter one ASCII command of up to 63 bytes.";
+        return;
+      }
+
+      try {
+        active.writer = active.port.writable.getWriter();
+        updateControls();
+        await active.writer.write(encoder.encode(line + "\n"));
+        if (connection === active && !active.closing && command.value === line) command.value = "";
+      } catch (error) {
+        if (!active.closing) await disconnect(active, `Serial write failed: ${error.message}`, true);
+      } finally {
+        releaseWriter(active);
+        updateControls();
+      }
+    }
+
+    connectButton.addEventListener("click", connect);
+    disconnectButton.addEventListener("click", () => {
+      if (connection) void disconnect(connection);
+    });
+    form.addEventListener("submit", sendCommand);
+    command.addEventListener("input", () => { inputError.textContent = ""; });
+    command.addEventListener("paste", (event) => {
+      if (/[\r\n]/.test(event.clipboardData.getData("text"))) {
+        event.preventDefault();
+        inputError.textContent = "Paste one command at a time.";
+      }
+    });
+    document.querySelector("#clear").addEventListener("click", () => {
+      text.data = "";
+    });
+    serial?.addEventListener("disconnect", (event) => {
+      if (connection && (event.port ?? event.target) === connection.port) {
+        void disconnect(connection, "Serial port was disconnected.", true);
+      }
+    });
+    window.addEventListener("pagehide", () => {
+      pageGeneration++;
+      if (connection) void disconnect(connection);
+    });
+
+    if (!serial) showStatus("Web Serial is unavailable in this browser or context.", true);
+    updateControls();
+  </script>
+</body>
+</html>
