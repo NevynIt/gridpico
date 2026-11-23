@@ -78,6 +78,32 @@ The pad clears its LED state on disconnect. For browser smoke tests, use
 `#route-pad`, with `data-led` for received state and `data-held` for the
 gesture. [One-pad APC route toggle contract](../../api/README.md#one-pad-apc-route-toggle)
 
+## Connected Patch
+
+Start the separate [Patch host](../../connections/README.md#connected-patch-view)
+and open its `/patch/` page. The simulator shows the actual device and port
+inventory, the occupied source rows and destination columns, and unassigned
+ports such as **Panel** and **LED feedback**. Use **Refresh inventory** to
+request a new snapshot. A disconnect clears the inventory and LED page.
+
+Press a pad at the intersection of a source row and destination column.
+An outlined pad has both ports assigned. The LED shows the last authoritative
+state in the complete 40-pad route page. Dark is Off, orange is Pending,
+and green is Active. The same keybed still sends Port 0 notes.
+
+When the connection supports the color layer, hold physical Shift or use
+**Hold Shift**. Press the scene for a source row or the track for a destination
+column to select its device. Choose pad `00`–`03` as shown in **Device colors**.
+The separate color panel displays the selected device and its received APC
+palette preview. While the color layer is open, the grid shows the last route
+page. Release Shift for fresh route feedback.
+
+Patch Capture shows all accepted note records. The current note frame
+carries no destination ID. Matching notes from two outputs can therefore
+appear identical in Capture and share a browser Monitor voice. The one-pad
+demo and the offline Protocol lab remain separate.
+[Patch browser contract](../../api/patchbay-controls.md#read-only-browser-inventory)
+
 ## Protocol lab
 
 **Protocol** shows direction, logical port, and exact hex for manual input.

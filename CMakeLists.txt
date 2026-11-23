@@ -14,6 +14,7 @@ target_link_libraries(gridpico_native_proof PRIVATE gridpico_native_fixture)
 
 add_executable(gridpico_browser_fixture
     app/browser_fixture.c
+    app/runner_io.c
     frontends/apc/apc_frontend.c
     frontends/apc/apc_protocol.c
 )
@@ -27,11 +28,41 @@ add_executable(gridpico_patch_demo
 )
 target_include_directories(gridpico_patch_demo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 
+add_library(gridpico_patch_runtime STATIC
+    app/patch_runtime.c
+    core/midi/patch_graph.c
+    core/session/patch_session.c
+    frontends/apc/apc_patch.c
+    frontends/apc/apc_protocol.c
+    frontends/cli/cli_frontend.c
+    sim/platform/patch_fixture.c
+)
+target_include_directories(gridpico_patch_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+
+add_executable(gridpico_patch_runner app/patch_runner.c app/runner_io.c)
+target_link_libraries(gridpico_patch_runner PRIVATE gridpico_patch_runtime)
+
+set(gridpico_asset_dir "${CMAKE_CURRENT_BINARY_DIR}/GRIDPICO")
+add_custom_target(gridpico_offline_assets
+    COMMAND "${CMAKE_COMMAND}"
+            "-Dsource_dir=${CMAKE_CURRENT_SOURCE_DIR}"
+            "-Dasset_dir=${gridpico_asset_dir}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/app/stage_gridpico_assets.cmake"
+    BYPRODUCTS
+        "${gridpico_asset_dir}/INDEX.HTM"
+        "${gridpico_asset_dir}/DIAG.HTM"
+        "${gridpico_asset_dir}/VERSION.TXT"
+    COMMENT "Staging GRIDPICO offline HTML assets"
+    VERBATIM
+)
+
 set(fixture_targets
     gridpico_native_fixture
     gridpico_native_proof
     gridpico_browser_fixture
     gridpico_patch_demo
+    gridpico_patch_runtime
+    gridpico_patch_runner
 )
 set_target_properties(${fixture_targets}
     PROPERTIES

@@ -55,3 +55,31 @@ transport saturation, the host closes runner stdin and drains stdout through
 fixture exit, including disconnect releases. Browser output buffering has a
 byte limit and a drain timeout. The WebSocket dependency is pinned in the npm
 lockfile.
+
+## Connected Patch view
+
+From the repository root:
+
+```sh
+cmake -S . -B build/browser-demo
+cmake --build build/browser-demo --target gridpico_patch_runner
+npm --prefix connections ci --ignore-scripts
+node connections/patch-host.js build/browser-demo/gridpico_patch_runner
+```
+
+Open [the local Patch view](http://127.0.0.1:8766/patch/). It uses the
+same-origin `/patch/midi` socket. An optional port argument overrides 8766.
+
+At startup check the named devices and ports, including the unassigned
+**Panel** and **LED feedback** ports, and the dark 5×8 route page. Turn on
+the top-left two routes, hold **Q**, then turn off one of those routes.
+Check for two accepted Note On records and one accepted Note Off before
+the route page updates. Release **Q** and check for the remaining Note
+Off. Refresh and verify the inventory and current route LEDs.
+
+A successful refresh delivers a validated inventory block before its
+40-pad page. Keybed, pad and refresh requests run in order with one
+runner dispatch in flight and up to 16 queued. An ordinary command
+rejection reports its code after any accepted capture and complete LED
+page. Closing the socket or stopping the host closes runner stdin and
+drains output through cleanup.

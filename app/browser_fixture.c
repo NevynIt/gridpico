@@ -1,4 +1,4 @@
-#include "api/native_proof.h"
+#include "app/runner_io.h"
 #include "core/midi/native_graph.h"
 #include "core/processors/transpose.h"
 #include "core/session/session.h"
@@ -9,14 +9,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-enum { REQUEST_SIZE = sizeof("surface 239 127 127") };
-
-typedef enum {
-    REQUEST_EOF,
-    REQUEST_LINE,
-    REQUEST_MALFORMED
-} request_status;
 
 typedef struct {
     gridpico_midi_fixture midi;
@@ -48,10 +40,7 @@ static bool write_capture(fixture *runner)
     runner->accepted_count = 0;
 
     for (size_t i = 0; i < count; ++i) {
-        const gridpico_note note = runner->accepted[i];
-        if (printf("%s %u %u %u\n", note.kind == GRIDPICO_NOTE_ON ? "on" : "off",
-                   (unsigned)note.channel_index + 1u,
-                   (unsigned)note.key, (unsigned)note.velocity) < 0) {
+        if (!write_note(runner->accepted[i])) {
             return false;
         }
     }
@@ -71,75 +60,8 @@ static bool write_surface_feedback(fixture *runner)
         return true;
     }
 
-    const gridpico_apc_surface_message message = runner->surface_feedback;
     runner->surface_feedback_pending = false;
-    return printf("surface %u %u %u\n", (unsigned)message.bytes[0],
-                  (unsigned)message.bytes[1], (unsigned)message.bytes[2]) >= 0;
-}
-
-static request_status read_request(char line[REQUEST_SIZE])
-{
-    size_t length = 0;
-    bool malformed = false;
-    int byte;
-
-    while ((byte = getchar()) != EOF && byte != '\n') {
-        if (length == REQUEST_SIZE - 1 || byte < 0x20 || byte > 0x7e) {
-            malformed = true;
-        } else if (!malformed) {
-            line[length++] = (char)byte;
-        }
-    }
-    line[length] = '\0';
-
-    if (byte == EOF) {
-        return REQUEST_EOF;
-    }
-    return malformed ? REQUEST_MALFORMED : REQUEST_LINE;
-}
-
-static bool parse_byte(const char **cursor, unsigned maximum, uint8_t *value)
-{
-    const char *start = *cursor;
-    unsigned parsed = 0;
-
-    while (**cursor >= '0' && **cursor <= '9') {
-        parsed = parsed * 10u + (unsigned)(**cursor - '0');
-        if (parsed > maximum) {
-            return false;
-        }
-        ++*cursor;
-    }
-    if (*cursor == start || *cursor - start > 3) {
-        return false;
-    }
-    *value = (uint8_t)parsed;
-    return true;
-}
-
-static bool parse_note(const char *line, gridpico_note *note)
-{
-    if (strncmp(line, "on 1 ", 5) == 0) {
-        note->kind = GRIDPICO_NOTE_ON;
-        line += 5;
-    } else if (strncmp(line, "off 1 ", 6) == 0) {
-        note->kind = GRIDPICO_NOTE_OFF;
-        line += 6;
-    } else {
-        return false;
-    }
-
-    note->channel_index = 0;
-    return parse_byte(&line, 127, &note->key) && *line++ == ' ' &&
-           parse_byte(&line, 127, &note->velocity) && *line == '\0' &&
-           (note->kind == GRIDPICO_NOTE_OFF || note->velocity != 0);
-}
-
-static bool parse_surface(const char *line, gridpico_apc_surface_message *message)
-{
-    return parse_byte(&line, 239, &message->bytes[0]) && message->bytes[0] >= 128 &&
-           *line++ == ' ' && parse_byte(&line, 127, &message->bytes[1]) &&
-           *line++ == ' ' && parse_byte(&line, 127, &message->bytes[2]) && *line == '\0';
+    return write_surface(runner->surface_feedback);
 }
 
 static gridpico_result dispatch_request(fixture *runner, gridpico_connection source,

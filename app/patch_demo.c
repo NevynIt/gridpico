@@ -1,4 +1,4 @@
-#include "api/patchbay.h"
+#include "app/patch_inventory.h"
 #include "core/midi/patch_graph.h"
 #include "core/session/patch_session.h"
 #include "sim/platform/patch_fixture.h"
@@ -7,24 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-enum { KEYBED = 1, MIDI_A = 2, MIDI_B = 3, PANEL = 4, LED_FEEDBACK = 5 };
-
-static const gridpico_patch_inventory inventory = {
-    .device_count = GRIDPICO_PATCH_DEVICES,
-    .port_count = GRIDPICO_PATCH_PORTS,
-    .devices = {
-        {1, "APC Key 25 mk2", GRIDPICO_PATCH_CONNECTED},
-        {2, "Simulated dual-port instrument", GRIDPICO_PATCH_CONNECTED},
-    },
-    .ports = {
-        {KEYBED, 1, "Keybed", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_CONNECTED, true},
-        {PANEL, 1, "Panel", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_CONNECTED, false},
-        {LED_FEEDBACK, 1, "LED feedback", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_CONNECTED, false},
-        {MIDI_A, 2, "MIDI A", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_CONNECTED, true},
-        {MIDI_B, 2, "MIDI B", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_CONNECTED, true},
-    },
-};
 
 typedef struct {
     gridpico_patch_graph graph;
@@ -47,14 +29,14 @@ static bool expect_result(const char *operation, gridpico_result actual, gridpic
 
 static bool expect_inventory(const gridpico_patch_inventory *actual, gridpico_port_id disconnected)
 {
-    if (actual->device_count != inventory.device_count ||
-        actual->port_count != inventory.port_count) {
+    if (actual->device_count != patch_inventory.device_count ||
+        actual->port_count != patch_inventory.port_count) {
         fputs("Unexpected inventory size\n", stderr);
         return false;
     }
     for (size_t i = 0; i < actual->device_count; ++i) {
         const gridpico_patch_device *device = &actual->devices[i];
-        const gridpico_patch_device *expected = &inventory.devices[i];
+        const gridpico_patch_device *expected = &patch_inventory.devices[i];
         if (device->id != expected->id || device->state != expected->state ||
             strncmp(device->name, expected->name, sizeof(device->name)) != 0) {
             fprintf(stderr, "Unexpected device at inventory position %zu\n", i + 1);
@@ -63,7 +45,7 @@ static bool expect_inventory(const gridpico_patch_inventory *actual, gridpico_po
     }
     for (size_t i = 0; i < actual->port_count; ++i) {
         const gridpico_patch_port *port = &actual->ports[i];
-        const gridpico_patch_port *expected = &inventory.ports[i];
+        const gridpico_patch_port *expected = &patch_inventory.ports[i];
         const gridpico_patch_connection_state state = expected->id == disconnected
             ? GRIDPICO_PATCH_DISCONNECTED : GRIDPICO_PATCH_CONNECTED;
         if (port->id != expected->id || port->device != expected->device ||
@@ -300,9 +282,9 @@ int main(void)
 {
     patch_demo demo = {0};
     if (!expect_result("Initialize Patch simulation",
-                       gridpico_patch_fixture_init(&demo.sim, &inventory), GRIDPICO_OK) ||
+                       gridpico_patch_fixture_init(&demo.sim, &patch_inventory), GRIDPICO_OK) ||
         !expect_result("Initialize Patch graph",
-                       gridpico_patch_graph_init(&demo.graph, &inventory,
+                       gridpico_patch_graph_init(&demo.graph, &patch_inventory,
                                                 gridpico_patch_fixture_deliver, &demo.sim),
                        GRIDPICO_OK)) {
         return EXIT_FAILURE;
