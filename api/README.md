@@ -4,6 +4,8 @@
 
 These are behavioral contracts for the module boundaries in [Architecture](../ARCHITECTURE.md). Command types, wire formats, storage encoding and language bindings will follow the work that needs them. Each module owns its state and returns portable values through its contract. Data crossing a queued boundary must remain valid until consumed. Application Assembly serializes musical state changes and defines how callbacks enter that context.
 
+See the [Patchbay, inventory and Diagnostics proposal](patchbay.md) for the next delivery boundary.
+
 ## Session/control
 
 - Accept intent to change a binding, route or processor setting. Return an outcome that distinguishes invalid input, unsupported features, resource limits and temporary unavailability. An accepted route may be pending if its binding is unresolved. Queries expose the reason it is pending and which routes are active.

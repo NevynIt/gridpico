@@ -25,7 +25,13 @@ The web APC owner downloads and uses Akai Professional's official protocol docum
 
 The musical kernel is not APC-specific. A CLI and, later, piano-key/pedal controls with an RGB feedback strip operate the same commands and state. Patch and Circuit views share the same musical project.
 
+The first usable Patch view routes one source to multiple destinations. The initial serial CLI shows the device names and MIDI ports the core recognizes, their connection state, and which ports occupy each source row and destination column. Users can assign a color to a recognized device through either the CLI or APC. Both views use the same device preference. Colors identify devices and route feedback shows route state.
+
+Diagnostics has a separate web page for the serial CLI, logs, and debug information. The browser terminal uses the same CLI commands as a serial terminal.
+
 On RP2040, USB-hosted devices connect through a hub. Native USB offers multiple MIDI ports, CDC and a read-only `GRIDPICO` drive carrying the self-contained browser interface and documentation. The user has already demonstrated the HTML-drive approach in a separate prototype.
+
+The Web APC and Diagnostics pages must work offline when opened directly from the mounted read-only drive. Diagnostics must be able to connect to the Pico's serial CLI from that page on supported browsers.
 
 Linux x86, Linux ARM (including Raspberry Pi Zero) and Windows run the same musical application with appropriate platform backends. They do not imitate an embedded USB device where the host OS makes that unnecessary.
 

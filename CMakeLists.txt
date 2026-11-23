@@ -19,14 +19,28 @@ add_executable(gridpico_browser_fixture
 )
 target_link_libraries(gridpico_browser_fixture PRIVATE gridpico_native_fixture)
 
-set_target_properties(gridpico_native_fixture gridpico_native_proof gridpico_browser_fixture
+add_executable(gridpico_patch_demo
+    app/patch_demo.c
+    core/midi/patch_graph.c
+    core/session/patch_session.c
+    sim/platform/patch_fixture.c
+)
+target_include_directories(gridpico_patch_demo PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+
+set(fixture_targets
+    gridpico_native_fixture
+    gridpico_native_proof
+    gridpico_browser_fixture
+    gridpico_patch_demo
+)
+set_target_properties(${fixture_targets}
     PROPERTIES
     C_STANDARD 11
     C_STANDARD_REQUIRED YES
     C_EXTENSIONS NO
 )
 if(CMAKE_C_COMPILER_ID MATCHES "^(GNU|Clang)$")
-    foreach(target IN ITEMS gridpico_native_fixture gridpico_native_proof gridpico_browser_fixture)
+    foreach(target IN LISTS fixture_targets)
         target_compile_options("${target}" PRIVATE -Wall -Wextra -Wpedantic)
     endforeach()
 endif()

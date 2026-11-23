@@ -116,12 +116,15 @@ Track voices by destination, MIDI channel and key so two channels using the same
 Preserve GridZero's useful interaction ideas without inheriting its synth requirements:
 
 - Patch view uses all 40 pads as a five-source by eight-destination matrix, with navigation outside the matrix and pages for additional endpoints.
+- The shared Patch inventory maps logical input and output ports to source rows and destination columns. One source can route to multiple destinations. Device color preferences are shared by APC and CLI. Route feedback reflects route state.
 - Desired and active routes have distinct visible states. GridZero's green/amber/rejected feedback is an initial reference, subject to a documented palette.
 - Future Circuit view can use the top eight pads for tracks and the lower 32 for steps/editors, with the keybed supplying musical notes.
 - Both views operate the same routes, tracks and transport. Changing views does not stop musical behavior.
 - Synth master-filter/volume behavior is not inherited. Any encoder allocation for external-instrument MIDI controls must be explicitly specified.
 
 Final gestures, mappings and behavior-baseline versions belong in later approved specifications, not guessed implementations.
+
+The standalone Diagnostics page exposes the serial CLI and connection status offline. Computer connections owns the serial stream and browser client. The CLI frontend owns command text and calls Session/control for typed inventory and device colors. Application Assembly packages Diagnostics on the read-only `GRIDPICO` drive. [Patchbay and Diagnostics proposal](api/patchbay.md)
 
 ## 5. Platform contracts and five platform-group owners
 
