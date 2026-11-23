@@ -108,7 +108,43 @@ and records the frames actually applied, submitted, or received.
   Enter three hex bytes below the isolated surface to inspect the full RGB
   palette at any documented solid brightness (`90–96`). Track LEDs use
   fixed red and scene LEDs fixed green. Velocity `00` is off, `01` and
-  `03–7F` are on. Timed blink and pulse are outside this batch.
+  `03–7F` are on.
+- **Timed LEDs** applies the following RX Port 1 frames. Step leaves each
+  effect running until a later frame, reset, or exit. Replay waits 1,200 ms
+  after starting the last timed LED before sending any cleanup frame.
+
+| Frame | Isolated preview |
+| --- | --- |
+| `9A 00 15` | Pad 00 green pulse, half-note cycle of 1,000 ms |
+| `9E 01 2D` | Pad 01 blue blink, quarter-note cycle of 500 ms |
+| `90 40 02` | Track 1 fixed red blink, 1,000 ms fixture cycle |
+| `90 52 02` | Scene 1 fixed green blink, 1,000 ms fixture cycle |
+| `96 00 05` | Replace the pulse with solid red |
+| `96 01 00` | Clear pad 01 |
+| `90 40 01` | Replace the track blink with solid red |
+| `90 52 00` | Clear scene 1 |
+| `96 00 00` | Clear pad 00 |
+| `90 40 00` | Clear track 1 |
+
+The **local preview** runs at 120 BPM, with 500 ms per quarter note. The
+period is one full bright–dim–bright pulse or one lit/dark blink cycle.
+Each new effect starts bright. Blink phases are equal, and the pulse
+smoothly dims to 15% of the palette color over the dark tile and returns
+to full brightness. A replacement frame cancels the old animation.
+An RGB palette value of `00` clears the LED at any supported status.
+
+| RGB statuses | Note divisions in status order | Local periods in ms |
+| --- | --- | --- |
+| `97–9A` pulse | 1/16, 1/8, 1/4, 1/2 | 125, 250, 500, 1,000 |
+| `9B–9F` blink | 1/24, 1/16, 1/8, 1/4, 1/2 | 83⅓, 125, 250, 500, 1,000 |
+
+Fixed blink velocity `02` applies to tracks `40–47` and scenes `52–56` with
+status `90`. Its local fixture timing is 500 ms per phase. The Replay
+dwell is also local preview timing. Timed effects use browser rendering,
+with external clock and physical LED timing outside this preview.
+Reset LEDs or leave the Protocol preview to clear the timed effects.
+[Akai Communications Protocol v1.1, pp. 2–3 and 6](https://cdn.inmusicbrands.com/akai/attachments/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1.pdf)
+
 - **Encoder Detents** emits local TX Port 1 pairs `B0 nn 01`, `B0 nn 7F`
   in order for each encoder from `nn=30` through `37`.
 - **Route Off While Held** requires a fresh connected fixture with a green

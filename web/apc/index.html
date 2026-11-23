@@ -315,6 +315,7 @@
           <label for="protocol-sequence">Sequence</label>
           <select id="protocol-sequence">
             <option value="leds">Direct Solid LEDs</option>
+            <option value="timed">Timed LEDs</option>
             <option value="encoders">Encoder Detents</option>
             <option value="route">Route Off While Held</option>
           </select>
@@ -333,11 +334,15 @@
         </div>
         <details class="lab-detail" id="direct-leds" open>
           <summary>Isolated LED surface</summary>
+          <p class="lab-status">Local preview · 120 BPM · quarter note 500 ms. Fixed LED blink uses a 1,000 ms fixture cycle.</p>
           <div class="lab-leds" id="lab-leds" role="group" aria-label="Isolated pad, scene and track LEDs"></div>
           <form class="lab-controls" id="led-input">
             <label for="led-bytes">RX · Port 1 hex</label>
             <input id="led-bytes" type="text" maxlength="12" placeholder="96 00 15" required>
-            <div class="lab-actions"><button type="submit">Apply LED</button></div>
+            <div class="lab-actions">
+              <button type="submit">Apply LED</button>
+              <button type="button" id="reset-leds">Reset LEDs</button>
+            </div>
             <p id="led-result" class="lab-status" role="status"></p>
           </form>
         </details>
@@ -670,6 +675,7 @@ document.addEventListener("visibilitychange", () => {
 const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
 
 function selectTab(selected) {
+  if (selected.id !== "protocol-tab") leaveLedPreview();
   for (const tab of tabs) {
     const visible = tab === selected;
     tab.setAttribute("aria-selected", visible);
@@ -922,7 +928,13 @@ FF7F00 B9B000 90FF00 835D07 392B00 144C10 0D5038 15152A
 A00000 350000 1AD000 074200 B9B000 3F3100 B35F00 4B1502
 `.trim().split(/\s+/);
 const padBrightness = [10, 25, 50, 65, 75, 90, 100];
+const previewTempo = 120;
+const previewWholeNoteMs = 4 * 60000 / previewTempo;
+const fixedBlinkPeriod = 1000;
+const timedDivisions = [16, 8, 4, 2, 24, 16, 8, 4, 2];
+const ledDark = "#25252d";
 const isolatedLeds = new Map();
+const ledAnimations = new Map();
 const ledSurface = document.querySelector("#lab-leds");
 for (const button of panel.querySelectorAll("[data-apc-note]")) {
   const note = Number(button.dataset.apcNote);
@@ -938,41 +950,95 @@ for (const button of panel.querySelectorAll("[data-apc-note]")) {
   isolatedLeds.set(note, light);
 }
 
-function decodeSolidLed(bytes) {
+function decodeLed(bytes) {
   const [status, note, velocity] = bytes;
   if (!Number.isInteger(velocity) || velocity < 0 || velocity > 127) return null;
-  let color, brightness;
-  if (note >= 0 && note < 40 && status >= 0x90 && status <= 0x96) {
-    color = "#" + padPalette[velocity];
-    brightness = padBrightness[status - 0x90];
-  } else if (status === 0x90 && velocity !== 2) {
-    if (note >= 0x40 && note <= 0x47) color = "#ff3d53";
-    else if (note >= 0x52 && note <= 0x56) color = "#36dd86";
-    else return null;
-    brightness = 100;
-  } else {
-    return null;
+  if (note >= 0 && note < 40 && status >= 0x90 && status <= 0x9f) {
+    const color = "#" + padPalette[velocity];
+    const brightness = padBrightness[status - 0x90] ?? 100;
+    if (velocity === 0 || status <= 0x96) {
+      return { note, color, brightness, mode: velocity === 0 ? "off" : "solid" };
+    }
+    const division = timedDivisions[status - 0x97];
+    return {
+      note, color, brightness, division,
+      mode: status <= 0x9a ? "pulse" : "blink",
+      period: previewWholeNoteMs / division,
+    };
   }
-  return { note, color, brightness, lit: velocity !== 0 };
+  if (status !== 0x90) return null;
+  let color;
+  if (note >= 0x40 && note <= 0x47) color = "#ff3d53";
+  else if (note >= 0x52 && note <= 0x56) color = "#36dd86";
+  else return null;
+  if (velocity === 2) return { note, color, brightness: 100, mode: "blink", period: fixedBlinkPeriod };
+  return { note, color, brightness: 100, mode: velocity === 0 ? "off" : "solid" };
+}
+
+function describeLedTiming({ mode, period, division }) {
+  if (!period) return "";
+  const cycle = division === 24 ? "83⅓" : String(period);
+  if (!division) return `Fixed blink · ${cycle} ms fixture cycle`;
+  return `${mode === "pulse" ? "Pulse" : "Blink"} 1/${division} · ${cycle} ms at ${previewTempo} BPM`;
+}
+
+function cancelLedAnimation(light) {
+  ledAnimations.get(light)?.cancel();
+  ledAnimations.delete(light);
+}
+
+function clearIsolatedLed(light) {
+  cancelLedAnimation(light);
+  delete light.dataset.state;
+  delete light.dataset.mode;
+  light.style.removeProperty("--led-color");
+  light.style.removeProperty("--brightness");
+}
+
+function dimLedColor(color) {
+  const channels = [1, 3, 5].map((index) => {
+    const bright = parseInt(color.slice(index, index + 2), 16);
+    const dark = parseInt(ledDark.slice(index, index + 2), 16);
+    return Math.round(bright * 0.15 + dark * 0.85);
+  });
+  return `rgb(${channels.join(", ")})`;
+}
+
+function startLedAnimation(light, { color, mode, period }) {
+  const frames = mode === "pulse" ? [
+    { backgroundColor: color, offset: 0, easing: "ease-in-out" },
+    { backgroundColor: dimLedColor(color), offset: 0.5, easing: "ease-in-out" },
+    { backgroundColor: color, offset: 1 },
+  ] : [
+    { backgroundColor: color, offset: 0, easing: "steps(1, end)" },
+    { backgroundColor: ledDark, offset: 0.5 },
+    { backgroundColor: ledDark, offset: 1 },
+  ];
+  ledAnimations.set(light, light.animate(frames, { duration: period, iterations: Infinity }));
 }
 
 function applyIsolatedLed(bytes) {
-  const decoded = decodeSolidLed(bytes);
-  if (!decoded) return false;
-  const { note, color, brightness, lit } = decoded;
+  const decoded = decodeLed(bytes);
+  if (!decoded) return null;
+  const { note, color, brightness, mode, period } = decoded;
   const light = isolatedLeds.get(note);
+  cancelLedAnimation(light);
+  const lit = mode !== "off";
   light.dataset.state = lit ? "on" : "off";
-  light.style.setProperty("--led-color", lit ? color : "#25252d");
+  light.dataset.mode = mode;
+  light.style.setProperty("--led-color", lit ? color : ledDark);
   light.style.setProperty("--brightness", `${brightness}%`);
-  return true;
+  if (period) startLedAnimation(light, decoded);
+  return decoded;
 }
 
 function resetIsolatedLeds() {
-  for (const light of isolatedLeds.values()) {
-    delete light.dataset.state;
-    light.style.removeProperty("--led-color");
-    light.style.removeProperty("--brightness");
-  }
+  for (const light of isolatedLeds.values()) clearIsolatedLed(light);
+}
+
+function leaveLedPreview() {
+  if (sequence?.name === "timed" && !sequence.finished) stopSequence("Timed LED preview stopped.");
+  for (const light of ledAnimations.keys()) clearIsolatedLed(light);
 }
 
 const ledInput = document.querySelector("#led-bytes");
@@ -986,9 +1052,15 @@ document.querySelector("#led-input").addEventListener("submit", (event) => {
     return;
   }
   const bytes = value.split(/\s+/).map(byte => parseInt(byte, 16));
-  ledResult.textContent = applyIsolatedLed(bytes) ? `Applied RX · Port 1 · ${hexBytes(bytes)}`
-    : "Use a supported solid pad, track, or scene LED frame.";
+  const decoded = applyIsolatedLed(bytes);
+  if (!decoded) {
+    ledResult.textContent = "Use a supported pad, track, or scene LED frame.";
+    return;
+  }
+  const timing = describeLedTiming(decoded);
+  ledResult.textContent = `Applied RX · Port 1 · ${hexBytes(bytes)}${timing ? ` · ${timing}` : ""}`;
 });
+window.addEventListener("pagehide", leaveLedPreview);
 
 const surfaceFrame = (direction, bytes) => ({ direction, port: "Port 1", bytes });
 const keyFrame = pressed => ({ direction: "TX", port: "Port 0", bytes: [pressed ? 0x90 : 0x80, 60, pressed ? keyVelocity : 0] });
@@ -997,7 +1069,7 @@ const destinationFrame = (note, channel, kind, velocity) => ({
 });
 const note72 = pressed => destinationFrame(72, 1, pressed ? "note-on" : "note-off", pressed ? 96 : 0);
 const routeLed = value => surfaceFrame("RX", [0x96, 0x00, value]);
-const localStep = (label, bytes) => ({ label, input: surfaceFrame("RX", bytes) });
+const localStep = (label, bytes, dwellMs) => ({ label, input: surfaceFrame("RX", bytes), dwellMs });
 const routeStep = (label, input, ...output) => ({ label, input, output });
 
 const sequences = {
@@ -1011,6 +1083,18 @@ const sequences = {
     localStep("Track 1 dark", [0x90, 0x40, 0x00]),
     localStep("Scene 1 dark", [0x90, 0x52, 0x00]),
     localStep("Pad 01 dark", [0x96, 0x01, 0x00]),
+  ],
+  timed: [
+    localStep("Pad 00 half-note pulse", [0x9a, 0x00, 0x15]),
+    localStep("Pad 01 quarter-note blink", [0x9e, 0x01, 0x2d]),
+    localStep("Track 1 fixed blink", [0x90, 0x40, 0x02]),
+    localStep("Scene 1 fixed blink", [0x90, 0x52, 0x02], 1200),
+    localStep("Replace pad 00 pulse with solid", [0x96, 0x00, 0x05]),
+    localStep("Turn pad 01 blink off", [0x96, 0x01, 0x00]),
+    localStep("Replace track 1 blink with solid", [0x90, 0x40, 0x01]),
+    localStep("Turn scene 1 off", [0x90, 0x52, 0x00]),
+    localStep("Turn pad 00 off", [0x96, 0x00, 0x00]),
+    localStep("Turn track 1 off", [0x90, 0x40, 0x00]),
   ],
   encoders: [...knobState.keys()].flatMap((cc, index) => [
     { label: `K${index + 1} · fixture +1`, input: surfaceFrame("TX", [0xb0, cc, 0x01]) },
@@ -1040,7 +1124,7 @@ let sequence = null;
 
 function renderSequence() {
   sequenceRows.replaceChildren();
-  for (const { label, input, output } of sequences[sequenceSelect.value]) {
+  for (const { label, input, output, dwellMs } of sequences[sequenceSelect.value]) {
     const row = sequenceRows.insertRow();
     row.insertCell().textContent = label;
     const expected = [describeFrame(input)];
@@ -1048,10 +1132,19 @@ function renderSequence() {
       if (output.length) expected.push(...output.map(describeFrame));
       else expected.push("No reply expected");
     }
+    if (sequenceSelect.value === "timed") {
+      const timing = describeLedTiming(decodeLed(input.bytes));
+      if (timing) expected.push(timing);
+      if (dwellMs) expected.push(`Replay waits ${dwellMs} ms locally before cleanup`);
+    }
     row.insertCell().textContent = expected.join("\n");
     row.insertCell().textContent = "—";
   }
-  directLeds.hidden = sequenceSelect.value !== "leds";
+  directLeds.hidden = !isLedSequence(sequenceSelect.value);
+}
+
+function isLedSequence(name) {
+  return name === "leds" || name === "timed";
 }
 
 function freshRouteFixture() {
@@ -1073,10 +1166,13 @@ function updateSequenceControls() {
 function idleSequence() {
   sequence = null;
   renderSequence();
-  sequenceStatus.textContent = sequenceSelect.value === "route"
-    ? "Requires a fresh connection with a green Route pad. Reload the connected demo after a run."
-    : sequenceSelect.value === "leds" ? "Applies fixture bytes to the isolated surface."
-      : "Demonstrates both fixture detents on each knob.";
+  const instructions = {
+    route: "Requires a fresh connection with a green Route pad. Reload the connected demo after a run.",
+    leds: "Applies fixture bytes to the isolated surface.",
+    timed: "Step leaves each LED running. Replay holds the timed preview before cleanup.",
+    encoders: "Demonstrates both fixture detents on each knob.",
+  };
+  sequenceStatus.textContent = instructions[sequenceSelect.value];
   updateSequenceControls();
 }
 
@@ -1100,19 +1196,22 @@ function finishSequence(run, message, cleanup) {
 }
 
 function stopSequence(message) {
-  if (sequence && !sequence.finished) finishSequence(sequence, message, true);
+  if (!sequence || sequence.finished) return;
+  if (sequence.name === "timed") resetIsolatedLeds();
+  finishSequence(sequence, message, true);
 }
 
-function nextSequenceStep(run) {
+function nextSequenceStep(run, dwellMs = 100) {
   clearTimeout(run.timer);
   run.pending = null;
   if (run.index === run.steps.length) {
     const result = { route: "Matched destination and LED replies.", leds: "Applied all isolated LED frames.",
+      timed: "Applied timed LED frames and cleanup.",
       encoders: "Emitted all fixture detents locally." };
     finishSequence(run, `Complete. ${result[run.name]}`);
     return;
   }
-  if (run.automatic) run.timer = setTimeout(() => executeStep(run), 100);
+  if (run.automatic) run.timer = setTimeout(() => executeStep(run), dwellMs);
   else if (run.attachment) run.timer = setTimeout(() => stopSequence("Stopped after 20 seconds without another step."), 20000);
   updateSequenceControls();
 }
@@ -1120,19 +1219,22 @@ function nextSequenceStep(run) {
 function executeStep(run) {
   if (run !== sequence || run.finished || run.pending) return;
   clearTimeout(run.timer);
-  const { label, input, output } = run.steps[run.index++];
+  const { label, input, output, dwellMs } = run.steps[run.index++];
   sequenceStatus.textContent = label;
   if (!run.attachment) {
     if (run.name === "encoders") {
       paintKnob(knobState.get(input.bytes[1]), input.bytes[2] === 0x01 ? 1 : -1);
       addObservation(run, `Emitted locally · ${describeFrame(input)}`);
-    } else if (applyIsolatedLed(input.bytes)) {
-      addObservation(run, `Applied · ${describeFrame(input)}`);
     } else {
-      finishSequence(run, "The isolated decoder rejected the fixture frame.");
-      return;
+      const applied = applyIsolatedLed(input.bytes);
+      if (!applied) {
+        finishSequence(run, "The isolated decoder rejected the fixture frame.");
+        return;
+      }
+      const timing = describeLedTiming(applied);
+      addObservation(run, `Applied · ${describeFrame(input)}${timing ? `\n${timing}` : ""}`);
     }
-    nextSequenceStep(run);
+    nextSequenceStep(run, dwellMs);
     return;
   }
   if (connection !== run.attachment || connection.closing) {
@@ -1180,7 +1282,7 @@ function startSequence(automatic) {
   const name = sequenceSelect.value;
   const live = name === "route";
   if (live && !freshRouteFixture()) return;
-  if (name === "leds") resetIsolatedLeds();
+  if (isLedSequence(name)) resetIsolatedLeds();
   if (name === "encoders") {
     for (const knob of knobState.values()) paintKnob(knob, -knob.angle / 15);
   }
@@ -1192,6 +1294,7 @@ function startSequence(automatic) {
 }
 
 sequenceSelect.addEventListener("change", () => {
+  leaveLedPreview();
   stopSequence("Stopped.");
   idleSequence();
 });
@@ -1201,6 +1304,12 @@ stepButton.addEventListener("click", () => {
 });
 replayButton.addEventListener("click", () => startSequence(true));
 stopButton.addEventListener("click", () => stopSequence("Stopped."));
+document.querySelector("#reset-leds").addEventListener("click", () => {
+  stopSequence("Stopped.");
+  resetIsolatedLeds();
+  ledResult.textContent = "Isolated LEDs reset.";
+  idleSequence();
+});
 idleSequence();
 
 function setConnectionState(connected) {
@@ -1258,7 +1367,7 @@ window.gridpicoApc = Object.freeze({
       receiveSurface(bytes) {
         if (connection !== active || active.closing) return;
         if (!Array.isArray(bytes) || bytes.length !== 3 || bytes.some(byte => !Number.isInteger(byte) || byte < 0 || byte > 255)) return;
-        const led = decodeSolidLed(bytes);
+        const led = decodeLed(bytes);
         if (led?.note === 0 && bytes[0] === 0x96) {
           if (bytes[2] === 0x15) setRoutePadLed("green");
           else if (bytes[2] === 0x00) setRoutePadLed("dark");
