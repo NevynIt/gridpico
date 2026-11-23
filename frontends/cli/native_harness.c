@@ -8,6 +8,12 @@ typedef struct {
     size_t size;
 } transcript;
 
+typedef struct {
+    gridpico_patch_graph graph;
+    gridpico_patch_fixture sim;
+    gridpico_patch_session session;
+} monitor_fixture;
+
 static void capture(void *context, const char *bytes, size_t size)
 {
     transcript *out = context;
@@ -55,6 +61,85 @@ static void compare_terminal_reply(gridpico_cli_frontend *cli, transcript *termi
     gridpico_cli_receive(cli, "\r\n", 2);
     gridpico_cli_process(cli);
     assert(contains_bytes(terminal, diagnostics.output, diagnostics.size));
+}
+
+static void initialize_monitor_inventory(gridpico_patch_inventory *inventory)
+{
+    *inventory = (gridpico_patch_inventory){
+        .device_count = GRIDPICO_PATCH_MONITOR_DEVICES,
+        .port_count = GRIDPICO_PATCH_MONITOR_PORTS,
+        .devices = {
+            {1, "APC Key 25 mk2", GRIDPICO_PATCH_CONNECTED},
+            {2, "Simulated dual-port instrument", GRIDPICO_PATCH_CONNECTED},
+            {GRIDPICO_PATCH_MONITOR_DEVICE_ID, "Web Monitor", GRIDPICO_PATCH_DISCONNECTED},
+        },
+        .ports = {
+            {1, 1, "Keybed", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_CONNECTED, true},
+            {4, 1, "Panel", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_CONNECTED, false},
+            {5, 1, "LED feedback", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_CONNECTED, false},
+            {2, 2, "MIDI A", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_CONNECTED, true},
+            {3, 2, "MIDI B", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_CONNECTED, true},
+            {GRIDPICO_PATCH_MONITOR_PORT_ID, GRIDPICO_PATCH_MONITOR_DEVICE_ID,
+             "Monitor", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+        },
+    };
+}
+
+static void test_monitor_cli(transcript *terminal)
+{
+    monitor_fixture monitor = {0};
+    gridpico_patch_inventory inventory;
+    initialize_monitor_inventory(&inventory);
+    assert(gridpico_patch_fixture_init_monitor(&monitor.sim, &inventory) == GRIDPICO_OK);
+    assert(gridpico_patch_graph_init_monitor(&monitor.graph, &inventory,
+                                             gridpico_patch_fixture_deliver,
+                                             &monitor.sim) == GRIDPICO_OK);
+    gridpico_patch_session_init(&monitor.session, &monitor.graph,
+                                gridpico_patch_graph_read_graph,
+                                gridpico_patch_graph_set_route);
+
+    gridpico_cli_frontend cli;
+    assert(gridpico_cli_init(&cli, &monitor.session,
+                             gridpico_patch_session_read_snapshot,
+                             gridpico_session_read_device_color,
+                             gridpico_session_set_device_color,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    const gridpico_patch_route_request route = {
+        .source = 1,
+        .destination = GRIDPICO_PATCH_MONITOR_PORT_ID,
+        .enabled = true,
+    };
+    assert(gridpico_patch_session_set_route(&monitor.session, &route) == GRIDPICO_OK);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "inventory", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "DEVICE 3 disconnected unset \"Web Monitor\"\r\n"));
+    assert(contains(terminal, "PORT 6 3 out disconnected col:1:3 \"Monitor\"\r\nOK\r\n"));
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "status", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "STATUS 1 3 6 0 1\r\nOK\r\n") == 0);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "color get 3", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "COLOR 3 unset\r\nOK\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "color set 3 #12aBef", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "COLOR 3 #12ABEF\r\nOK\r\n") == 0);
+
+    gridpico_device_color color;
+    assert(gridpico_session_read_device_color(&monitor.session,
+                                               GRIDPICO_PATCH_MONITOR_DEVICE_ID,
+                                               &color) == GRIDPICO_OK);
+    assert(color.revision == 1 && color.is_set && color.rgb.red == 0x12 &&
+           color.rgb.green == 0xab && color.rgb.blue == 0xef);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "inventory", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "DEVICE 3 disconnected #12ABEF \"Web Monitor\""));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "status", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "STATUS 1 3 6 0 1\r\nOK\r\n") == 0);
+    compare_terminal_reply(&cli, terminal, "color get 3", GRIDPICO_OK);
 }
 
 int main(void)
@@ -152,5 +237,6 @@ int main(void)
     gridpico_cli_receive(&cli, "\r", 1);
     gridpico_cli_process(&cli);
     assert(contains(&terminal, "ERR CAPACITY\r\n"));
+    test_monitor_cli(&terminal);
     return 0;
 }

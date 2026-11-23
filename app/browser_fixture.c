@@ -129,7 +129,7 @@ int main(void)
     bool output_ok = fputs("ready\n", stdout) != EOF && fflush(stdout) == 0;
     while (output_ok) {
         char line[REQUEST_SIZE];
-        const request_status status = read_request(line);
+        const request_status status = read_request(line, sizeof(line));
         if (status == REQUEST_EOF) {
             break;
         }

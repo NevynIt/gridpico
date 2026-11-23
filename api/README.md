@@ -6,7 +6,7 @@ These are behavioral contracts for the module boundaries in [Architecture](../AR
 
 See the [Patchbay, inventory and Diagnostics proposal](patchbay.md) for the next delivery boundary.
 
-The [Web Monitor destination proposal](web-monitor-proposal.md) records the next browser audio recommendation for planning.
+The [Web Monitor destination contract](web-monitor-proposal.md) defines the named virtual Patch output, receiver lifecycle and destination-tagged delivery.
 
 ## Session/control
 

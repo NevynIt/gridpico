@@ -73,17 +73,21 @@ Open [the local Patch view](http://127.0.0.1:8766/patch/). It uses the
 same-origin `/patch/midi` socket. An optional port argument overrides 8766.
 
 At startup check the named devices and ports, including the unassigned
-**Panel** and **LED feedback** ports, and the dark 5×8 route page. Turn on
-the top-left two routes, hold **Q**, then turn off one of those routes.
-Check for two accepted Note On records and one accepted Note Off before
-the route page updates. Release **Q** and check for the remaining Note
-Off. Refresh and verify the inventory and current route LEDs.
+**Panel** and **LED feedback** ports and **Monitor** in destination column 3.
+Turn on the top-left instrument route and the Monitor route in the first
+row. Enable audio in **Monitor** and hold **Q**. Check that Capture shows
+both destinations. Turn off the instrument route and verify its Note Off
+arrives before the LED update while Monitor keeps sounding. Release **Q**
+and verify the Monitor Note Off and silence.
 
-A successful refresh delivers a validated inventory block before its
-40-pad page. The Patch fixture supports up to 25 held keys across two
-routes and up to 50 accepted capture records per dispatch. Keybed, pad
-and refresh requests run in order with one runner dispatch in flight
-and up to 160 queued.
+The default Patch profile supports 25 held keys across three routes and
+up to 75 accepted note records per dispatch. Keybed, pad, refresh and
+Monitor requests run in order with one dispatch in flight and up to 162
+queued. The host caps outgoing buffering at 12 KiB, and the browser
+retains its 8 KiB write limit. A successful refresh delivers a validated
+inventory block before the 40-pad LED page. The Monitor receiver
+attaches when the Patch view is ready, and audio remains a separate
+local control.
 
 An ordinary command rejection reports its code after any accepted
 capture and complete LED page. If a new key press exceeds the held-note
@@ -92,3 +96,15 @@ capacity error and closes.
 After a disconnect, click **Reconnect** for a fresh Patch connection
 with routes off and an empty capture. Use fresh route and key gestures
 and enable audio again if needed.
+
+### Two-branch regression
+
+```sh
+node connections/patch-host.js --two-branch build/browser-demo/gridpico_patch_runner
+```
+
+This profile retains two routes, up to 50 accepted note records per
+dispatch, 160 queued requests and the original untagged capture format.
+Browser playback is silent in this profile. Default Patch plays through
+the attached **Web Monitor** destination. The one-pad view keeps its own
+browser audio on the `/demo/midi` connection.

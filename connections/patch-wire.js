@@ -1,11 +1,10 @@
 "use strict";
 
-const maxDevices = 2;
-const maxPorts = 5;
+const monitorPort = 6;
+const maxGeneration = 0xffffffff;
 const rows = 5;
 const columns = 8;
 const ledCount = rows * columns;
-const maxCaptures = 50;
 const maxRevision = (1n << 64n) - 1n;
 const states = new Set(["connected", "disconnected", "ambiguous"]);
 const errorCodes = new Set(["INVALID", "CAPACITY", "UNAVAILABLE"]);
@@ -21,9 +20,9 @@ function decimal(text, minimum, maximum) {
   return integer(value, minimum, maximum) ? value : undefined;
 }
 
-function isNote(event) {
+function isNote(event, maxChannel = 1) {
   return event && (event.type === "note-on" || event.type === "note-off") &&
-    event.channel === 1 && integer(event.note, 0, 127) &&
+    integer(event.channel, 1, maxChannel) && integer(event.note, 0, 127) &&
     integer(event.velocity, event.type === "note-on" ? 1 : 0, 127);
 }
 
@@ -39,6 +38,9 @@ function parseRequest(data) {
   const fields = Object.keys(event).length;
   if (event.type === "patch-refresh" && fields === 1) {
     return { kind: "refresh", line: "surface-ready" };
+  }
+  if ((event.type === "monitor-subscribe" || event.type === "monitor-unsubscribe") && fields === 1) {
+    return { kind: "monitor", attached: event.type === "monitor-subscribe" };
   }
   if (isNote(event) && fields === 4) {
     const direction = event.type === "note-on" ? "on" : "off";
@@ -62,9 +64,9 @@ function decodeName(nameHex) {
   return nameHex;
 }
 
-function parseInventoryBegin([revision, devices, ports]) {
-  const deviceCount = decimal(devices, 0, maxDevices);
-  const portCount = decimal(ports, 0, maxPorts);
+function parseInventoryBegin([revision, devices, ports], monitorProfile) {
+  const deviceCount = decimal(devices, 0, monitorProfile ? 3 : 2);
+  const portCount = decimal(ports, 0, monitorProfile ? 6 : 5);
   if (deviceCount === undefined || portCount === undefined ||
       !/^(0|[1-9][0-9]{0,19})$/.test(revision) || BigInt(revision) > maxRevision) {
     throw new Error("Invalid inventory header");
@@ -73,12 +75,17 @@ function parseInventoryBegin([revision, devices, ports]) {
 }
 
 class PatchResponse {
-  constructor(kind) {
+  constructor(kind, { monitorProfile = false, registeredOutputs, monitorChange } = {}) {
     this.kind = kind;
     this.refresh = kind === "startup" || kind === "refresh";
+    this.monitorProfile = monitorProfile;
+    this.registeredOutputs = registeredOutputs;
+    this.monitorChange = monitorChange;
+    this.monitorFrame = undefined;
     this.inventory = [];
     this.devices = new Set();
     this.ports = new Set();
+    this.outputPorts = new Set();
     this.slots = new Set();
     this.inventoryComplete = false;
     this.ledPage = undefined;
@@ -90,7 +97,7 @@ class PatchResponse {
     const [record, ...values] = fields;
     const [header] = this.inventory;
     if (!header && record === "inventory" && values.length === 3) {
-      this.inventory.push(parseInventoryBegin(values));
+      this.inventory.push(parseInventoryBegin(values, this.monitorProfile));
       return;
     }
     if (!header) throw new Error("Missing inventory header");
@@ -120,6 +127,7 @@ class PatchResponse {
         throw new Error("Invalid inventory port");
       }
       this.ports.add(id);
+      if (direction === "out") this.outputPorts.add(id);
       if (slot !== 0) this.slots.add(position);
       this.inventory.push({
         type: "patch-port", id, deviceId, direction, state,
@@ -138,12 +146,18 @@ class PatchResponse {
 
   add(line) {
     const fields = line.split(" ");
-    if (this.refresh && !this.inventoryComplete) {
+    const record = fields[0];
+    if (record === "monitor-state") return this.addMonitorState(fields);
+    if (record === "on" || record === "off") return this.addCapture(fields);
+    if ((this.refresh || this.monitorFrame) && !this.inventoryComplete) {
       this.addInventory(fields);
       return;
     }
 
-    const [record, first, second, third] = fields;
+    const [, first, second, third] = fields;
+    if (this.monitorChange && !this.inventoryComplete) {
+      throw new Error("Missing Monitor state or inventory");
+    }
     if (record === "led-page") {
       if (this.ledPage || this.leds.length) throw new Error("Unexpected Patch LED page marker");
       if (first === "route" && fields.length === 2) {
@@ -168,15 +182,45 @@ class PatchResponse {
       this.leds.push({ type: "apc-surface", bytes: [150, pad, color] });
       return;
     }
-    if ((record !== "on" && record !== "off") || this.refresh || this.ledPage || this.leds.length ||
-        this.captureCount === maxCaptures || (this.kind === "surface" && record !== "off")) {
+    throw new Error("Unexpected fixture record");
+  }
+
+  addMonitorState([, port, generation, attached, ...extra]) {
+    const expected = this.monitorChange;
+    if (!expected || this.monitorFrame || this.captureCount || this.inventory.length || extra.length ||
+        port !== String(monitorPort) || generation !== String(expected.generation) ||
+        attached !== (expected.attached ? "1" : "0")) {
+      throw new Error("Invalid or out-of-order Monitor state");
+    }
+    this.monitorFrame = { type: "patch-monitor", portId: monitorPort, ...expected };
+    return this.monitorFrame;
+  }
+
+  addCapture([record, ...values]) {
+    if (this.refresh || this.inventory.length || this.ledPage || this.leds.length ||
+        this.captureCount === (this.monitorProfile ? 75 : 50) ||
+        ((this.kind === "surface" || this.monitorChange) && record !== "off")) {
       throw new Error("Unexpected capture record");
     }
+    if (values.length !== (this.monitorProfile ? 5 : 3)) {
+      throw new Error("Invalid capture framing");
+    }
+    const [channel, note, velocity] = values.slice(-3);
     const event = {
-      type: `note-${record}`, channel: decimal(first, 1, 1),
-      note: decimal(second, 0, 127), velocity: decimal(third, 0, 127),
+      type: `note-${record}`, channel: decimal(channel, 1, this.monitorProfile ? 16 : 1),
+      note: decimal(note, 0, 127), velocity: decimal(velocity, 0, 127),
     };
-    if (!isNote(event)) throw new Error("Invalid capture note");
+    if (!isNote(event, this.monitorProfile ? 16 : 1)) throw new Error("Invalid capture note");
+    if (this.monitorProfile) {
+      const destinationPort = decimal(values[0], 1, 65535);
+      const destinationGeneration = decimal(values[1], 1, maxGeneration);
+      if (!this.registeredOutputs?.has(destinationPort) || destinationGeneration === undefined ||
+          (this.monitorChange && (!this.monitorFrame?.attached || destinationPort !== monitorPort ||
+            destinationGeneration !== this.monitorFrame.generation))) {
+        throw new Error("Invalid capture destination");
+      }
+      Object.assign(event, { destinationPort, destinationGeneration });
+    }
     this.captureCount++;
     return event;
   }
@@ -200,6 +244,21 @@ class PatchResponse {
         throw new Error("Incomplete Patch refresh");
       }
     }
+    if (this.monitorChange) {
+      const snapshotStarted = this.inventory.length > 0 || this.ledPage || this.leds.length > 0;
+      if (this.monitorFrame && (!rejected || snapshotStarted) && (!this.inventoryComplete || !completePage)) {
+        throw new Error("Incomplete Monitor snapshot");
+      }
+      if (!this.monitorFrame && !rejected) throw new Error("Missing Monitor state");
+    }
+    if (this.monitorProfile && this.inventoryComplete) {
+      const port = this.inventory.find((record) => record.type === "patch-port" && record.id === monitorPort);
+      if (!port || port.deviceId !== 3 || port.direction !== "out" || !port.eligible || port.slot !== 3 ||
+          (this.kind === "startup" && port.state !== "disconnected") || (this.monitorFrame &&
+            port.state !== (this.monitorFrame.attached ? "connected" : "disconnected"))) {
+        throw new Error("Invalid Monitor inventory port");
+      }
+    }
     const frames = [...this.inventory];
     if (this.ledPage) frames.push(this.ledPage);
     frames.push(...this.leds);
@@ -208,4 +267,4 @@ class PatchResponse {
   }
 }
 
-module.exports = { parseRequest, PatchResponse };
+module.exports = { maxGeneration, parseRequest, PatchResponse };

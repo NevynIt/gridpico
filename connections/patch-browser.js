@@ -2,6 +2,8 @@
   "use strict";
 
   const maxBufferedOutput = 8192;
+  const monitorProfile = document.currentScript.hasAttribute("data-monitor");
+  const initialPadCount = 40;
   const inventoryTypes = new Set([
     "patch-inventory-begin", "patch-device", "patch-port", "patch-inventory-end",
   ]);
@@ -12,6 +14,7 @@
     url.protocol = "ws:";
     const socket = new WebSocket(url);
     let surface;
+    let initialPads = 0;
     const attempt = { leave: () => stop(1000, "Page closed") };
     current = attempt;
 
@@ -29,7 +32,7 @@
     function send(event) {
       if (socket.readyState !== WebSocket.OPEN) return;
       const message = JSON.stringify(event);
-      // The view sends ASCII note, surface and refresh frames.
+      // The view sends ASCII note, surface, refresh and receiver frames.
       if (socket.bufferedAmount + message.length > maxBufferedOutput) {
         stop(4000, "Patch writer stalled");
         return;
@@ -55,6 +58,11 @@
           surface.receiveLedPage(event);
         } else if (surface && event.type === "apc-surface") {
           surface.receiveSurface(event.bytes);
+          if (monitorProfile && initialPads < initialPadCount && ++initialPads === initialPadCount) {
+            send({ type: "monitor-subscribe" });
+          }
+        } else if (surface && monitorProfile && event.type === "patch-monitor") {
+          surface.receiveMonitor(event);
         } else if (surface && (event.type === "note-on" || event.type === "note-off")) {
           surface.receiveCapture(event);
         } else if (surface && event.type === "error") {

@@ -174,8 +174,8 @@ static gridpico_result write_inventory(gridpico_cli_frontend *frontend,
     if (result != GRIDPICO_OK) {
         return result;
     }
-    if (snapshot.inventory.device_count > GRIDPICO_PATCH_DEVICES ||
-        snapshot.inventory.port_count > GRIDPICO_PATCH_PORTS) {
+    if (snapshot.inventory.device_count > GRIDPICO_PATCH_MAX_DEVICES ||
+        snapshot.inventory.port_count > GRIDPICO_PATCH_MAX_PORTS) {
         return GRIDPICO_CAPACITY;
     }
     for (size_t p = 0; p < snapshot.inventory.port_count; ++p) {
@@ -186,7 +186,7 @@ static gridpico_result write_inventory(gridpico_cli_frontend *frontend,
     if (frontend->read_device_color == NULL) {
         return GRIDPICO_UNAVAILABLE;
     }
-    gridpico_device_color colors[GRIDPICO_PATCH_DEVICES] = {{0}};
+    gridpico_device_color colors[GRIDPICO_PATCH_MAX_DEVICES] = {{0}};
     for (size_t i = 0; i < snapshot.inventory.device_count; ++i) {
         const gridpico_result color_result = frontend->read_device_color(
             frontend->session_context, snapshot.inventory.devices[i].id, &colors[i]);
@@ -368,8 +368,8 @@ static gridpico_result execute_status(gridpico_cli_frontend *frontend,
     gridpico_patch_snapshot snapshot;
     const gridpico_result result = frontend->read_snapshot(frontend->session_context, &snapshot);
     if (result != GRIDPICO_OK) return result;
-    if (snapshot.inventory.device_count > GRIDPICO_PATCH_DEVICES ||
-        snapshot.inventory.port_count > GRIDPICO_PATCH_PORTS) return GRIDPICO_CAPACITY;
+    if (snapshot.inventory.device_count > GRIDPICO_PATCH_MAX_DEVICES ||
+        snapshot.inventory.port_count > GRIDPICO_PATCH_MAX_PORTS) return GRIDPICO_CAPACITY;
     unsigned active = 0;
     unsigned pending = 0;
     for (size_t row = 0; row < GRIDPICO_PATCH_SOURCE_ROWS; ++row) {

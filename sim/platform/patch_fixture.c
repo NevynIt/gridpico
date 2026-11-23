@@ -1,6 +1,6 @@
 #include "patch_fixture.h"
 
-enum { PATCH_FIXTURE_OUTPUTS = 2 };
+enum { PATCH_FIXTURE_OUTPUTS = 2, PATCH_MONITOR_FIXTURE_OUTPUTS = 3 };
 
 static bool valid_state(gridpico_patch_connection_state state)
 {
@@ -25,13 +25,15 @@ static size_t find_port(const gridpico_patch_fixture *fixture, gridpico_port_id 
     return fixture->port_count;
 }
 
-gridpico_result gridpico_patch_fixture_init(gridpico_patch_fixture *fixture,
-                                          const gridpico_patch_inventory *inventory)
+static gridpico_result init_fixture(gridpico_patch_fixture *fixture,
+                                    const gridpico_patch_inventory *inventory,
+                                    size_t device_limit, size_t port_limit,
+                                    size_t destination_limit)
 {
     if (fixture == NULL || inventory == NULL) {
         return GRIDPICO_INVALID;
     }
-    if (inventory->port_count > GRIDPICO_PATCH_PORTS) {
+    if (inventory->device_count > device_limit || inventory->port_count > port_limit) {
         return GRIDPICO_CAPACITY;
     }
 
@@ -46,7 +48,7 @@ gridpico_result gridpico_patch_fixture_init(gridpico_patch_fixture *fixture,
         }
         const bool destination = port->direction == GRIDPICO_PATCH_OUTPUT && port->patch_eligible;
         destinations += destination;
-        if (destinations > PATCH_FIXTURE_OUTPUTS) {
+        if (destinations > destination_limit) {
             return GRIDPICO_CAPACITY;
         }
         initial.ports[initial.port_count++] = (gridpico_patch_fixture_port){
@@ -56,6 +58,20 @@ gridpico_result gridpico_patch_fixture_init(gridpico_patch_fixture *fixture,
     }
     *fixture = initial;
     return GRIDPICO_OK;
+}
+
+gridpico_result gridpico_patch_fixture_init(gridpico_patch_fixture *fixture,
+                                          const gridpico_patch_inventory *inventory)
+{
+    return init_fixture(fixture, inventory, GRIDPICO_PATCH_DEVICES, GRIDPICO_PATCH_PORTS,
+                        PATCH_FIXTURE_OUTPUTS);
+}
+
+gridpico_result gridpico_patch_fixture_init_monitor(gridpico_patch_fixture *fixture,
+                                                  const gridpico_patch_inventory *inventory)
+{
+    return init_fixture(fixture, inventory, GRIDPICO_PATCH_MONITOR_DEVICES,
+                        GRIDPICO_PATCH_MONITOR_PORTS, PATCH_MONITOR_FIXTURE_OUTPUTS);
 }
 
 gridpico_result gridpico_patch_fixture_update_port(void *context,

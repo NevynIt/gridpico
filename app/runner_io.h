@@ -11,7 +11,7 @@ typedef enum {
     REQUEST_MALFORMED
 } request_status;
 
-request_status read_request(char line[REQUEST_SIZE]);
+request_status read_request(char *line, size_t capacity);
 bool parse_note(const char *line, gridpico_note *note);
 bool parse_surface(const char *line, gridpico_apc_surface_message *message);
 bool write_note(gridpico_note note);

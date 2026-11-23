@@ -2,6 +2,8 @@
 
 The command service is `gridpico_cli_execute_line`. The terminal adapter and Diagnostics call this same handler. It reads Patch state with `gridpico_patch_read_snapshot_fn`, colors with the typed device-color callbacks and up to 16 log rows through the optional Assembly provider. It owns no device, route, color or log state. Assembly serializes calls and wires the terminal and Diagnostics to the same service. Pass `&patch_session` with `gridpico_patch_session_read_snapshot`, `gridpico_session_read_device_color` and `gridpico_session_set_device_color`; use a separate log context for `gridpico_read_diagnostic_log_fn`.
 
+Inventory and status validate against the shared storage extents `GRIDPICO_PATCH_MAX_DEVICES` and `GRIDPICO_PATCH_MAX_PORTS`, and iterate the actual snapshot counts. The CLI color scratch uses the shared maximum device extent. This covers stage-one `2/5/2` and the Monitor `3/6/3` profile without changing the reply records or commands.
+
 ```c
 gridpico_cli_init(&cli, &patch_session,
                   gridpico_patch_session_read_snapshot,
@@ -30,10 +32,10 @@ Caller-owned terminal storage is fixed: 128 bytes for the RX FIFO, 64 bytes of c
 
 `third_party/embedded_cli.h` is the unmodified upstream `funbiscuit/embedded-cli` v0.1.4 release header at commit `ffa8014c6230ba809c6a655ccc611a6c4689113f`. Its SHA-256 is `7b6db7fdd691790816f279f850be977433b01903f52f6dd53c0b0569718e6fe2`; the upstream MIT license notice is retained at the start of the header.
 
-The native harness binds to `patch_runtime` through `patch_runtime_bind_cli`, so it exercises the real Session color functions, Patch snapshot and Assembly log ring. It applies a route and typed disconnect through the runtime, then checks inventory, color get/set and shared inventory color, status, logs and CR/LF/CRLF parsing. For each command it compares the shared service's reply bytes with the terminal adapter's reply bytes exactly; terminal prompt and echo remain presentation around those records. After building `gridpico_patch_runner`, build and run the harness with strict C11 diagnostics:
+The native harness binds to `patch_runtime` through `patch_runtime_bind_cli`, so it exercises the real Session color functions, Patch snapshot and Assembly log ring. It applies a route and typed disconnect through the runtime, then checks inventory, color get/set and shared inventory color, status, logs and CR/LF/CRLF parsing. It also initializes the explicit Monitor graph and fixture with a six-port inventory, verifies device 3 and port 6 in inventory/status, and reads/sets device 3's shared Session color. For each command it compares the shared service's reply bytes with the terminal adapter's reply bytes exactly; terminal prompt and echo remain presentation around those records. Build the runtime library and harness with strict C11 diagnostics:
 
 ```sh
-cmake --build build/browser-demo --target gridpico_patch_runner
+cmake --build build/browser-demo --target gridpico_patch_runtime
 cc -std=c11 -Wall -Wextra -Wpedantic -Werror -I. \
   frontends/cli/native_harness.c \
   build/browser-demo/libgridpico_patch_runtime.a \

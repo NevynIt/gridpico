@@ -1,11 +1,19 @@
 #include "core/midi/patch_graph.h"
 
 enum {
-    NO_DEVICE = GRIDPICO_PATCH_DEVICES,
-    NO_PORT = GRIDPICO_PATCH_PORTS,
-    NO_BRANCH = GRIDPICO_PATCH_BRANCHES,
-    NO_CREDIT = GRIDPICO_PATCH_BROWSER_RELEASE_CREDITS,
+    NO_DEVICE = GRIDPICO_PATCH_MAX_DEVICES,
+    NO_PORT = GRIDPICO_PATCH_MAX_PORTS,
+    NO_BRANCH = GRIDPICO_PATCH_MAX_BRANCHES,
+    NO_CREDIT = GRIDPICO_PATCH_MONITOR_RELEASE_CREDITS,
 };
+
+typedef struct {
+    size_t devices;
+    size_t ports;
+    size_t branches;
+    size_t occurrences;
+    size_t release_credits;
+} graph_limits;
 
 static bool valid_state(gridpico_patch_connection_state state)
 {
@@ -133,7 +141,7 @@ static bool branch_active(const gridpico_patch_graph *graph, const gridpico_patc
 static unsigned active_branches(const gridpico_patch_graph *graph)
 {
     unsigned active = 0;
-    for (size_t i = 0; i < GRIDPICO_PATCH_BRANCHES; ++i) {
+    for (size_t i = 0; i < graph->branch_limit; ++i) {
         if (branch_active(graph, &graph->branches[i])) {
             active |= 1u << i;
         }
@@ -206,7 +214,7 @@ static void retire_branch(gridpico_patch_graph *graph, size_t index)
 static gridpico_result retire_input(gridpico_patch_graph *graph, size_t input)
 {
     const gridpico_port_id source = graph->inventory.ports[input].id;
-    for (size_t i = 0; i < GRIDPICO_PATCH_BRANCHES; ++i) {
+    for (size_t i = 0; i < graph->branch_limit; ++i) {
         if (graph->branches[i].enabled && graph->branches[i].source == input) {
             retire_branch(graph, i);
         }
@@ -224,7 +232,7 @@ static gridpico_result retire_input(gridpico_patch_graph *graph, size_t input)
 
 static void retire_output(gridpico_patch_graph *graph, size_t output)
 {
-    for (size_t i = 0; i < GRIDPICO_PATCH_BRANCHES; ++i) {
+    for (size_t i = 0; i < graph->branch_limit; ++i) {
         if (graph->branches[i].enabled && graph->branches[i].destination == output) {
             retire_branch(graph, i);
         }
@@ -282,8 +290,8 @@ static gridpico_result submit_press(gridpico_patch_graph *graph, size_t source,
         return quiesce_input(graph, source);
     }
 
-    size_t selected[GRIDPICO_PATCH_BRANCHES];
-    for (size_t i = 0; i < GRIDPICO_PATCH_BRANCHES; ++i) {
+    size_t selected[GRIDPICO_PATCH_MAX_BRANCHES];
+    for (size_t i = 0; i < graph->branch_limit; ++i) {
         selected[i] = NO_CREDIT;
         const gridpico_patch_graph_branch *branch = &graph->branches[i];
         if ((active & (1u << i)) != 0 && branch->source == source) {
@@ -303,7 +311,7 @@ static gridpico_result submit_press(gridpico_patch_graph *graph, size_t source,
     occurrence->key = input->note.key;
 
     gridpico_result result = GRIDPICO_OK;
-    for (size_t i = 0; i < GRIDPICO_PATCH_BRANCHES; ++i) {
+    for (size_t i = 0; i < graph->branch_limit; ++i) {
         occurrence->credits[i] = NO_CREDIT;
         if (selected[i] == NO_CREDIT) {
             continue;
@@ -345,7 +353,7 @@ static gridpico_result submit_release(gridpico_patch_graph *graph, const gridpic
         }
 
         gridpico_result result = GRIDPICO_OK;
-        for (size_t j = 0; j < GRIDPICO_PATCH_BRANCHES; ++j) {
+        for (size_t j = 0; j < graph->branch_limit; ++j) {
             if (occurrence.credits[j] == NO_CREDIT) {
                 continue;
             }
@@ -362,12 +370,12 @@ static gridpico_result submit_release(gridpico_patch_graph *graph, const gridpic
 
 static gridpico_result init_graph(gridpico_patch_graph *graph, const gridpico_patch_inventory *inventory,
                                   gridpico_deliver_note_fn deliver, void *delivery_context,
-                                  size_t occurrence_limit, size_t release_credit_limit)
+                                  graph_limits limits)
 {
     if (graph == NULL || inventory == NULL || deliver == NULL) {
         return GRIDPICO_INVALID;
     }
-    if (inventory->device_count > GRIDPICO_PATCH_DEVICES || inventory->port_count > GRIDPICO_PATCH_PORTS) {
+    if (inventory->device_count > limits.devices || inventory->port_count > limits.ports) {
         return GRIDPICO_CAPACITY;
     }
     if (!valid_inventory(inventory)) {
@@ -378,8 +386,9 @@ static gridpico_result init_graph(gridpico_patch_graph *graph, const gridpico_pa
         .inventory = *inventory,
         .deliver = deliver,
         .delivery_context = delivery_context,
-        .occurrence_limit = occurrence_limit,
-        .release_credit_limit = release_credit_limit,
+        .branch_limit = limits.branches,
+        .occurrence_limit = limits.occurrences,
+        .release_credit_limit = limits.release_credits,
     };
     for (size_t i = 0; i < graph->inventory.port_count; ++i) {
         graph->ports[i].generation = 1;
@@ -393,8 +402,14 @@ gridpico_result gridpico_patch_graph_init(gridpico_patch_graph *graph,
                                          gridpico_deliver_note_fn deliver,
                                          void *delivery_context)
 {
-    return init_graph(graph, inventory, deliver, delivery_context,
-                      GRIDPICO_PATCH_NOTE_OCCURRENCES, GRIDPICO_PATCH_RELEASE_CREDITS);
+    const graph_limits limits = {
+        .devices = GRIDPICO_PATCH_DEVICES,
+        .ports = GRIDPICO_PATCH_PORTS,
+        .branches = GRIDPICO_PATCH_BRANCHES,
+        .occurrences = GRIDPICO_PATCH_NOTE_OCCURRENCES,
+        .release_credits = GRIDPICO_PATCH_RELEASE_CREDITS,
+    };
+    return init_graph(graph, inventory, deliver, delivery_context, limits);
 }
 
 gridpico_result gridpico_patch_graph_init_browser(gridpico_patch_graph *graph,
@@ -402,8 +417,29 @@ gridpico_result gridpico_patch_graph_init_browser(gridpico_patch_graph *graph,
                                                  gridpico_deliver_note_fn deliver,
                                                  void *delivery_context)
 {
-    return init_graph(graph, inventory, deliver, delivery_context,
-                      GRIDPICO_PATCH_BROWSER_NOTE_OCCURRENCES, GRIDPICO_PATCH_BROWSER_RELEASE_CREDITS);
+    const graph_limits limits = {
+        .devices = GRIDPICO_PATCH_DEVICES,
+        .ports = GRIDPICO_PATCH_PORTS,
+        .branches = GRIDPICO_PATCH_BRANCHES,
+        .occurrences = GRIDPICO_PATCH_BROWSER_NOTE_OCCURRENCES,
+        .release_credits = GRIDPICO_PATCH_BROWSER_RELEASE_CREDITS,
+    };
+    return init_graph(graph, inventory, deliver, delivery_context, limits);
+}
+
+gridpico_result gridpico_patch_graph_init_monitor(gridpico_patch_graph *graph,
+                                                 const gridpico_patch_inventory *inventory,
+                                                 gridpico_deliver_note_fn deliver,
+                                                 void *delivery_context)
+{
+    const graph_limits limits = {
+        .devices = GRIDPICO_PATCH_MONITOR_DEVICES,
+        .ports = GRIDPICO_PATCH_MONITOR_PORTS,
+        .branches = GRIDPICO_PATCH_MONITOR_BRANCHES,
+        .occurrences = GRIDPICO_PATCH_MONITOR_NOTE_OCCURRENCES,
+        .release_credits = GRIDPICO_PATCH_MONITOR_RELEASE_CREDITS,
+    };
+    return init_graph(graph, inventory, deliver, delivery_context, limits);
 }
 
 gridpico_result gridpico_patch_graph_update_port(void *context,
@@ -474,7 +510,7 @@ gridpico_result gridpico_patch_graph_set_route(void *context,
 
     size_t existing = NO_BRANCH;
     size_t free_branch = NO_BRANCH;
-    for (size_t i = 0; i < GRIDPICO_PATCH_BRANCHES; ++i) {
+    for (size_t i = 0; i < graph->branch_limit; ++i) {
         const gridpico_patch_graph_branch *branch = &graph->branches[i];
         if (branch->enabled && branch->source == source && branch->destination == destination) {
             existing = i;
@@ -515,7 +551,7 @@ gridpico_result gridpico_patch_graph_read_graph(void *context, gridpico_patch_gr
         return GRIDPICO_INVALID;
     }
     *out = (gridpico_patch_graph_state){.revision = graph->revision, .inventory = graph->inventory};
-    for (size_t i = 0; i < GRIDPICO_PATCH_BRANCHES; ++i) {
+    for (size_t i = 0; i < graph->branch_limit; ++i) {
         const gridpico_patch_graph_branch *branch = &graph->branches[i];
         if (branch->enabled) {
             out->branches[out->branch_count++] = (gridpico_patch_branch){

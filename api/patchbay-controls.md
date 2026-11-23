@@ -12,6 +12,8 @@ Use the production APC frontend with `gridpico_patch_read_snapshot_fn`, `gridpic
 
 ### Separate connected Patch path
 
+The [Web Monitor destination contract](web-monitor-proposal.md) extends this path for the default Patch host. The two-branch host mode retains its untagged Capture framing and stays silent. Browser lifecycle requests in the Monitor profile apply only to its own virtual receiver.
+
 Keep the one-pad `/demo/midi` runner and wire contract in place. The Patch runner uses `/patch/midi` and the existing note and `apc-surface` object shapes. In the Patch connection, `{"type":"patch-refresh"}` requests another full live snapshot. The host maps it to `surface-ready`, which also performs the initial refresh. The runner keeps the same LF command framing for `surface`, `on` and `off`. The host sends browser `ready` before initial LEDs. A host can request a refreshed snapshot after an in-process simulated port change. Port lifecycle events are supplied by the simulation or platform adapter through the typed update, with no browser command for changing device identity or connection state.
 
 Keep at most one request in flight and 16 queued per connection, one local fixture per socket, and a maximum of 256 UTF-8 bytes per browser frame. An ordinary response can contain at most four accepted note rows, then 40 surface rows, then its terminator. A refresh carries the inventory block defined below. Use `ok` on success. A valid command rejected by the core ends with `err INVALID`, `err CAPACITY` or `err UNAVAILABLE`. The Patch host forwards the records in order and reports that rejection as `{"type":"error","code":"UNAVAILABLE"}` using the returned code. This keeps the Patch connection open while the authoritative LED snapshot remains visible. Malformed framing, unexpected runner termination or transport overflow use the existing close-and-cleanup behavior. Drain runner output while disconnect cleanup completes.
@@ -68,7 +70,7 @@ Expose the disconnected state and a manual **Reconnect** action for a genuine ov
 2. Disable one branch with notes held. Check its 25 accepted zero-velocity releases reach the browser before the LED page and the other branch stays active. Delay the remainder of a fixture reply and verify an accepted release is forwarded before the terminator. Verify both-branch cleanup can produce a full 50-row dispatch, independently of the retained 16-row history.
 3. Exercise a deliberate 26th input, a forced valid surface `CAPACITY` reply and sustained transport overflow as separate cases. Verify terminal keybed cleanup and error ordering, recoverable surface rejection, visible loss and one fresh manual reconnect. Verify no held note or route replays. Rerun the small native Patch, native transpose and Route-view proofs.
 
-This gate covers two instrument branches. Destination-specific browser audio belongs to the [separate Web Monitor proposal](web-monitor-proposal.md).
+This gate covers two instrument branches. The [Web Monitor destination contract](web-monitor-proposal.md) adds the third destination in the Monitor app profile.
 
 ## Shared runtime colors
 

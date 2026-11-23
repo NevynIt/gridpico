@@ -7,6 +7,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+enum { MONITOR_REQUEST_SIZE = sizeof("monitor-detach 4294967295") };
+
 typedef enum {
     DISPATCH_BAD_FRAME,
     DISPATCH_COMPLETE,
@@ -102,10 +104,19 @@ static bool write_inventory(const gridpico_patch_snapshot *snapshot)
     return puts("inventory-end") != EOF;
 }
 
-static bool write_notes(const patch_output *output)
+static bool write_notes(const patch_runtime *runtime)
 {
+    const patch_output *output = &runtime->output;
     for (size_t i = 0; i < output->note_count; ++i) {
-        if (!write_note(output->notes[i].note)) {
+        const gridpico_note_delivery *delivery = &output->notes[i];
+        const gridpico_note note = delivery->note;
+        const bool written = runtime->monitor_generation == 0 ? write_note(note) :
+            printf("%s %u %" PRIu32 " %u %u %u\n",
+                   note.kind == GRIDPICO_NOTE_ON ? "on" : "off",
+                   (unsigned)delivery->destination.endpoint, delivery->destination.generation,
+                   (unsigned)note.channel_index + 1u, (unsigned)note.key,
+                   (unsigned)note.velocity) >= 0;
+        if (!written) {
             return false;
         }
     }
@@ -134,24 +145,86 @@ static bool write_page(const patch_output *output)
     return true;
 }
 
-static bool write_response(const patch_output *output, const gridpico_patch_snapshot *inventory,
+static bool write_response(const patch_runtime *runtime, const gridpico_patch_snapshot *inventory,
                            gridpico_result result)
 {
+    const patch_output *output = &runtime->output;
     if (output->overflowed || (inventory != NULL && !output->has_page) ||
         output->led_count != (output->has_page ? GRIDPICO_PATCH_LED_FRAMES : 0u)) {
         fputs("Patch runner could not stage a complete dispatch\n", stderr);
         return false;
     }
-    return write_notes(output) && (inventory == NULL || write_inventory(inventory)) &&
+    if (output->has_monitor_state &&
+        printf("monitor-state %u %" PRIu32 " %u\n", (unsigned)GRIDPICO_PATCH_MONITOR_PORT_ID,
+               runtime->monitor_generation, (unsigned)runtime->monitor_attached) < 0) {
+        return false;
+    }
+    if (!write_notes(runtime) ||
+        (runtime->monitor_generation != 0 && (output->has_monitor_state || output->note_count != 0) &&
+         fflush(stdout) != 0)) {
+        return false;
+    }
+    return (inventory == NULL || write_inventory(inventory)) &&
            write_page(output) && puts(result_name(result)) != EOF && fflush(stdout) == 0;
 }
 
+static const char *monitor_argument(const char *line, bool *attached)
+{
+    const char attach[] = "monitor-attach";
+    const char detach[] = "monitor-detach";
+    const size_t length = sizeof(attach) - 1;
+    if (strncmp(line, attach, length) == 0 && (line[length] == ' ' || line[length] == '\0')) {
+        *attached = true;
+        return line + length;
+    }
+    if (strncmp(line, detach, length) == 0 && (line[length] == ' ' || line[length] == '\0')) {
+        *attached = false;
+        return line + length;
+    }
+    return NULL;
+}
+
+static bool parse_monitor_generation(const char *argument, uint32_t *generation)
+{
+    if (*argument++ != ' ' || *argument == '\0') {
+        return false;
+    }
+    uint32_t parsed = 0;
+    for (; *argument != '\0'; ++argument) {
+        if (*argument < '0' || *argument > '9') {
+            return false;
+        }
+        const uint32_t digit = (uint32_t)(*argument - '0');
+        if (parsed > (UINT32_MAX - digit) / 10u) {
+            return false;
+        }
+        parsed = parsed * 10u + digit;
+    }
+    *generation = parsed;
+    return parsed != 0;
+}
+
 static dispatch_status dispatch(patch_runtime *runtime, const char *line,
+                                request_status status,
                                 gridpico_patch_snapshot *snapshot, bool *inventory,
                                 gridpico_result *result)
 {
     patch_runtime_clear_output(runtime);
     *inventory = false;
+    if (runtime->monitor_generation != 0) {
+        bool attached;
+        const char *argument = monitor_argument(line, &attached);
+        if (argument != NULL) {
+            uint32_t generation;
+            *result = status == REQUEST_LINE && parse_monitor_generation(argument, &generation)
+                ? patch_runtime_set_monitor(runtime, generation, attached, snapshot, inventory)
+                : GRIDPICO_INVALID;
+            return DISPATCH_COMPLETE;
+        }
+    }
+    if (status != REQUEST_LINE) {
+        return DISPATCH_BAD_FRAME;
+    }
     if (strcmp(line, "surface-ready") == 0) {
         *result = patch_runtime_refresh(runtime, snapshot);
         *inventory = *result == GRIDPICO_OK;
@@ -178,8 +251,13 @@ static dispatch_status dispatch(patch_runtime *runtime, const char *line,
         ? DISPATCH_KEYBED_EXHAUSTED : DISPATCH_COMPLETE;
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    const bool monitor = argc == 2 && strcmp(argv[1], "--monitor") == 0;
+    if (argc != 1 && !monitor) {
+        fputs("Usage: gridpico_patch_runner [--monitor]\n", stderr);
+        return EXIT_FAILURE;
+    }
 #ifdef SIGPIPE
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
         fputs("Patch runner could not ignore SIGPIPE\n", stderr);
@@ -187,7 +265,9 @@ int main(void)
     }
 #endif
     patch_runtime runtime;
-    if (patch_runtime_init_browser(&runtime) != GRIDPICO_OK) {
+    const gridpico_result initialized = monitor ? patch_runtime_init_monitor(&runtime)
+                                               : patch_runtime_init_browser(&runtime);
+    if (initialized != GRIDPICO_OK) {
         fputs("Patch runner could not initialize the fixture\n", stderr);
         return EXIT_FAILURE;
     }
@@ -197,17 +277,16 @@ int main(void)
     bool keybed_exhausted = false;
     gridpico_result cleanup = GRIDPICO_OK;
     while (output_ok && !keybed_exhausted) {
-        char line[REQUEST_SIZE];
-        const request_status status = read_request(line);
+        char line[MONITOR_REQUEST_SIZE];
+        const request_status status = read_request(line, monitor ? sizeof(line) : REQUEST_SIZE);
         if (status == REQUEST_EOF) {
             break;
         }
         gridpico_patch_snapshot snapshot;
         bool inventory;
         gridpico_result result;
-        const dispatch_status dispatched = status == REQUEST_LINE
-            ? dispatch(&runtime, line, &snapshot, &inventory, &result)
-            : DISPATCH_BAD_FRAME;
+        const dispatch_status dispatched =
+            dispatch(&runtime, line, status, &snapshot, &inventory, &result);
         if (dispatched == DISPATCH_BAD_FRAME) {
             fputs("Patch runner received malformed framing\n", stderr);
             malformed = true;
@@ -216,15 +295,15 @@ int main(void)
         keybed_exhausted = dispatched == DISPATCH_KEYBED_EXHAUSTED;
         if (keybed_exhausted) {
             /* Keep all accepted releases, including any accepted on teardown retry. */
-            cleanup = patch_runtime_disconnect_keybed(&runtime);
+            cleanup = patch_runtime_retire(&runtime);
         }
-        output_ok = write_response(&runtime.output, inventory ? &snapshot : NULL, result);
+        output_ok = write_response(&runtime, inventory ? &snapshot : NULL, result);
     }
 
     if (!keybed_exhausted) {
         patch_runtime_clear_output(&runtime);
-        cleanup = patch_runtime_disconnect_keybed(&runtime);
-        output_ok = output_ok && write_notes(&runtime.output) && fflush(stdout) == 0;
+        cleanup = patch_runtime_retire(&runtime);
+        output_ok = output_ok && write_notes(&runtime) && fflush(stdout) == 0;
     }
     if (cleanup != GRIDPICO_OK || ferror(stdin) || !output_ok) {
         fputs("Patch runner could not complete stdio or disconnect cleanup\n", stderr);

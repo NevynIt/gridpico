@@ -5,20 +5,24 @@ const { accessSync, constants, readFileSync } = require("node:fs");
 const { createServer } = require("node:http");
 const path = require("node:path");
 const { WebSocket, WebSocketServer } = require("ws");
-const { parseRequest, PatchResponse } = require("./patch-wire");
+const { maxGeneration, parseRequest, PatchResponse } = require("./patch-wire");
+
+const args = process.argv.slice(2);
+const monitorProfile = args[0] !== "--two-branch";
+if (!monitorProfile) args.shift();
 
 const address = "127.0.0.1";
 const maxMessageBytes = 256;
-const maxQueuedRequests = 160;
+const maxQueuedRequests = monitorProfile ? 162 : 160;
 const maxRunnerLine = 128;
-const maxBufferedOutput = 8192;
+const maxBufferedOutput = monitorProfile ? 12 * 1024 : 8192;
 const runnerTimeoutMs = 5000;
 const readerTimeoutMs = 5000;
 
-const [, , runnerArg, portArg = "8766"] = process.argv;
+const [runnerArg, portArg = "8766"] = args;
 const port = Number(portArg);
-if (!runnerArg || !/^\d+$/.test(portArg) || port > 65535 || process.argv.length > 4) {
-  console.error("Usage: node connections/patch-host.js <patch-runner> [port]");
+if (!runnerArg || !/^\d+$/.test(portArg) || port > 65535 || args.length > 2) {
+  console.error("Usage: node connections/patch-host.js [--two-branch] <patch-runner> [port]");
   process.exit(1);
 }
 const runnerPath = path.resolve(runnerArg);
@@ -31,12 +35,14 @@ try {
 
 function attach(socket, onRetired) {
   // Keep terminal Ctrl+C in the host so the runner receives EOF and can release notes.
-  const runner = spawn(runnerPath, [], {
+  const runner = spawn(runnerPath, monitorProfile ? ["--monitor"] : [], {
     stdio: ["pipe", "pipe", "inherit"], detached: process.platform !== "win32",
   });
   const pending = [];
   let ready = false;
   let usesPageMarkers;
+  let registeredOutputs;
+  let monitor = { generation: 1, attached: false };
   let response;
   let retiring = false;
   let partialLine = "";
@@ -102,18 +108,29 @@ function attach(socket, onRetired) {
     }
   }
 
-  function dispatch({ kind, line }) {
+  function dispatch({ kind, line, attached }) {
     if (socket.readyState !== WebSocket.OPEN) {
       retire();
       return;
     }
-    response = new PatchResponse(kind);
+    let monitorChange;
+    if (kind === "monitor") {
+      if (!attached && !monitor.attached) return;
+      const generation = attached && !monitor.attached ? monitor.generation + 1 : monitor.generation;
+      if (generation > maxGeneration) {
+        sendBatch([{ type: "error", code: "CAPACITY" }]);
+        return;
+      }
+      monitorChange = { generation, attached };
+      line = `monitor-${attached ? "attach" : "detach"} ${generation}`;
+    }
+    response = new PatchResponse(kind, { monitorProfile, registeredOutputs, monitorChange });
     armRunnerTimer(() => retire(1011, "Patch dispatch timed out"));
     runner.stdin.write(`${line}\n`);
   }
 
   function dispatchNext() {
-    if (!retiring && ready && !response && pending.length > 0) dispatch(pending.shift());
+    while (!retiring && ready && !response && pending.length > 0) dispatch(pending.shift());
   }
 
   function readLine(line) {
@@ -124,14 +141,18 @@ function attach(socket, onRetired) {
       return;
     }
     if (line !== "ok" && !line.startsWith("err ")) {
-      const capture = response.add(line);
-      if (capture) sendBatch([capture]);
+      const event = response.add(line);
+      if (event?.type === "patch-monitor") {
+        monitor = { generation: event.generation, attached: event.attached };
+      }
+      if (event) sendBatch([event]);
       return;
     }
 
     const code = line === "ok" ? undefined : line.slice(4);
     const frames = response.finish(code, usesPageMarkers);
     const exhaustedKeybed = response.kind === "keybed-on" && code === "CAPACITY";
+    if (response.inventoryComplete) registeredOutputs = response.outputPorts;
     if (response.kind === "startup") {
       if (code !== undefined) throw new Error(`Patch startup rejected: ${code}`);
       ready = true;
@@ -180,7 +201,7 @@ function attach(socket, onRetired) {
   socket.on("message", (data, binary) => {
     if (retiring) return;
     const request = ready && !binary && parseRequest(data);
-    if (!request) {
+    if (!request || (request.kind === "monitor" && !monitorProfile)) {
       retire(1008, "Invalid Patch message");
     } else if (pending.length === maxQueuedRequests) {
       retire(1013, "Patch queue full");
@@ -196,7 +217,10 @@ function attach(socket, onRetired) {
 
 const page = readFileSync(path.join(__dirname, "../web/apc/index.html"), "utf8");
 if (!page.includes("</head>")) throw new Error("Web APC page is missing </head>");
-const connectedPage = page.replace("</head>", '<script defer src="/patch/midi.js"></script>\n</head>');
+const monitorAttribute = monitorProfile ? " data-monitor" : "";
+const connectedPage = page.replace(
+  "</head>", `<script defer src="/patch/midi.js"${monitorAttribute}></script>\n</head>`,
+);
 const adapter = readFileSync(path.join(__dirname, "patch-browser.js"));
 const assets = new Map([
   ["/patch/", ["text/html; charset=utf-8", connectedPage]],

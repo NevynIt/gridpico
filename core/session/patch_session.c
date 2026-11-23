@@ -1,9 +1,5 @@
 #include "core/session/patch_session.h"
 
-_Static_assert(GRIDPICO_PATCH_PORTS <= GRIDPICO_PATCH_SOURCE_ROWS &&
-                   GRIDPICO_PATCH_PORTS <= GRIDPICO_PATCH_DESTINATION_COLUMNS,
-               "A Patch page must hold all registered ports of either direction");
-
 void gridpico_patch_session_init(gridpico_patch_session *session, void *graph_context,
                                 gridpico_patch_read_graph_fn read_graph,
                                 gridpico_patch_set_route_fn set_graph_route)
@@ -22,9 +18,9 @@ static gridpico_result read_graph(const gridpico_patch_session *session,
     if (result != GRIDPICO_OK) {
         return result;
     }
-    if (state->inventory.device_count > GRIDPICO_PATCH_DEVICES ||
-        state->inventory.port_count > GRIDPICO_PATCH_PORTS ||
-        state->branch_count > GRIDPICO_PATCH_BRANCHES) {
+    if (state->inventory.device_count > GRIDPICO_PATCH_MAX_DEVICES ||
+        state->inventory.port_count > GRIDPICO_PATCH_MAX_PORTS ||
+        state->branch_count > GRIDPICO_PATCH_MAX_BRANCHES) {
         return GRIDPICO_CAPACITY;
     }
     return GRIDPICO_OK;
@@ -65,8 +61,14 @@ gridpico_result gridpico_patch_session_read_snapshot(void *context, gridpico_pat
             continue;
         }
         if (port->direction == GRIDPICO_PATCH_INPUT) {
+            if (source_count == GRIDPICO_PATCH_SOURCE_ROWS) {
+                return GRIDPICO_CAPACITY;
+            }
             snapshot.source_rows[source_count++] = port->id;
         } else if (port->direction == GRIDPICO_PATCH_OUTPUT) {
+            if (destination_count == GRIDPICO_PATCH_DESTINATION_COLUMNS) {
+                return GRIDPICO_CAPACITY;
+            }
             snapshot.destination_columns[destination_count++] = port->id;
         }
     }

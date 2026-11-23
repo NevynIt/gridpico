@@ -30,8 +30,13 @@ hold **Q** to hear destination note 72 (C5, about 523.25 Hz). Release **Q** or
 press Escape to end the note. The **Capture** tab continues to record routed
 destination events while you view Monitor, including when audio is off.
 
-Master volume starts at 35%. Each of the 16 channels can use Sine, Triangle,
-Square or Mute. A new sound choice applies to the next received Note On.
+Master volume starts at 35%. **Listen to** defaults to **All**. Select
+**MIDI 1** through **MIDI 16** to hear just that channel. Changing the
+filter stops excluded voices and plays only fresh notes when they return
+to the filter. Capture and routing continue on all channels.
+
+Each channel can use Sine, Triangle, Square or Mute. A new sound choice applies
+to the next received Note On.
 Muting a channel releases that channel's voices. Disabling audio or losing
 the connection clears all voices. Starting audio or reconnecting waits for
 fresh destination events. The monitor uses up to 25 voices, including release
@@ -107,11 +112,15 @@ The separate color panel displays the selected device and its received APC
 palette preview. While the color layer is open, the grid shows the last route
 page. Release Shift for fresh route feedback.
 
-Patch Capture shows all accepted note records. The current note frame
-carries no destination ID. Matching notes from two outputs can therefore
-appear identical in Capture and share a browser Monitor voice. The one-pad
-Route view and the offline Protocol Lab remain separate.
-[Patch browser contract](../../api/patchbay-controls.md#read-only-browser-inventory)
+Patch Capture shows all accepted note records with their destination port name,
+ID and generation. To hear Patch through the browser, enable the route to the
+**Monitor** destination and choose **Enable audio**. The browser plays only
+deliveries for its attached Web Monitor receiver. Instrument releases and
+stale-generation releases leave current Monitor voices alone. Receiver detach
+clears its voices. Reattach waits for fresh deliveries and leaves the local
+audio and channel settings in effect. A full connection loss still turns
+audio off and clears voices. Route view retains its original capture feed.
+[Patch browser contract](../../api/patchbay-controls.md#read-only-browser-inventory) · [Web Monitor contract](../../api/web-monitor-proposal.md#framing-and-readiness-order)
 
 ## Protocol lab
 

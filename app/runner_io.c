@@ -3,14 +3,14 @@
 #include <stdio.h>
 #include <string.h>
 
-request_status read_request(char line[REQUEST_SIZE])
+request_status read_request(char *line, size_t capacity)
 {
     size_t length = 0;
     bool malformed = false;
     int byte;
 
     while ((byte = getchar()) != EOF && byte != '\n') {
-        if (length == REQUEST_SIZE - 1 || byte < 0x20 || byte > 0x7e) {
+        if (length == capacity - 1 || byte < 0x20 || byte > 0x7e) {
             malformed = true;
         } else if (!malformed) {
             line[length++] = (char)byte;

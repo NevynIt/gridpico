@@ -14,7 +14,7 @@ typedef struct {
     gridpico_patch_set_route_fn set_graph_route;
     gridpico_revision color_revision;
     /* Colors follow the graph's stable device registration slots. */
-    gridpico_patch_color_preference colors[GRIDPICO_PATCH_DEVICES];
+    gridpico_patch_color_preference colors[GRIDPICO_PATCH_MAX_DEVICES];
 } gridpico_patch_session;
 
 /* Bind both callbacks to the same graph. Assembly serializes commands and

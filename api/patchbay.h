@@ -3,16 +3,35 @@
 
 #include "native_proof.h"
 
-/* Limits for the first native Patch fixture. */
+/* Native Patch profile. The two-branch browser uses the same topology. */
 enum {
     GRIDPICO_PATCH_DEVICES = 2,
     GRIDPICO_PATCH_PORTS = 5,
     GRIDPICO_PATCH_BRANCHES = 2,
+    GRIDPICO_PATCH_NOTE_OCCURRENCES = 2,
+    GRIDPICO_PATCH_RELEASE_CREDITS = 4
+};
+
+/* Opt-in Monitor profile. IDs are scoped to the Monitor fixture. */
+enum {
+    GRIDPICO_PATCH_MONITOR_DEVICES = 3,
+    GRIDPICO_PATCH_MONITOR_PORTS = 6,
+    GRIDPICO_PATCH_MONITOR_BRANCHES = 3,
+    GRIDPICO_PATCH_MONITOR_NOTE_OCCURRENCES = 25,
+    GRIDPICO_PATCH_MONITOR_RELEASE_CREDITS =
+        GRIDPICO_PATCH_MONITOR_NOTE_OCCURRENCES * GRIDPICO_PATCH_MONITOR_BRANCHES,
+    GRIDPICO_PATCH_MONITOR_DEVICE_ID = 3,
+    GRIDPICO_PATCH_MONITOR_PORT_ID = 6
+};
+
+/* Shared storage bounds. The active profile determines actual counts. */
+enum {
+    GRIDPICO_PATCH_MAX_DEVICES = 3,
+    GRIDPICO_PATCH_MAX_PORTS = 6,
+    GRIDPICO_PATCH_MAX_BRANCHES = 3,
     GRIDPICO_PATCH_SOURCE_ROWS = 5,
     GRIDPICO_PATCH_DESTINATION_COLUMNS = 8,
     GRIDPICO_PATCH_NAME_BYTES = 32,
-    GRIDPICO_PATCH_NOTE_OCCURRENCES = 2,
-    GRIDPICO_PATCH_RELEASE_CREDITS = 4,
     GRIDPICO_PATCH_CAPTURE_ROWS = 16
 };
 
@@ -48,8 +67,8 @@ typedef struct {
 typedef struct {
     size_t device_count;
     size_t port_count;
-    gridpico_patch_device devices[GRIDPICO_PATCH_DEVICES];
-    gridpico_patch_port ports[GRIDPICO_PATCH_PORTS];
+    gridpico_patch_device devices[GRIDPICO_PATCH_MAX_DEVICES];
+    gridpico_patch_port ports[GRIDPICO_PATCH_MAX_PORTS];
 } gridpico_patch_inventory;
 
 typedef struct {
@@ -79,7 +98,7 @@ typedef struct {
     gridpico_revision revision;
     gridpico_patch_inventory inventory;
     size_t branch_count;
-    gridpico_patch_branch branches[GRIDPICO_PATCH_BRANCHES];
+    gridpico_patch_branch branches[GRIDPICO_PATCH_MAX_BRANCHES];
 } gridpico_patch_graph_state;
 
 typedef struct {
