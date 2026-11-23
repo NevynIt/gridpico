@@ -15,6 +15,8 @@ The APC is the preferred physical interface. Its browser simulator is the prefer
 
 The first browser APC slice shows the 5×8 pad grid, the other APC panel buttons and the 25-key playing keyboard. Prioritize a playable keybed whose presses and releases send MIDI Note On and Note Off through the simulated keybed path into the routing kernel. Basic pad and button LED feedback is sufficient for this slice.
 
+The Web APC follows the physical APC Key 25 mk2 layout and proportions. In the demo, a visible summary beside the pad grid identifies the Route pad's source, destination, transformation, and current state.
+
 Include a browser MIDI log that shows events received at the simulated destination. Pressing and releasing a browser key on a route with transpose should visibly produce the matching transposed Note On and Note Off. This gives the user a way to check the routing path with no USB MIDI devices connected.
 
 The web interface can also offer optional audible monitoring of routed MIDI. The Monitor view uses the same destination events as the log and generates sound on the host in the browser. It offers an audio enable control, master volume, and a sound or mute choice for each MIDI channel of the monitored destination. A small set of lightweight sounds supports the first version.

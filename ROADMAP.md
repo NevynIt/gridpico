@@ -19,6 +19,12 @@ From the repository root, run `./scripts/demo-route-transpose.sh`. Builder and T
 
 Follow the connected browser startup instructions, open the loopback URL and press and release **Q**. Independent Chromium acceptance confirmed one captured channel-1 Note On for note 72 at velocity 96 followed by Note Off at velocity 0, cancellation without duplicate release, held-note cleanup on disconnect and a fresh capture on reconnect. The standalone surface remains the fallback. Sustained stalled-reader saturation was outside this run's verification. [Connected Web APC startup](connections/README.md) · [Standalone browser surface](web/apc/index.html)
 
+## Verified Web APC layout upgrade
+
+The approved layout upgrade uses the APC Key 25 mk2 protocol diagram for the 5×8 pad matrix, track and scene controls, two rows of four knobs, and the 25-key keybed. The demo summary shows simulated APC keybed input 1, +12 semitones and simulated MIDI capture output 2. Connection lifecycle distinguishes Disconnected and waiting for feedback. Received LED feedback sets Active or Off. [miniMIDI protocol diagram](https://raw.githubusercontent.com/NevynIt/miniMIDI/main/ref/Keyboards/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1%20%281%29.pdf)
+
+Independent Chromium checks exercised all 40 pads and 25 keys at 1440, 390 and 320 CSS pixels. A delayed dark feedback frame proved the visible status stayed Active after the accepted release and switched to Off only when that frame arrived. Route cleanup, reconnect, Monitor, MIDI log and the standalone preview passed. The native proof still produced the same four-case trace byte for byte. Documentation maintains a one-page map of major modules and evidence boundaries. [Gridpico at a glance](docs/AT_A_GLANCE.md)
+
 ## Approved follow-ons for the rest of tonight
 
 The human approved implementation of browser monitoring and the scoped one-pad route toggle. The verified native command and connected Web APC log are the demo fallback.

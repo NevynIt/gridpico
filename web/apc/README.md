@@ -14,10 +14,12 @@ at start-up, MIDI note 60 on channel 1. The octave buttons shift the keybed
 locally. Cancellation, lost pointer capture, Escape, and leaving the page
 release held controls. Panel buttons and Sustain show their local pressed state.
 
-The panel and keybed reference is the official [Akai Communications Protocol
-v1.1](https://cdn.inmusicbrands.com/akai/attachments/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1.pdf),
-pages 14–15. The display uses 1-based MIDI channels. The initial note range
-48–72 and fixed press velocity 96 are simulator defaults.
+The pad matrix and control positions follow pages 2 and 14–15 of the
+[Akai Communications Protocol v1.1 diagram in miniMIDI](https://raw.githubusercontent.com/NevynIt/miniMIDI/main/ref/Keyboards/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1%20%281%29.pdf).
+The keybed and Route pad send MIDI. The octave buttons adjust the keybed
+locally. The other pads and knobs show the hardware layout. The display
+uses 1-based MIDI channels. The initial note range 48–72 and fixed press
+velocity 96 are simulator defaults.
 
 ## Listen to routed MIDI
 
@@ -57,8 +59,12 @@ connections adapter calls `window.gridpicoApc.connect(sendKeybed)` after the
 
 ## Demo route pad
 
-In the connected demo, the bottom-left **Route** pad toggles the +12 route.
-Green means the route is active. The amber outline shows when the pad is held.
+In the connected demo, the bottom-left **Route** pad toggles the fixture
+from the simulated APC keybed (input 1), through +12 semitones, to simulated
+MIDI capture (output 2). The route status starts at **Disconnected**, shows
+**Waiting for feedback** on attach, and changes to **Active** or **Off** as
+LED messages arrive. Green means the route is active. The amber outline
+shows when the pad is held.
 To check the toggle, hold **Q** and press the pad. Capture shows one release
 for note 72 as the pad goes dark. Release **Q**, press the pad again, and play
 a fresh **Q** to hear or capture the transposed note again.
