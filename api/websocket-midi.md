@@ -1,6 +1,6 @@
 # WebSocket MIDI transport
 
-**Owner** Architect. **Status** Loopback verified. The opt-in cross-host listener is implemented. Independent isolated tests verified mutual-TLS admission and native-client MIDI receipt and recovery. Desktop Chromium certificate selection and two-host WSS acceptance remain pending. [Local router](local-router.md#loopback-transport) · [Roadmap](../ROADMAP.md#4-verify-rtp-midi-and-productize-cross-host-websocket-midi).
+**Owner** Architect. **Status** Loopback and isolated mTLS admission verified. Independent two-host testing of `6ddb7f0` verified native-client MIDI receipt, feedback restore, scoped release and fresh binding against the Pi listener. Desktop Chromium certificate selection and cross-host browser acceptance remain pending. [Local router](local-router.md#loopback-transport) · [Roadmap](../ROADMAP.md#4-verify-rtp-midi-and-productize-cross-host-websocket-midi).
 
 WebSocket MIDI serves standard browsers and compatible native clients. The default profile binds IPv4 loopback. The opt-in cross-host profile carries the same binary MIDI over authenticated `wss://` on a selected LAN interface. RTP-MIDI connects through native OS ports under its own acceptance gate. Report failure on the selected transport. The operator chooses any transport or route change explicitly.
 
