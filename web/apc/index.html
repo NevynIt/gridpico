@@ -59,7 +59,10 @@
   }
   .deck-side { display: grid; grid-template-rows: 1fr auto; }
   .panel, .transport, .knobs { display: grid; gap: clamp(.16rem, .58vw, .43rem); }
-  .panel { grid-template-columns: repeat(8, minmax(0, 1fr)) minmax(0, .65fr); align-items: stretch; }
+  .panel {
+    position: relative; padding-top: .65rem;
+    grid-template-columns: repeat(8, minmax(0, 1fr)) minmax(0, .65fr); align-items: stretch;
+  }
   .control {
     background: #d6dce0; color: #24262a; border: 1px solid #16171b; border-radius: .24rem;
     box-shadow: inset 0 1px #ffffffa0, inset 0 -2px #14151c30;
@@ -71,6 +74,15 @@
   .scene, .track { background: #b7bcc2; }
   .track, .scene { width: 82%; justify-self: center; }
   .track { width: 67%; }
+  .printed-control { display: grid; justify-items: center; align-content: center; gap: .16rem; min-width: 0; }
+  .printed-control > .legend { max-width: 100%; overflow-wrap: anywhere; }
+  .legend { color: #f2eef4; font: 650 clamp(.42rem, .76vw, .625rem)/1.1 var(--mono); text-align: center; }
+  .soft-keys-label { position: absolute; top: 0; right: 0; }
+  .knob-ctrl-label { grid-column: 5 / 9; }
+  .legend-arrow {
+    display: block; width: 0; height: 0; border: .24rem solid transparent;
+    border-top: 0; border-bottom: .33rem solid currentColor; transform: rotate(var(--legend-turn));
+  }
   .play::after, .record::after, .stop::after { content: ""; display: block; margin: auto; }
   .play::after { width: 0; height: 0; border: .26rem solid transparent; border-left: .42rem solid currentColor; border-right: 0; }
   .record::after, .stop::after { width: .44rem; aspect-ratio: 1; background: currentColor; }
@@ -80,17 +92,22 @@
     align-content: space-evenly;
     margin: clamp(.05rem, .55vw, .4rem) 0 clamp(.25rem, .8vw, .65rem); padding: 0; list-style: none;
   }
-  .knobs li {
-    display: grid; justify-items: center; gap: .18rem; min-width: 0;
+  .knob {
+    display: grid; justify-items: center; gap: .18rem; width: 100%; min-width: 0; padding: 0;
+    border: 0; background: transparent; touch-action: none; user-select: none; cursor: ns-resize;
     color: #e0e0e6; font: clamp(.5rem, .8vw, .6875rem)/1 var(--mono);
   }
-  .knobs li::before {
-    content: ""; width: min(76%, 2.75rem); aspect-ratio: 1; border-radius: 50%;
+  .knob-cap {
+    position: relative; width: min(76%, 2.75rem); aspect-ratio: 1; border-radius: 50%;
     border: 1px solid #111217;
     background: repeating-conic-gradient(from 15deg, #62646d, #26272c 48deg, #15161a 72deg, #62646d 90deg);
     box-shadow: inset 0 0 0 .19rem #222327, 0 .12rem .2rem #0e0e12;
+    transform: rotate(var(--knob-turn, 0deg));
   }
+  .knob-cap::after { content: ""; position: absolute; top: 10%; left: calc(50% - 1px); width: 2px; height: 20%; background: #d8d1dc; }
   .transport { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .transport .printed-control { align-content: start; }
+  .transport .control { width: 100%; }
   .transport .control:disabled { color: #72747e; background: #a5a6ae; cursor: default; }
   .keybed-heading { margin-top: 1rem; }
   .keys {
@@ -132,6 +149,7 @@
   .route-pad, .route-pad[data-held] { background: var(--pad-fill); border-color: var(--pad-edge); color: #fff; }
   .route-pad[data-held] { box-shadow: inset 0 0 0 3px var(--accent); }
   .playing-help, .mapping-note { margin-top: .4rem; color: var(--muted); font-size: .875rem; }
+  .route-annotation { color: #4b3765; font-weight: 650; }
   .capture {
     display: flex; flex-direction: column; background: #fff; border: 1px solid var(--line);
     border-radius: 1.25rem; padding: 1.15rem; min-width: 0;
@@ -175,6 +193,33 @@
     width: 100%; min-width: 0; padding: .25rem .12rem; color: var(--ink); background: #fbf9fd;
     border: 1px solid var(--line); border-radius: .35rem; font: .875rem/1.35 system-ui, sans-serif;
   }
+  .lab-controls { display: grid; gap: .5rem; margin: .75rem 0; }
+  .lab-controls select, .lab-controls input {
+    min-width: 0; width: 100%; padding: .35rem; border: 1px solid var(--line); border-radius: .35rem;
+    background: #fbf9fd; color: var(--ink); font: inherit;
+  }
+  .lab-controls label { font-size: .875rem; font-weight: 650; }
+  .lab-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+  .lab-actions button {
+    padding: .35rem .55rem; border: 1px solid var(--line); border-radius: .35rem;
+    background: #f2ebf8; color: var(--ink); font-size: .875rem;
+  }
+  .lab-actions button:disabled { opacity: .55; cursor: default; }
+  .lab-status { font-size: .875rem; color: var(--muted); }
+  .lab-table { overflow: auto; max-height: 19rem; margin: .4rem 0 .85rem; }
+  .lab-table td { vertical-align: top; white-space: pre-line; font-size: .75rem; }
+  .lab-table th { font-size: .75rem; }
+  .lab-detail { margin-top: .6rem; }
+  .lab-detail summary { cursor: pointer; font-weight: 650; font-size: .875rem; }
+  .lab-leds {
+    display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)) minmax(0, .75fr);
+    gap: .18rem; background: #25252d; border-radius: .4rem; padding: .35rem; margin: .5rem 0;
+  }
+  .lab-leds span {
+    min-height: .85rem; aspect-ratio: 1.5; border: 1px solid #595566; border-radius: .14rem;
+    background: color-mix(in srgb, var(--led-color, #25252d) var(--brightness, 100%), #25252d);
+  }
+  .lab-leds span[data-fixed] { width: 70%; justify-self: center; }
   @media (max-width: 55rem) {
     .workspace { grid-template-columns: minmax(0, 1fr); }
   }
@@ -217,7 +262,7 @@
         <div class="deck">
           <div class="panel" id="panel" role="group" aria-label="Clip pads, scene buttons and track buttons"></div>
           <div class="deck-side">
-            <ol class="knobs" aria-label="Knob positions"></ol>
+            <ol class="knobs" aria-label="Relative knobs"></ol>
             <div class="transport" id="transport" role="group" aria-label="Transport, modifier and keybed controls"></div>
           </div>
         </div>
@@ -228,7 +273,7 @@
         <small id="range"></small>
       </div>
       <p class="playing-help" id="playing-help">Play with a mouse or by touch, or use the letters and numbers shown on the keys.</p>
-      <p class="mapping-note">The keybed and bottom-left Route pad send MIDI. Other pads and knobs show the hardware layout.</p>
+      <p class="mapping-note"><span class="route-annotation">Gridpico Route</span> uses the bottom-left pad. Open <strong>Protocol</strong> to inspect the other panel controls and knob detents.</p>
     </section>
 
     <section class="capture" aria-label="Destination MIDI">
@@ -236,6 +281,7 @@
         <div class="tabs" role="tablist" aria-label="Destination MIDI">
           <button type="button" id="capture-tab" role="tab" aria-selected="true" aria-controls="capture-panel">Capture</button>
           <button type="button" id="monitor-tab" role="tab" aria-selected="false" aria-controls="monitor-panel" tabindex="-1">Monitor</button>
+          <button type="button" id="protocol-tab" role="tab" aria-selected="false" aria-controls="protocol-panel" tabindex="-1">Protocol</button>
         </div>
         <span class="state" id="connection" role="status">Disconnected</span>
       </div>
@@ -262,6 +308,50 @@
         </div>
         <h3 class="channel-heading" id="channel-heading">MIDI channels</h3>
         <div id="monitor-channels" class="channels" role="group" aria-labelledby="channel-heading"></div>
+      </div>
+      <div class="activity-panel" id="protocol-panel" role="tabpanel" aria-labelledby="protocol-tab" hidden>
+        <h2>APC protocol</h2>
+        <div class="lab-controls">
+          <label for="protocol-sequence">Sequence</label>
+          <select id="protocol-sequence">
+            <option value="leds">Direct Solid LEDs</option>
+            <option value="encoders">Encoder Detents</option>
+            <option value="route">Route Off While Held</option>
+          </select>
+          <div class="lab-actions">
+            <button id="protocol-step" type="button">Step</button>
+            <button id="protocol-replay" type="button">Replay</button>
+            <button id="protocol-stop" type="button" disabled>Stop</button>
+          </div>
+          <p class="lab-status" id="protocol-status" role="status"></p>
+        </div>
+        <div class="lab-table">
+          <table aria-label="Sequence evidence">
+            <thead><tr><th scope="col">Step</th><th scope="col">Expected</th><th scope="col">Observed</th></tr></thead>
+            <tbody id="protocol-steps"></tbody>
+          </table>
+        </div>
+        <details class="lab-detail" id="direct-leds" open>
+          <summary>Isolated LED surface</summary>
+          <div class="lab-leds" id="lab-leds" role="group" aria-label="Isolated pad, scene and track LEDs"></div>
+          <form class="lab-controls" id="led-input">
+            <label for="led-bytes">RX · Port 1 hex</label>
+            <input id="led-bytes" type="text" maxlength="12" placeholder="96 00 15" required>
+            <div class="lab-actions"><button type="submit">Apply LED</button></div>
+            <p id="led-result" class="lab-status" role="status"></p>
+          </form>
+        </details>
+        <details class="lab-detail" open>
+          <summary>Manual bytes</summary>
+          <p class="lab-status">Live fixtures receive the keybed and Route pad. Other controls emit local protocol bytes.</p>
+          <p class="lab-status">Knob detents use fixture values 01 and 7F. Hardware direction and modes are unverified.</p>
+          <div class="lab-table">
+            <table aria-label="Manual protocol bytes">
+              <thead><tr><th scope="col">Control</th><th scope="col">Direction · Port · Bytes</th></tr></thead>
+              <tbody id="manual-frames"></tbody>
+            </table>
+          </div>
+        </details>
       </div>
     </section>
   </div>
@@ -292,6 +382,8 @@ const keyButtons = [];
 const keyVelocity = 96;
 let firstNote = 48;
 let connection = null;
+let connectedSequence = null;
+const knobState = new Map();
 
 function addButton(parent, label, classes, accessibleName = label) {
   const button = document.createElement("button");
@@ -310,39 +402,72 @@ function addPanelButton(parent, label, classes, name, note) {
   return button;
 }
 
+function printedButton(parent, label, classes, name, note, legend, turn) {
+  const slot = document.createElement("div");
+  slot.className = "printed-control";
+  parent.append(slot);
+  const button = note === null ? addButton(slot, label, classes, name)
+    : addPanelButton(slot, label, classes, name, note);
+  const printed = document.createElement("span");
+  printed.className = "legend";
+  printed.setAttribute("aria-hidden", "true");
+  if (turn === undefined) printed.textContent = legend;
+  else {
+    printed.classList.add("legend-arrow");
+    printed.style.setProperty("--legend-turn", `${turn}deg`);
+  }
+  slot.append(printed);
+  button.title = name;
+  return button;
+}
+
 // Akai Communications Protocol v1.1, pp. 14–15. Port 1 pad IDs start at bottom left.
+const sceneLegends = ["Clip Stop", "Solo", "Mute", "Rec Arm", "Select"];
 for (let row = 0; row < 5; row++) {
   for (let col = 0; col < 8; col++) {
     addPanelButton(panel, "", "control pad", `Pad row ${row + 1}, column ${col + 1}`, (4 - row) * 8 + col);
   }
-  addPanelButton(panel, `S${row + 1}`, "control scene", `Scene Launch ${row + 1}`, 0x52 + row);
+  printedButton(panel, "", "control scene", `Scene Launch ${row + 1} · Soft Keys ${sceneLegends[row]}`,
+    0x52 + row, sceneLegends[row]);
 }
 const routePad = panel.querySelector('.pad[data-apc-note="0"]');
 const routePadStatus = document.querySelector("#route-pad-status");
 routePad.id = "route-pad";
 routePad.classList.add("route-pad");
-routePad.textContent = "Route";
 routePad.setAttribute("aria-label", "Route toggle, pad row 5, column 1");
 routePad.setAttribute("aria-describedby", "route-pad-status");
+const trackLegends = ["Up", "Down", "Left", "Right", "Volume", "Pan", "Send", "Device"];
+const arrowTurns = [0, 180, -90, 90];
 for (let track = 0; track < 8; track++) {
-  addPanelButton(panel, `T${track + 1}`, "control track", `Track ${track + 1}`, 0x40 + track);
+  const group = track < 4 ? "Navigation" : "Knob Ctrl";
+  printedButton(panel, "", "control track", `Track ${track + 1} Clip Stop · ${group} ${trackLegends[track]}`,
+    0x40 + track, trackLegends[track], arrowTurns[track]);
 }
-addPanelButton(panel, "", "control scene stop", "Stop All Clips", 0x51);
+printedButton(panel, "", "control scene stop", "Stop All Clips", 0x51, "Stop All Clips");
+for (const [label, classes] of [["Soft Keys", "legend soft-keys-label"], ["Knob Ctrl", "legend knob-ctrl-label"]]) {
+  const printed = document.createElement("span");
+  printed.textContent = label;
+  printed.className = classes;
+  panel.append(printed);
+}
 for (let number = 1; number <= 8; number++) {
-  const knob = document.createElement("li");
-  knob.textContent = `K${number}`;
-  knobs.append(knob);
+  const slot = document.createElement("li");
+  knobs.append(slot);
+  const knob = addButton(slot, "", "knob", `Knob ${number}`);
+  const cap = document.createElement("span");
+  cap.className = "knob-cap";
+  cap.setAttribute("aria-hidden", "true");
+  knob.append(cap, `K${number}`);
+  knob.title = "Drag or use the arrow keys to turn";
+  bindKnob(knob, number);
 }
-const sustain = addButton(transport, "Sus", "control", "Sustain");
-sustain.title = "Sustain";
+const sustain = printedButton(transport, "", "control", "Sustain", null, "Sustain");
 sustain.dataset.apcCc = 0x40;
-const octaveDown = addButton(transport, "−", "control", "Octave down");
-const octaveUp = addButton(transport, "+", "control", "Octave up");
-octaveDown.title = "Octave down";
-octaveUp.title = "Octave up";
-addPanelButton(transport, "", "control play", "Play", 0x5b);
-addPanelButton(transport, "", "control record", "Record", 0x5d);
-addPanelButton(transport, "Sh", "control", "Shift", 0x62);
+const octaveDown = printedButton(transport, "", "control", "Octave down", null, "Oct −");
+const octaveUp = printedButton(transport, "", "control", "Octave up", null, "Oct +");
+printedButton(transport, "", "control play", "Play/Pause", 0x5b, "Play/Pause");
+printedButton(transport, "", "control record", "Record", 0x5d, "Record");
+printedButton(transport, "", "control", "Shift", 0x62, "Shift");
 
 let whiteKeys = 0;
 for (const [index, shortcut] of shortcuts.entries()) {
@@ -378,6 +503,7 @@ function updateRange() {
 }
 
 function moveOctave(semitones) {
+  if (connectedSequence) return;
   firstNote += semitones;
   updateRange();
 }
@@ -389,6 +515,8 @@ updateRange();
 function sendKeybed(note, pressed) {
   if (!connection) return;
   const activeConnection = connection;
+  activeConnection.fresh = false;
+  updateSequenceControls();
   try {
     activeConnection.send({
       type: pressed ? "note-on" : "note-off",
@@ -405,8 +533,10 @@ function sendKeybed(note, pressed) {
 function sendRoutePad(pressed) {
   const active = connection;
   if (!active?.sendSurface) return;
+  active.fresh = false;
+  updateSequenceControls();
   try {
-    active.sendSurface(pressed ? [0x90, 0x00, 0x7f] : [0x80, 0x00, 0x00]);
+    active.sendSurface(panelBytes(0, pressed));
   } catch (error) {
     active.close();
     console.error("Gridpico surface delivery failed", error);
@@ -417,6 +547,7 @@ function setRoutePadLed(state) {
   if (state) routePad.dataset.led = state;
   else delete routePad.dataset.led;
   renderRouteStatus();
+  updateSequenceControls();
 }
 
 function renderRouteStatus() {
@@ -429,8 +560,24 @@ function renderRouteStatus() {
   routePadStatus.textContent = label[state];
 }
 
+function panelBytes(note, pressed) {
+  return [pressed ? 0x90 : 0x80, note, pressed ? 0x7f : 0];
+}
+
+function emitControl(button, note, pressed) {
+  if (note !== null) {
+    recordManual(button.getAttribute("aria-label"), "TX", "Port 0", [pressed ? 0x90 : 0x80, note, pressed ? keyVelocity : 0]);
+    sendKeybed(note, pressed);
+  } else if (button.dataset.apcNote !== undefined) {
+    recordManual(button.getAttribute("aria-label"), "TX", "Port 1", panelBytes(Number(button.dataset.apcNote), pressed));
+    if (button === routePad) sendRoutePad(pressed);
+  } else if (button === sustain) {
+    recordManual("Sustain", "TX", "Port 0", [0xb0, 0x40, pressed ? 0x7f : 0]);
+  }
+}
+
 function press(input, button) {
-  if (heldInputs.has(input)) return;
+  if (connectedSequence || heldInputs.has(input)) return;
   let held = heldControls.get(button);
   if (!held) {
     held = { count: 0, note: button.matches(".key") ? firstNote + Number(button.dataset.keyIndex) : null };
@@ -439,9 +586,7 @@ function press(input, button) {
   heldInputs.set(input, button);
   button.dataset.held = "";
   held.count++;
-  if (held.count !== 1) return;
-  if (held.note !== null) sendKeybed(held.note, true);
-  else if (button === routePad) sendRoutePad(true);
+  if (held.count === 1) emitControl(button, held.note, true);
 }
 
 function release(input) {
@@ -452,8 +597,7 @@ function release(input) {
   if (--held.count > 0) return;
   heldControls.delete(button);
   delete button.dataset.held;
-  if (held.note !== null) sendKeybed(held.note, false);
-  else if (button === routePad) sendRoutePad(false);
+  emitControl(button, held.note, false);
 }
 
 function releaseAll() {
@@ -478,6 +622,7 @@ function isActivationKey(event) {
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    if (connectedSequence) stopSequence("Stopped by Escape.");
     releaseAll();
     return;
   }
@@ -511,10 +656,15 @@ surface.addEventListener("click", (event) => {
   press("click", button);
   release("click");
 });
-window.addEventListener("blur", releaseAll);
-window.addEventListener("pagehide", releaseAll);
+function settleInput() {
+  if (connectedSequence) stopSequence("Stopped when the page lost focus.");
+  releaseAll();
+}
+
+window.addEventListener("blur", settleInput);
+window.addEventListener("pagehide", settleInput);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) releaseAll();
+  if (document.hidden) settleInput();
 });
 
 const tabs = Array.from(document.querySelectorAll('[role="tab"]'));
@@ -682,11 +832,383 @@ function monitorDelivery(event, destination) {
   envelope.gain.setTargetAtTime(0.04 * velocity / 127, context.currentTime, 0.004);
 }
 
+function hexBytes(bytes) {
+  return bytes.map(byte => byte.toString(16).padStart(2, "0").toUpperCase()).join(" ");
+}
+
+function describeFrame({ direction, port, bytes }) {
+  return `${direction} · ${port} · ${hexBytes(bytes)}`;
+}
+
+const manualFrames = document.querySelector("#manual-frames");
+
+function recordManual(control, direction, port, bytes) {
+  const row = manualFrames.insertRow(0);
+  row.insertCell().textContent = control;
+  row.insertCell().textContent = describeFrame({ direction, port, bytes });
+  if (manualFrames.rows.length > 128) manualFrames.deleteRow(-1);
+}
+
+function paintKnob(knob, detents) {
+  knob.angle = (knob.angle + 15 * detents) % 360;
+  knob.button.style.setProperty("--knob-turn", `${knob.angle}deg`);
+}
+
+function bindKnob(button, number) {
+  const cc = 0x2f + number;
+  const knob = { button, angle: 0 };
+  knobState.set(cc, knob);
+  let drag = null;
+  let skipClick = false;
+
+  function turn(steps) {
+    if (connectedSequence || (sequence?.name === "encoders" && sequence.automatic && !sequence.finished)) return;
+    paintKnob(knob, steps);
+    const value = steps > 0 ? 0x01 : 0x7f;
+    for (let step = 0; step < Math.abs(steps); step++) {
+      recordManual(`Knob ${number} · fixture detent`, "TX", "Port 1", [0xb0, cc, value]);
+    }
+  }
+
+  button.addEventListener("pointerdown", (event) => {
+    if (connectedSequence || drag || event.button !== 0) return;
+    button.setPointerCapture(event.pointerId);
+    drag = { id: event.pointerId, y: event.clientY };
+    skipClick = false;
+  });
+  button.addEventListener("pointermove", (event) => {
+    if (drag?.id !== event.pointerId) return;
+    const steps = Math.trunc((drag.y - event.clientY) / 8);
+    if (!steps) return;
+    drag.y -= steps * 8;
+    skipClick = true;
+    turn(Math.sign(steps) * Math.min(Math.abs(steps), 8));
+  });
+  for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+    button.addEventListener(type, (event) => {
+      if (drag?.id === event.pointerId) drag = null;
+    });
+  }
+  button.addEventListener("click", (event) => {
+    if (!skipClick || event.detail === 0) turn(1);
+    skipClick = false;
+  });
+  button.addEventListener("keydown", (event) => {
+    const directions = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1 };
+    const steps = directions[event.key];
+    if (!steps) return;
+    event.preventDefault();
+    turn(steps);
+  });
+}
+
+// Akai Communications Protocol v1.1, pp. 3–6. Keep the hex palette indexed by velocity.
+const padPalette = `
+000000 1E1E1E 7F7F7F FFFFFF FF4C4C FF0000 590000 190000
+FFBD6C FF5400 591D00 271B00 FFFF4C FFFF00 595900 191900
+88FF4C 54FF00 1D5900 142B00 4CFF4C 00FF00 005900 001900
+4CFF5E 00FF19 00590D 001902 4CFF88 00FF55 00591D 001F12
+4CFFB7 00FF99 005935 001912 4CC3FF 00A9FF 004152 001019
+4C88FF 0055FF 001D59 000819 4C4CFF 0000FF 000059 000019
+874CFF 5400FF 190064 0F0030 FF4CFF FF00FF 590059 190019
+FF4C87 FF0054 59001D 220013 FF1500 993500 795100 436400
+033900 005735 00547F 0000FF 00454F 2500CC 7F7F7F 202020
+FF0000 BDFF2D AFED06 64FF09 108B00 00FF87 00A9FF 002AFF
+3F00FF 7A00FF B21A7D 402100 FF4A00 88E106 72FF15 00FF00
+3BFF26 59FF71 38FFCC 5B8AFF 3151C6 877FE9 D31DFF FF005D
+FF7F00 B9B000 90FF00 835D07 392B00 144C10 0D5038 15152A
+16205A 693C1C A8000A DE513D D86A1C FFE126 9EE12F 67B50F
+1E1E30 DCFF6B 80FFBD 9A99FF 8E66FF 404040 757575 E0FFFF
+A00000 350000 1AD000 074200 B9B000 3F3100 B35F00 4B1502
+`.trim().split(/\s+/);
+const padBrightness = [10, 25, 50, 65, 75, 90, 100];
+const isolatedLeds = new Map();
+const ledSurface = document.querySelector("#lab-leds");
+for (const button of panel.querySelectorAll("[data-apc-note]")) {
+  const note = Number(button.dataset.apcNote);
+  const light = document.createElement("span");
+  const pad = note < 40;
+  const track = note >= 0x40 && note <= 0x47;
+  const scene = note >= 0x52 && note <= 0x56;
+  light.dataset.note = note;
+  if (!pad) light.dataset.fixed = "";
+  if (!pad && !track && !scene) light.style.visibility = "hidden";
+  light.title = button.getAttribute("aria-label");
+  ledSurface.append(light);
+  isolatedLeds.set(note, light);
+}
+
+function decodeSolidLed(bytes) {
+  const [status, note, velocity] = bytes;
+  if (!Number.isInteger(velocity) || velocity < 0 || velocity > 127) return null;
+  let color, brightness;
+  if (note >= 0 && note < 40 && status >= 0x90 && status <= 0x96) {
+    color = "#" + padPalette[velocity];
+    brightness = padBrightness[status - 0x90];
+  } else if (status === 0x90 && velocity !== 2) {
+    if (note >= 0x40 && note <= 0x47) color = "#ff3d53";
+    else if (note >= 0x52 && note <= 0x56) color = "#36dd86";
+    else return null;
+    brightness = 100;
+  } else {
+    return null;
+  }
+  return { note, color, brightness, lit: velocity !== 0 };
+}
+
+function applyIsolatedLed(bytes) {
+  const decoded = decodeSolidLed(bytes);
+  if (!decoded) return false;
+  const { note, color, brightness, lit } = decoded;
+  const light = isolatedLeds.get(note);
+  light.dataset.state = lit ? "on" : "off";
+  light.style.setProperty("--led-color", lit ? color : "#25252d");
+  light.style.setProperty("--brightness", `${brightness}%`);
+  return true;
+}
+
+function resetIsolatedLeds() {
+  for (const light of isolatedLeds.values()) {
+    delete light.dataset.state;
+    light.style.removeProperty("--led-color");
+    light.style.removeProperty("--brightness");
+  }
+}
+
+const ledInput = document.querySelector("#led-bytes");
+const ledResult = document.querySelector("#led-result");
+document.querySelector("#led-input").addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (sequence?.automatic && !sequence.finished) return;
+  const value = ledInput.value.trim();
+  if (!/^(?:[\da-f]{2}\s+){2}[\da-f]{2}$/i.test(value)) {
+    ledResult.textContent = "Enter three hexadecimal bytes.";
+    return;
+  }
+  const bytes = value.split(/\s+/).map(byte => parseInt(byte, 16));
+  ledResult.textContent = applyIsolatedLed(bytes) ? `Applied RX · Port 1 · ${hexBytes(bytes)}`
+    : "Use a supported solid pad, track, or scene LED frame.";
+});
+
+const surfaceFrame = (direction, bytes) => ({ direction, port: "Port 1", bytes });
+const keyFrame = pressed => ({ direction: "TX", port: "Port 0", bytes: [pressed ? 0x90 : 0x80, 60, pressed ? keyVelocity : 0] });
+const destinationFrame = (note, channel, kind, velocity) => ({
+  direction: "RX", port: "Output 2", bytes: [(kind === "note-on" ? 0x90 : 0x80) + channel - 1, note, velocity],
+});
+const note72 = pressed => destinationFrame(72, 1, pressed ? "note-on" : "note-off", pressed ? 96 : 0);
+const routeLed = value => surfaceFrame("RX", [0x96, 0x00, value]);
+const localStep = (label, bytes) => ({ label, input: surfaceFrame("RX", bytes) });
+const routeStep = (label, input, ...output) => ({ label, input, output });
+
+const sequences = {
+  leds: [
+    localStep("Pad 00 red", [0x96, 0x00, 0x05]),
+    localStep("Pad 00 green", [0x96, 0x00, 0x15]),
+    localStep("Pad 01 blue", [0x96, 0x01, 0x2d]),
+    localStep("Track 1 red", [0x90, 0x40, 0x01]),
+    localStep("Scene 1 green", [0x90, 0x52, 0x01]),
+    localStep("Pad 00 dark", [0x96, 0x00, 0x00]),
+    localStep("Track 1 dark", [0x90, 0x40, 0x00]),
+    localStep("Scene 1 dark", [0x90, 0x52, 0x00]),
+    localStep("Pad 01 dark", [0x96, 0x01, 0x00]),
+  ],
+  encoders: [...knobState.keys()].flatMap((cc, index) => [
+    { label: `K${index + 1} · fixture +1`, input: surfaceFrame("TX", [0xb0, cc, 0x01]) },
+    { label: `K${index + 1} · fixture −1`, input: surfaceFrame("TX", [0xb0, cc, 0x7f]) },
+  ]),
+  route: [
+    routeStep("Hold Q", keyFrame(true), note72(true)),
+    routeStep("Press Route to disable", surfaceFrame("TX", panelBytes(0, true)), note72(false), routeLed(0)),
+    routeStep("Release Route", surfaceFrame("TX", panelBytes(0, false))),
+    routeStep("Release the retired Q", keyFrame(false)),
+    routeStep("Hold Q while off", keyFrame(true)),
+    routeStep("Press Route to re-enable", surfaceFrame("TX", panelBytes(0, true)), routeLed(0x15)),
+    routeStep("Release Route", surfaceFrame("TX", panelBytes(0, false))),
+    routeStep("Release the suppressed Q", keyFrame(false)),
+    routeStep("Play a fresh Q", keyFrame(true), note72(true)),
+    routeStep("Release Q", keyFrame(false), note72(false)),
+  ],
+};
+const sequenceSelect = document.querySelector("#protocol-sequence");
+const stepButton = document.querySelector("#protocol-step");
+const replayButton = document.querySelector("#protocol-replay");
+const stopButton = document.querySelector("#protocol-stop");
+const sequenceStatus = document.querySelector("#protocol-status");
+const sequenceRows = document.querySelector("#protocol-steps");
+const directLeds = document.querySelector("#direct-leds");
+let sequence = null;
+
+function renderSequence() {
+  sequenceRows.replaceChildren();
+  for (const { label, input, output } of sequences[sequenceSelect.value]) {
+    const row = sequenceRows.insertRow();
+    row.insertCell().textContent = label;
+    const expected = [describeFrame(input)];
+    if (output) {
+      if (output.length) expected.push(...output.map(describeFrame));
+      else expected.push("No reply expected");
+    }
+    row.insertCell().textContent = expected.join("\n");
+    row.insertCell().textContent = "—";
+  }
+  directLeds.hidden = sequenceSelect.value !== "leds";
+}
+
+function freshRouteFixture() {
+  return connection?.fresh && connection.sendSurface && !connection.closing &&
+    routePad.dataset.led === "green" && heldInputs.size === 0;
+}
+
+function updateSequenceControls() {
+  const live = sequenceSelect.value === "route";
+  const active = sequence && !sequence.finished;
+  const locked = active && (live || sequence.automatic);
+  const canStart = !live || freshRouteFixture();
+  sequenceSelect.disabled = Boolean(locked);
+  stepButton.disabled = active ? Boolean(sequence.automatic || sequence.pending) : !canStart || sequence?.finished === true;
+  replayButton.disabled = Boolean(locked) || !canStart;
+  stopButton.disabled = !active;
+}
+
+function idleSequence() {
+  sequence = null;
+  renderSequence();
+  sequenceStatus.textContent = sequenceSelect.value === "route"
+    ? "Requires a fresh connection with a green Route pad. Reload the connected demo after a run."
+    : sequenceSelect.value === "leds" ? "Applies fixture bytes to the isolated surface."
+      : "Demonstrates both fixture detents on each knob.";
+  updateSequenceControls();
+}
+
+function addObservation(run, message) {
+  const cell = sequenceRows.rows[run.index - 1].cells[2];
+  cell.textContent = cell.textContent === "—" ? message : `${cell.textContent}\n${message}`;
+}
+
+function finishSequence(run, message, cleanup) {
+  run.finished = true;
+  clearTimeout(run.timer);
+  if (connectedSequence === run) {
+    connectedSequence = null;
+    if (cleanup && connection === run.attachment) {
+      if (run.keyHeld) sendKeybed(60, false);
+      if (run.padHeld) sendRoutePad(false);
+    }
+  }
+  sequenceStatus.textContent = message;
+  updateSequenceControls();
+}
+
+function stopSequence(message) {
+  if (sequence && !sequence.finished) finishSequence(sequence, message, true);
+}
+
+function nextSequenceStep(run) {
+  clearTimeout(run.timer);
+  run.pending = null;
+  if (run.index === run.steps.length) {
+    const result = { route: "Matched destination and LED replies.", leds: "Applied all isolated LED frames.",
+      encoders: "Emitted all fixture detents locally." };
+    finishSequence(run, `Complete. ${result[run.name]}`);
+    return;
+  }
+  if (run.automatic) run.timer = setTimeout(() => executeStep(run), 100);
+  else if (run.attachment) run.timer = setTimeout(() => stopSequence("Stopped after 20 seconds without another step."), 20000);
+  updateSequenceControls();
+}
+
+function executeStep(run) {
+  if (run !== sequence || run.finished || run.pending) return;
+  clearTimeout(run.timer);
+  const { label, input, output } = run.steps[run.index++];
+  sequenceStatus.textContent = label;
+  if (!run.attachment) {
+    if (run.name === "encoders") {
+      paintKnob(knobState.get(input.bytes[1]), input.bytes[2] === 0x01 ? 1 : -1);
+      addObservation(run, `Emitted locally · ${describeFrame(input)}`);
+    } else if (applyIsolatedLed(input.bytes)) {
+      addObservation(run, `Applied · ${describeFrame(input)}`);
+    } else {
+      finishSequence(run, "The isolated decoder rejected the fixture frame.");
+      return;
+    }
+    nextSequenceStep(run);
+    return;
+  }
+  if (connection !== run.attachment || connection.closing) {
+    finishSequence(run, "Fixture disconnected.");
+    return;
+  }
+
+  // Install the expectation before submitting. The wire has no per-command acknowledgement.
+  run.pending = output.length ? [...output] : null;
+  if (run.pending) {
+    run.timer = setTimeout(() => stopSequence("Timed out waiting for destination or LED feedback."), 2500);
+  }
+  addObservation(run, `Submitted · ${describeFrame(input)}`);
+  const pressed = input.bytes[0] === 0x90;
+  if (input.port === "Port 0") {
+    run.keyHeld = pressed;
+    sendKeybed(60, pressed);
+  } else {
+    run.padHeld = pressed;
+    sendRoutePad(pressed);
+  }
+  if (run.finished) return;
+  if (!output.length) {
+    addObservation(run, "No acknowledgement available");
+    nextSequenceStep(run);
+  } else {
+    updateSequenceControls();
+  }
+}
+
+function observeSequence(frame) {
+  const run = connectedSequence;
+  if (!run) return;
+  const observed = describeFrame(frame);
+  addObservation(run, observed);
+  const expected = run.pending?.shift();
+  if (!expected || describeFrame(expected) !== observed) {
+    stopSequence("Unexpected or out-of-order fixture output.");
+  } else if (run.pending.length === 0) {
+    nextSequenceStep(run);
+  }
+}
+
+function startSequence(automatic) {
+  const name = sequenceSelect.value;
+  const live = name === "route";
+  if (live && !freshRouteFixture()) return;
+  if (name === "leds") resetIsolatedLeds();
+  if (name === "encoders") {
+    for (const knob of knobState.values()) paintKnob(knob, -knob.angle / 15);
+  }
+  renderSequence();
+  const run = { name, steps: sequences[name], index: 0, automatic, attachment: live ? connection : null };
+  sequence = run;
+  if (live) connectedSequence = run;
+  executeStep(run);
+}
+
+sequenceSelect.addEventListener("change", () => {
+  stopSequence("Stopped.");
+  idleSequence();
+});
+stepButton.addEventListener("click", () => {
+  if (!sequence) startSequence(false);
+  else executeStep(sequence);
+});
+replayButton.addEventListener("click", () => startSequence(true));
+stopButton.addEventListener("click", () => stopSequence("Stopped."));
+idleSequence();
+
 function setConnectionState(connected) {
   connectionState.textContent = connected ? "Connected" : "Disconnected";
   connectionState.toggleAttribute("data-connected", connected);
   empty.textContent = connected ? "Waiting for MIDI at the destination." : "Waiting for a Gridpico connection.";
   renderRouteStatus();
+  updateSequenceControls();
 }
 
 function appendCapture(event) {
@@ -718,8 +1240,14 @@ window.gridpicoApc = Object.freeze({
     const active = {
       send,
       sendSurface,
+      fresh: true,
       receiveCapture(event) {
         if (connection !== active || !appendCapture(event)) return;
+        active.fresh = false;
+        if (connectedSequence && Number.isInteger(event.velocity)) {
+          observeSequence(destinationFrame(event.note, event.channel, event.type, event.velocity));
+        }
+        updateSequenceControls();
         try {
           // The demo attachment supplies one destination when the event has no destination field.
           if (!active.closing) monitorDelivery(event, event.destination ?? active);
@@ -729,15 +1257,20 @@ window.gridpicoApc = Object.freeze({
       },
       receiveSurface(bytes) {
         if (connection !== active || active.closing) return;
-        if (!Array.isArray(bytes) || bytes.length !== 3 || bytes[0] !== 0x96 || bytes[1] !== 0x00) return;
-        if (bytes[2] === 0x15) setRoutePadLed("green");
-        else if (bytes[2] === 0x00) setRoutePadLed("dark");
+        if (!Array.isArray(bytes) || bytes.length !== 3 || bytes.some(byte => !Number.isInteger(byte) || byte < 0 || byte > 255)) return;
+        const led = decodeSolidLed(bytes);
+        if (led?.note === 0 && bytes[0] === 0x96) {
+          if (bytes[2] === 0x15) setRoutePadLed("green");
+          else if (bytes[2] === 0x00) setRoutePadLed("dark");
+        }
+        observeSequence(surfaceFrame("RX", bytes));
       },
       close() {
         if (connection !== active) return;
         // Keep the sender available for outstanding releases on a graceful close.
         if (active.closing) return;
         active.closing = true;
+        if (connectedSequence) stopSequence("Fixture disconnected.");
         setRoutePadLed(null);
         silenceMonitor();
         releaseAll();
@@ -746,6 +1279,7 @@ window.gridpicoApc = Object.freeze({
       },
     };
     connection = active;
+    if (sequenceSelect.value === "route") idleSequence();
     setConnectionState(true);
     return Object.freeze({
       receiveCapture: active.receiveCapture,

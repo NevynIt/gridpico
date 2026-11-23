@@ -15,12 +15,12 @@ at start-up, MIDI note 60 on channel 1. The octave buttons shift the keybed
 locally. Cancellation, lost pointer capture, Escape, and leaving the page
 release held controls. Panel buttons and Sustain show their local pressed state.
 
-The pad matrix and control positions follow pages 2 and 14–15 of the
+The pad matrix and MIDI mapping follow the
 [Akai Communications Protocol v1.1 diagram in miniMIDI](https://raw.githubusercontent.com/NevynIt/miniMIDI/main/ref/Keyboards/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1%20%281%29.pdf).
-The keybed and Route pad send MIDI. The octave buttons adjust the keybed
-locally. The other pads and knobs show the hardware layout. The display
-uses 1-based MIDI channels. The initial note range 48–72 and fixed press
-velocity 96 are simulator defaults.
+The printed labels follow the [Akai User Guide v1.2](https://cdn.inmusicbrands.com/akai/apc-key-25-mkii/APC%20Key%2025%20mk2%20-%20User%20Guide%20-%20v1.2.pdf).
+Gridpico Route is annotated separately below the controller face. The octave
+buttons adjust the keybed locally. The display uses 1-based MIDI channels.
+The initial note range 48–72 and fixed press velocity 96 are simulator defaults.
 
 ## Listen to routed MIDI
 
@@ -77,3 +77,60 @@ on press and `80 00 00` on release or cancellation. Call the returned
 The pad clears its LED state on disconnect. For browser smoke tests, use
 `#route-pad`, with `data-led` for received state and `data-held` for the
 gesture. [One-pad APC route toggle contract](../../api/README.md#one-pad-apc-route-toggle)
+
+## Protocol lab
+
+**Protocol** shows direction, logical port, and exact hex for manual input.
+In the connected demo the keybed and Route pad still use the live adapter.
+Other panel controls and knobs emit local protocol frames. The manual trace
+keeps the latest 128 frames.
+
+- **Port 1 buttons** use `90 nn 7F` on press and `80 nn 00` on release or
+  cancellation. `nn` is `00–27` for clip pads starting at the bottom left,
+  `40–47` for tracks, `52–56` for scenes, `51` for Stop All Clips, `5B` for
+  Play/Pause, `5D` for Record, and `62` for Shift. The press velocity is a
+  fixture convention.
+- **Port 0** contains keybed Note On and Note Off. Sustain shows local CC
+  `B0 40 7F` and `B0 40 00`. Octave changes emit no bytes.
+- Drag knobs up or down or use the arrow keys. The simulator uses Port 1
+  `B0 30–37 01` and `B0 30–37 7F` for opposite detents. Akai documents the
+  CC numbers and relative operation. Direction, step encoding, and
+  mode-specific hardware behavior remain unverified. The knobs have no
+  Gridpico parameter bindings.
+
+**Step** advances one row. **Replay** starts the selected sequence at the
+beginning and advances automatically. The table identifies expected frames
+and records the frames actually applied, submitted, or received.
+
+- **Direct Solid LEDs** applies these RX Port 1 frames to the isolated
+  surface in order: `96 00 05`, `96 00 15`, `96 01 2D`, `90 40 01`,
+  `90 52 01`, `96 00 00`, `90 40 00`, `90 52 00`, `96 01 00`.
+  Enter three hex bytes below the isolated surface to inspect the full RGB
+  palette at any documented solid brightness (`90–96`). Track LEDs use
+  fixed red and scene LEDs fixed green. Velocity `00` is off, `01` and
+  `03–7F` are on. Timed blink and pulse are outside this batch.
+- **Encoder Detents** emits local TX Port 1 pairs `B0 nn 01`, `B0 nn 7F`
+  in order for each encoder from `nn=30` through `37`.
+- **Route Off While Held** requires a fresh connected fixture with a green
+  Route LED. Reload the connected page to start another run. The sequence
+  blocks manual performance input while it owns the keybed and Route pad.
+
+| Step | Submitted | Expected reply in order |
+| --- | --- | --- |
+| Hold Q | Port 0 `90 3C 60` | Output 2 `90 48 60` |
+| Disable route | Port 1 `90 00 7F` | Output 2 `80 48 00`, then Port 1 `96 00 00` |
+| Release pad | Port 1 `80 00 00` | None expected |
+| Release retired Q | Port 0 `80 3C 00` | None expected |
+| Hold Q while off | Port 0 `90 3C 60` | None expected |
+| Re-enable route | Port 1 `90 00 7F` | Port 1 `96 00 15` |
+| Release pad | Port 1 `80 00 00` | None expected |
+| Release suppressed Q | Port 0 `80 3C 00` | None expected |
+| Fresh Q press | Port 0 `90 3C 60` | Output 2 `90 48 60` |
+| Release Q | Port 0 `80 3C 00` | Output 2 `80 48 00` |
+
+The live sequence waits up to 2.5 seconds for each expected reply group and
+allows 20 seconds between manual Steps. The connection has no per-command
+acknowledgement. For steps with no expected reply, the table reports local
+submission only. Stop, timeout, or loss of focus releases held sequence
+inputs through the available adapter. The route LED continues to follow
+committed feedback, so stopping while Off can leave the route Off.
