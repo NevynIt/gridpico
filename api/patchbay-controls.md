@@ -16,6 +16,8 @@ Keep the one-pad `/demo/midi` runner and wire contract in place. The Patch runne
 
 Keep at most one request in flight and 16 queued per connection, one local fixture per socket, and a maximum of 256 UTF-8 bytes per browser frame. An ordinary response can contain at most four accepted note rows, then 40 surface rows, then its terminator. A refresh carries the inventory block defined below. Use `ok` on success. A valid command rejected by the core ends with `err INVALID`, `err CAPACITY` or `err UNAVAILABLE`. The Patch host forwards the records in order and reports that rejection as `{"type":"error","code":"UNAVAILABLE"}` using the returned code. This keeps the Patch connection open while the authoritative LED snapshot remains visible. Malformed framing, unexpected runner termination or transport overflow use the existing close-and-cleanup behavior. Drain runner output while disconnect cleanup completes.
 
+A failed authoritative read during `surface-ready` returns only `err CODE`. Stage inventory and LEDs before writing either. After a valid mapped gesture, send accepted destination rows first. If the command failed, still send a full page when the authoritative post-command read succeeds, then the command's `err CODE`. If that read also fails, retain any accepted destination rows and terminate with the error. When only the post-command read fails, use its error code. Publish complete pages only.
+
 Verify the full dark startup page and independently toggle the two mapped pads. Hold a key while disabling one branch and check that only its destination Off precedes the new page. A simulated port disconnect changes its enabled pad to pending while the other remains active. Verified reattach restores green after any owed release is accepted. Rerun the unchanged native proof and connected one-pad demo.
 
 ### Read-only browser inventory
@@ -35,11 +37,26 @@ The block carries the snapshot revision as a decimal string, then device and por
 
 There are at most nine inventory frames including the boundaries, ahead of at most 40 LEDs for a refresh. Every frame fits the existing 256 UTF-8 byte limit. Validate counts, known device references and unique IDs within each record kind before replacing the displayed inventory. Discard partial blocks and clear the connection's inventory on disconnect. An explicit refresh after simulated port changes presents new connection state without moving the assigned slots. Verify the reserved panel and LED feedback ports remain visible and unassigned.
 
+### Native simulation access
+
+Assembly may provide a separate native test entry point with an in-process fixture. Inject lifecycle changes through `gridpico_patch_port_update` on the existing Simulation and Graph adapters. Connect a serial byte adapter or pseudo-terminal to the actual CLI. Simulated Diagnostics uses that CLI byte stream through its mocked Web Serial interface. Cross-client tests for APC and CLI use one Session instance for their scenario, with port events, CLI commands and APC actions serialized. The browser runner retains only its existing commands. Lifecycle injection stays in the native test entry point.
+
 ## Shared runtime colors
 
 Session/control implements `gridpico_session_read_device_color` and `gridpico_session_set_device_color` with the two callback signatures in [patchbay_controls.h](patchbay_controls.h). CLI and APC receive these callbacks through Assembly and use the same logical `DeviceId`. Session owns one nullable RGB preference per known device, including a disconnected device. A known unset device returns `GRIDPICO_OK` with `is_set=false` and zeroed RGB. `#000000` is a set value. A zero or unknown ID returns `GRIDPICO_INVALID`. Setting the same value succeeds without advancing the color revision. A changed value advances the Session-owned color revision once. Stage-one inventory and graph revisions retain their original meanings.
 
 Use the [APC color layer and swatches](patchbay.md#follow-on-apc-color-gesture). Read the preference on entry and on refresh of that layer. After an APC edit, render the committed value, and restore the live route snapshot when leaving the layer. `inventory` reads colors and Patch state within one serialized command. Runtime preferences survive reconnect of the same logical device within the run. Projects persistence is a later increment.
+
+### LED page identity for color-capable Patch
+
+The production APC frontend announces each complete page via the optional `gridpico_patch_led_page_fn` before its 40 existing surface messages. `GRIDPICO_PATCH_LED_LAYER_ROUTE` carries device ID `0`. `GRIDPICO_PATCH_LED_LAYER_DEVICE_COLOR` carries the selected logical device ID. The physical surface output still uses only the LED MIDI triplets.
+
+| Runner line before the 40 `surface` lines | Browser message |
+| --- | --- |
+| `led-page route` | `{"type":"patch-led-page","layer":"route"}` |
+| `led-page device-color <device-id>` | `{"type":"patch-led-page","layer":"device-color","deviceId":2}` |
+
+On a color-capable connection the page header applies only to the immediately following 40 LED rows, in the existing visual row-major order. Forward it after any capture and inventory rows. There is at most one header per dispatch. Commit the presentation after the full page arrives. Render route and color pages separately. A displayed cached route page during the color layer is the last received route page. The color preview is the committed preference's palette projection. Shift state and palette bytes do not select the presentation. In a route-only connection every complete untagged page is a route page. The one-pad connection keeps its current framing.
 
 ## Read-only Diagnostics commands
 

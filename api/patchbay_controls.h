@@ -21,6 +21,20 @@ typedef gridpico_result (*gridpico_patch_read_device_color_fn)(
 typedef gridpico_result (*gridpico_patch_set_device_color_fn)(
     void *context, gridpico_device_id device, gridpico_rgb8 rgb);
 
+typedef enum {
+    GRIDPICO_PATCH_LED_LAYER_ROUTE,
+    GRIDPICO_PATCH_LED_LAYER_DEVICE_COLOR
+} gridpico_patch_led_layer;
+
+typedef struct {
+    gridpico_patch_led_layer layer;
+    gridpico_device_id device;
+} gridpico_patch_led_page;
+
+/* Optional metadata for adapters that expose complete pages to a browser. */
+typedef void (*gridpico_patch_led_page_fn)(
+    void *context, const gridpico_patch_led_page *page);
+
 enum {
     GRIDPICO_PATCH_LED_FRAMES = GRIDPICO_PATCH_SOURCE_ROWS * GRIDPICO_PATCH_DESTINATION_COLUMNS,
     GRIDPICO_PATCH_LED_STATUS = 0x96,
