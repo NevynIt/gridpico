@@ -8,8 +8,8 @@ const { WebSocket, WebSocketServer } = require("ws");
 
 const address = "127.0.0.1";
 const maxMessageBytes = 256;
-const maxPendingRequests = 16;
-const maxCaptureRecords = 2;
+const maxPendingRequests = 64;
+const maxCaptureRecords = 25;
 const maxBufferedOutput = 8192;
 const maxRunnerLine = 32;
 const runnerTimeoutMs = 5000;

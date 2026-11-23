@@ -14,7 +14,7 @@ typedef struct {
     gridpico_midi_fixture midi;
     gridpico_apc_frontend apc;
     /* Disable, overflow and disconnect can release every reserved credit at once. */
-    gridpico_note accepted[GRIDPICO_PROOF_RELEASE_CREDITS];
+    gridpico_note accepted[GRIDPICO_BROWSER_RELEASE_CREDITS];
     size_t accepted_count;
     gridpico_apc_surface_message surface_feedback;
     bool surface_feedback_pending;
@@ -23,7 +23,7 @@ typedef struct {
 static gridpico_result capture_delivery(void *context, const gridpico_note_delivery *delivery)
 {
     fixture *runner = context;
-    if (runner->accepted_count == GRIDPICO_PROOF_RELEASE_CREDITS) {
+    if (runner->accepted_count == GRIDPICO_BROWSER_RELEASE_CREDITS) {
         return GRIDPICO_CAPACITY;
     }
 
@@ -103,8 +103,8 @@ int main(void)
     const gridpico_connection source = gridpico_midi_fixture_source();
     const gridpico_connection destination = gridpico_midi_fixture_destination();
     gridpico_midi_fixture_init(&runner.midi, gridpico_midi_graph_submit_note, &graph);
-    if (gridpico_midi_graph_init(&graph, source, destination, gridpico_transpose_note,
-                                 capture_delivery, &runner) != GRIDPICO_OK) {
+    if (gridpico_midi_graph_init_browser(&graph, source, destination, gridpico_transpose_note,
+                                         capture_delivery, &runner) != GRIDPICO_OK) {
         fputs("Could not initialize the MIDI graph\n", stderr);
         return EXIT_FAILURE;
     }

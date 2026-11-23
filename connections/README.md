@@ -1,4 +1,4 @@
-# Connected Web APC demo
+# Connected Web APC
 
 From the repository root, with CMake, a C compiler, Node.js 18 or later and npm:
 
@@ -9,14 +9,15 @@ npm --prefix connections ci --ignore-scripts
 node connections/demo-host.js build/browser-demo/gridpico_browser_fixture
 ```
 
-Open [the local APC demo](http://127.0.0.1:8765/). The host binds IPv4 loopback
-and accepts `/demo/midi` upgrades from that exact origin. To change the local
-port, append it to the host command and use the printed URL.
+Open [the local Web APC application](http://127.0.0.1:8765/). The host binds
+IPv4 loopback and accepts `/demo/midi` upgrades from that exact origin. To
+change the local port, append it to the host command and use the printed URL.
 
-The host serves the staged APC page with the connection adapter attached. One
-player owns the fixture at a time. A new page can connect after the previous
-fixture finishes cleanup. Reload the page to reconnect after link loss. Stop
-the host with Ctrl+C.
+The host serves Web APC with the connection adapter attached. One
+player owns the fixture at a time. After a disconnect, click
+**Reconnect** to start a fresh fixture once cleanup finishes. Start playback
+with a fresh key press and enable Monitor audio again if needed. Stop the
+host with Ctrl+C.
 
 ## Smoke check
 
@@ -35,7 +36,7 @@ the host with Ctrl+C.
    for one additional On/Off pair with the same values.
 5. Hold **Q** and disconnect the WebSocket, for example by stopping the host.
    Check that the pad's received LED state clears.
-   Start the host again if needed, then reload and wait for **Connected**.
+   Start the host again if needed, click **Reconnect**, and wait for **Connected**.
    Confirm the new capture starts empty and the pad is green.
    To see the fixture's EOF release directly, submit a press and let the pipe
    close while the note is held:
@@ -47,9 +48,10 @@ the host with Ctrl+C.
    The expected lines are `ready`, `on 1 72 96`, `ok`, and `off 1 72 0`.
 
 The host requests startup feedback from the fixture and sends it after the
-browser is ready. Keybed and surface requests share a queue of up to 16, with
-one runner dispatch in flight. The host forwards accepted capture records in
-order and then sends LED feedback for that dispatch on success. Monitor uses
+browser is ready. The browser fixture supports 25 held notes. Keybed and surface
+requests share a queue of up to 64, with one runner dispatch in flight. The host
+forwards up to 25 accepted capture records per dispatch in order and then
+sends LED feedback for that dispatch on success. Monitor uses
 the same accepted note records as the capture table. On socket loss or
 transport saturation, the host closes runner stdin and drains stdout through
 fixture exit, including disconnect releases. Browser output buffering has a

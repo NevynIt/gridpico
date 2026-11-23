@@ -1,4 +1,4 @@
-# Gridpico APC simulator
+# Gridpico Web APC
 
 Open [index.html](index.html) in a browser. The page is self-contained and works
 from disk. To serve it locally, run this from the repository root, then open
@@ -24,27 +24,27 @@ The initial note range 48–72 and fixed press velocity 96 are simulator default
 
 ## Listen to routed MIDI
 
-Start the [connected demo](../../connections/README.md), open **Monitor** and
-select **Enable audio**. Hold **Q** to hear destination note 72 (C5, about
-523.25 Hz) in the +12 demo fixture. Release **Q** or press Escape to end the
-note. The **Capture** tab continues to record routed destination events while
-you view Monitor, including when audio is off.
+Open the [connected Web APC application](../../connections/README.md), select
+**Monitor**, and choose **Enable audio**. With the default +12 Route active,
+hold **Q** to hear destination note 72 (C5, about 523.25 Hz). Release **Q** or
+press Escape to end the note. The **Capture** tab continues to record routed
+destination events while you view Monitor, including when audio is off.
 
 Master volume starts at 35%. Each of the 16 channels can use Sine, Triangle,
 Square or Mute. A new sound choice applies to the next received Note On.
 Muting a channel releases that channel's voices. Disabling audio or losing
 the connection clears all voices. Starting audio or reconnecting waits for
-fresh destination events. The monitor uses up to 16 voices, including release
-tails, and reclaims the oldest voice if full. Audio settings are local to the
-open page. The presets work offline, and the standalone preview opens silent
-with an empty capture.
+fresh destination events. The monitor uses up to 25 voices, including release
+tails. At capacity it reclaims a releasing voice before a sounding voice.
+Audio settings are local to the open page. The presets work offline, and
+the standalone preview opens silent with an empty capture.
 
 ## Local integration
 
-The standalone page opens disconnected. In the connected demo, the Computer
-connections adapter calls `window.gridpicoApc.connect(sendKeybed)` after the
+The standalone page opens disconnected. In the connected Route view, the
+Computer connections adapter calls `window.gridpicoApc.connect(sendKeybed)` after the
 `{"type":"ready"}` message on the same-origin `/demo/midi` WebSocket.
-[Local browser demo connection contract](../../api/README.md#local-browser-demo-connection)
+[Local Web APC connection contract](../../api/README.md#local-browser-demo-connection)
 
 - `sendKeybed(event)` receives keybed notes as
   `{ type: "note-on" | "note-off", channel, note, velocity }`.
@@ -58,9 +58,15 @@ connections adapter calls `window.gridpicoApc.connect(sendKeybed)` after the
   while ingress can still accept releases. Transport-side ingress cleanup
   is required on link loss.
 
-## Demo route pad
+## Route and connection
 
-In the connected demo, the bottom-left **Route** pad toggles the fixture
+After an unexpected connection loss, **Reconnect** opens one fresh Web APC
+connection. Wait for green Route feedback before playing. A fresh connection
+clears the prior capture, starts with the default Route, and has
+audio off until explicitly enabled. Held keys from the old connection are
+released locally and do not play on the fresh connection.
+
+In connected Web APC, the bottom-left **Route** pad toggles routing
 from the simulated APC keybed (input 1), through +12 semitones, to simulated
 MIDI capture (output 2). The route status starts at **Disconnected**, shows
 **Waiting for feedback** on attach, and changes to **Active** or **Off** as
@@ -101,13 +107,13 @@ page. Release Shift for fresh route feedback.
 Patch Capture shows all accepted note records. The current note frame
 carries no destination ID. Matching notes from two outputs can therefore
 appear identical in Capture and share a browser Monitor voice. The one-pad
-demo and the offline Protocol lab remain separate.
+Route view and the offline Protocol Lab remain separate.
 [Patch browser contract](../../api/patchbay-controls.md#read-only-browser-inventory)
 
 ## Protocol lab
 
 **Protocol** shows direction, logical port, and exact hex for manual input.
-In the connected demo the keybed and Route pad still use the live adapter.
+In the connected Route view, the keybed and Route pad use the live adapter.
 Other panel controls and knobs emit local protocol frames. The manual trace
 keeps the latest 128 frames.
 
@@ -173,8 +179,8 @@ Reset LEDs or leave the Protocol preview to clear the timed effects.
 
 - **Encoder Detents** emits local TX Port 1 pairs `B0 nn 01`, `B0 nn 7F`
   in order for each encoder from `nn=30` through `37`.
-- **Route Off While Held** requires a fresh connected fixture with a green
-  Route LED. Reload the connected page to start another run. The sequence
+- **Route Off While Held** requires a fresh Route connection with a green
+  Route LED. Reload Web APC to start another run. The sequence
   blocks manual performance input while it owns the keybed and Route pad.
 
 | Step | Submitted | Expected reply in order |

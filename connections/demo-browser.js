@@ -2,7 +2,7 @@
   "use strict";
 
   const maxBufferedOutput = 8192;
-  let stopConnection;
+  let current;
 
   function isSurfaceBytes(bytes) {
     return Array.isArray(bytes) && bytes.length === 3 &&
@@ -23,6 +23,10 @@
     url.protocol = "ws:";
     const socket = new WebSocket(url);
     let surface;
+    const attempt = {
+      leave: () => stop(1000, "Page closed"),
+    };
+    current = attempt;
 
     function clearSurface() {
       const connectedSurface = surface;
@@ -73,13 +77,27 @@
         stop(4000, "Invalid demo frame");
       }
     });
-    socket.addEventListener("close", clearSurface);
-    stopConnection = () => stop(1000, "Page closed");
+    socket.addEventListener("close", ({ code }) => {
+      const wasConnected = Boolean(surface);
+      clearSurface();
+      if (current !== attempt || code === 1000) return;
+      const reconnect = () => {
+        if (current === attempt) openConnection();
+      };
+      const message = code === 1013 ? "Gridpico received too much input at once."
+        : wasConnected ? "The connection to Gridpico was interrupted."
+          : "Could not connect to Gridpico.";
+      window.gridpicoApc?.showDemoReconnect?.(reconnect, message);
+    });
   }
 
   openConnection();
-  window.addEventListener("pagehide", () => stopConnection());
+  window.addEventListener("pagehide", () => {
+    const attempt = current;
+    current = undefined;
+    attempt?.leave();
+  });
   window.addEventListener("pageshow", (event) => {
-    if (event.persisted) openConnection();
+    if (event.persisted && !current) openConnection();
   });
 })();

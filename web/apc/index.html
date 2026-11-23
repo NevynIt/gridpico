@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gridpico · APC simulator</title>
+<title>Gridpico · Web APC</title>
 <style>
   :root {
     color-scheme: light;
@@ -204,6 +204,8 @@
   .activity-panel[hidden] { display: none; }
   .state { font-size: .875rem; font-weight: 650; color: #62451f; background: #f8ecdb; padding: .22rem .6rem; border-radius: .4rem; }
   .state[data-connected] { color: #254e3b; background: #e5f1ea; }
+  .demo-reconnect { margin-top: .65rem; }
+  .demo-reconnect p { margin-bottom: .45rem; color: var(--muted); font-size: .875rem; }
   .empty {
     display: grid; place-items: center; flex: 1; min-height: 7rem; margin-top: 1rem;
     padding: 1rem; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: .75rem;
@@ -278,12 +280,12 @@
 <main>
   <header>
     <p class="mono">Gridpico</p>
-    <h1>APC simulator</h1>
+    <h1>Web APC</h1>
   </header>
 
   <section class="fixture" aria-labelledby="fixture-title">
     <div class="fixture-heading">
-      <h2 id="fixture-title">Demo route</h2>
+      <h2 id="fixture-title">Route</h2>
       <span class="route-status" id="route-pad-status" data-state="disconnected" role="status">Disconnected</span>
     </div>
     <dl>
@@ -354,6 +356,10 @@
           <button type="button" id="protocol-tab" role="tab" aria-selected="false" aria-controls="protocol-panel" tabindex="-1">Protocol</button>
         </div>
         <span class="state" id="connection" role="status">Disconnected</span>
+      </div>
+      <div class="demo-reconnect" id="demo-reconnect" hidden>
+        <p id="demo-close-reason" role="status"></p>
+        <div class="lab-actions"><button type="button" id="demo-reconnect-button">Reconnect</button></div>
       </div>
       <div class="activity-panel" id="capture-panel" role="tabpanel" aria-labelledby="capture-tab">
         <h2 id="capture-title">Captured MIDI output</h2>
@@ -797,7 +803,7 @@ const volumeDisplay = document.querySelector("#volume-display");
 const channels = document.querySelector("#monitor-channels");
 const sounds = [["sine", "Sine"], ["triangle", "Triangle"], ["square", "Square"], ["mute", "Mute"]];
 const channelSounds = Array(16).fill("sine");
-const maxVoices = 16;
+const maxVoices = 25;
 const voices = new Set();
 let audio = null;
 
@@ -907,8 +913,11 @@ function monitorDelivery(event, destination) {
   const sound = channelSounds[channel - 1];
   if (sound === "mute" || !Number.isInteger(velocity) || velocity < 1 || velocity > 127) return;
   if (held) stopVoice(held);
-  // Count voices in their release tail too. Reclaim the oldest voice at capacity.
-  if (voices.size === maxVoices) stopVoice(voices.values().next().value);
+  // Release tails share the voice budget. Reclaim a tail before interrupting a held note.
+  if (voices.size === maxVoices) {
+    const tail = Array.from(voices).find(voice => voice.releasing);
+    stopVoice(tail ?? voices.values().next().value);
+  }
   const { context, master } = audio;
   const oscillator = context.createOscillator();
   const envelope = context.createGain();
@@ -1255,8 +1264,8 @@ function idleSequence() {
   sequence = null;
   renderSequence();
   const instructions = {
-    route: patchMode ? "Available in the separate one-pad demo."
-      : "Requires a fresh connection with a green Route pad. Reload the connected demo after a run.",
+    route: patchMode ? "Available in the separate one-pad Web APC view."
+      : "Requires a fresh connection with a green Route pad. Reload Web APC after a run.",
     leds: "Applies fixture bytes to the isolated surface.",
     timed: "Step leaves each LED running. Replay holds the timed preview before cleanup.",
     encoders: "Demonstrates both fixture detents on each knob.",
@@ -1816,8 +1825,37 @@ function appendCapture(event) {
   return true;
 }
 
+const demoReconnectPanel = document.querySelector("#demo-reconnect");
+const demoReconnectButton = document.querySelector("#demo-reconnect-button");
+const demoCloseReason = document.querySelector("#demo-close-reason");
+let retryDemoConnection = null;
+
+function showDemoReconnect(reconnect, closeReason) {
+  if (patchMode || connection || typeof reconnect !== "function") return;
+  if (audio) disableAudio();
+  retryDemoConnection = reconnect;
+  demoCloseReason.textContent = typeof closeReason === "string" && closeReason
+    ? closeReason : "The connection closed unexpectedly.";
+  demoReconnectButton.disabled = false;
+  demoReconnectPanel.hidden = false;
+}
+
+demoReconnectButton.addEventListener("click", () => {
+  const reconnect = retryDemoConnection;
+  if (!reconnect || connection) return;
+  retryDemoConnection = null;
+  demoReconnectButton.disabled = true;
+  demoCloseReason.textContent = "Opening a fresh connection…";
+  try {
+    reconnect();
+  } catch {
+    showDemoReconnect(reconnect, "Could not open a fresh connection.");
+  }
+});
+
 // Local UI adapter. The connection owner supplies real ingress and destination capture.
 window.gridpicoApc = Object.freeze({
+  showDemoReconnect,
   connect(send, sendSurface = null, requestRefresh = null) {
     if (typeof send !== "function") throw new TypeError("A keybed sender is required");
     if (sendSurface !== null && typeof sendSurface !== "function") throw new TypeError("Invalid surface sender");
@@ -1883,6 +1921,8 @@ window.gridpicoApc = Object.freeze({
       },
     };
     connection = active;
+    retryDemoConnection = null;
+    demoReconnectPanel.hidden = true;
     patchView?.open(requestRefresh);
     if (sequenceSelect.value === "route") idleSequence();
     setConnectionState(true);

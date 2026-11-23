@@ -1,6 +1,6 @@
 #include "core/midi/native_graph.h"
 
-enum { NO_RELEASE_CREDIT = GRIDPICO_PROOF_RELEASE_CREDITS };
+enum { NO_RELEASE_CREDIT = GRIDPICO_BROWSER_RELEASE_CREDITS };
 
 static bool valid_connection(gridpico_connection connection)
 {
@@ -21,7 +21,7 @@ static bool valid_note(gridpico_note note)
 
 static bool output_blocked(const gridpico_midi_graph *graph)
 {
-    for (size_t i = 0; i < GRIDPICO_PROOF_RELEASE_CREDITS; ++i) {
+    for (size_t i = 0; i < graph->release_credit_limit; ++i) {
         if (graph->release_credits[i].release_pending) {
             return true;
         }
@@ -50,7 +50,7 @@ static gridpico_result cleanup_outputs(gridpico_midi_graph *graph, bool retire_s
 {
     gridpico_result result = GRIDPICO_OK;
     /* Pending releases have no remaining input references. Attempt each once. */
-    for (size_t i = 0; i < GRIDPICO_PROOF_RELEASE_CREDITS; ++i) {
+    for (size_t i = 0; i < graph->release_credit_limit; ++i) {
         if (graph->release_credits[i].release_pending) {
             if (release_output(graph, i, 0) != GRIDPICO_OK) {
                 result = GRIDPICO_UNAVAILABLE;
@@ -101,7 +101,7 @@ static gridpico_result reject_overflow(gridpico_midi_graph *graph)
 static gridpico_result submit_press(gridpico_midi_graph *graph,
                                     const gridpico_ingress_note *input)
 {
-    if (graph->occurrence_count == GRIDPICO_PROOF_NOTE_OCCURRENCES) {
+    if (graph->occurrence_count == graph->occurrence_limit) {
         return reject_overflow(graph);
     }
 
@@ -125,7 +125,7 @@ static gridpico_result submit_press(gridpico_midi_graph *graph,
     }
 
     size_t free_credit = NO_RELEASE_CREDIT;
-    for (size_t i = 0; i < GRIDPICO_PROOF_RELEASE_CREDITS; ++i) {
+    for (size_t i = 0; i < graph->release_credit_limit; ++i) {
         gridpico_midi_release_credit *credit = &graph->release_credits[i];
         if (credit->contributors == 0) {
             free_credit = i;
@@ -179,12 +179,14 @@ static gridpico_result submit_release(gridpico_midi_graph *graph, const gridpico
     return GRIDPICO_OK;
 }
 
-gridpico_result gridpico_midi_graph_init(gridpico_midi_graph *graph,
-                                       gridpico_connection source,
-                                       gridpico_connection destination,
-                                       gridpico_transpose_note_fn transpose,
-                                       gridpico_deliver_note_fn deliver,
-                                       void *delivery_context)
+static gridpico_result init_graph(gridpico_midi_graph *graph,
+                                  gridpico_connection source,
+                                  gridpico_connection destination,
+                                  gridpico_transpose_note_fn transpose,
+                                  gridpico_deliver_note_fn deliver,
+                                  void *delivery_context,
+                                  size_t occurrence_limit,
+                                  size_t release_credit_limit)
 {
     if (graph == NULL || !valid_connection(source) || !valid_connection(destination) ||
         source.endpoint == destination.endpoint || transpose == NULL || deliver == NULL) {
@@ -198,8 +200,32 @@ gridpico_result gridpico_midi_graph_init(gridpico_midi_graph *graph,
         .deliver = deliver,
         .delivery_context = delivery_context,
         .source_available = true,
+        .occurrence_limit = occurrence_limit,
+        .release_credit_limit = release_credit_limit,
     };
     return GRIDPICO_OK;
+}
+
+gridpico_result gridpico_midi_graph_init(gridpico_midi_graph *graph,
+                                       gridpico_connection source,
+                                       gridpico_connection destination,
+                                       gridpico_transpose_note_fn transpose,
+                                       gridpico_deliver_note_fn deliver,
+                                       void *delivery_context)
+{
+    return init_graph(graph, source, destination, transpose, deliver, delivery_context,
+                      GRIDPICO_PROOF_NOTE_OCCURRENCES, GRIDPICO_PROOF_RELEASE_CREDITS);
+}
+
+gridpico_result gridpico_midi_graph_init_browser(gridpico_midi_graph *graph,
+                                                gridpico_connection source,
+                                                gridpico_connection destination,
+                                                gridpico_transpose_note_fn transpose,
+                                                gridpico_deliver_note_fn deliver,
+                                                void *delivery_context)
+{
+    return init_graph(graph, source, destination, transpose, deliver, delivery_context,
+                      GRIDPICO_BROWSER_NOTE_OCCURRENCES, GRIDPICO_BROWSER_RELEASE_CREDITS);
 }
 
 gridpico_result gridpico_midi_graph_submit_note(void *context,

@@ -6,6 +6,8 @@ These are behavioral contracts for the module boundaries in [Architecture](../AR
 
 See the [Patchbay, inventory and Diagnostics proposal](patchbay.md) for the next delivery boundary.
 
+The [Web Monitor destination proposal](web-monitor-proposal.md) records the next browser audio recommendation for planning.
+
 ## Session/control
 
 - Accept intent to change a binding, route or processor setting. Return an outcome that distinguishes invalid input, unsupported features, resource limits and temporary unavailability. An accepted route may be pending if its binding is unresolved. Queries expose the reason it is pending and which routes are active.
@@ -65,6 +67,18 @@ Run one connected fixture process per accepted socket. Use ASCII lines ending in
 Computer connections closes runner stdin when the socket closes or fails. On EOF, Assembly's runner disconnects the current simulated input and lets the graph release its obligations before exit. The host drains the final release records even when the socket has closed. A fresh runner has a fresh graph and capture. The surface still sends Note Off on cancellation while the link is available, and the adapter calls its `close()` hook to clear local held state at disconnect.
 
 Verify that playing browser key `60` on channel `1` produces an actual captured `note-on` for `72` with velocity `96`, followed by `note-off` for `72` with velocity `0`. Exercise cancellation with the link up and disconnect while a note is held. APC panel and LED traffic retain their separate path.
+
+### Browser performance profile
+
+The Web APC Route view uses the production graph's opt-in `gridpico_midi_graph_init_browser`, with fixed capacity for 25 outstanding input occurrences and 25 release credits. The keybed can hold one occurrence per playable control, including notes whose output was retired by a route change. A dedicated credit per possible sounding note bounds cleanup storage and protects Note Off delivery. The independent native proof keeps its two-occurrence, two-credit profile. A single Route disable or ingress cleanup can emit 25 releases, so the runner and host accept up to 25 destination rows per dispatch before LED feedback and the terminator. The 16-row history bounds retained diagnostic data. Accepted rows are forwarded in order even when history wraps.
+
+One runner request in flight preserves ordered note, cleanup and LED replies. The host permits up to 64 queued requests so 25 presses, 25 cancellation releases and Route pad edges can fit even while dispatch is busy. The 8 KiB socket buffer bounds unread output and the existing deadlines bound retirement. The browser sends actual press and release events for its held controls. On a true 26th outstanding occurrence, quiesce the ingress, deliver owed zero-velocity releases and reject the new press through the existing cleanup and disconnect path. Transport overload and loss also retain their bounded retirement behavior.
+
+The Web APC Monitor uses a local budget of 25 voices to match the keybed. Each sounding or releasing voice holds an oscillator and an envelope gain node. Release tails count toward the same budget. At capacity, Monitor reclaims a releasing voice first, then the oldest sounding voice if no release tail is available. This bounds connected Web Audio nodes during overlap. Accepted MIDI and release accounting use the separate browser graph profile. Independent Chromium testing measured three-tone and 25-tone signals and verified their cleanup. [Route-view verification](../ROADMAP.md#web-apc-rapid-play-regression-and-next-monitor-update)
+
+The Web APC Route view offers **Reconnect** after an unexpected disconnect. The adapter closes the old attachment and calls `gridpicoApc.showDemoReconnect(reconnect, closeReason)`. Web APC displays the reason as text and starts one fresh socket for each explicit attempt, with at most one attempt in progress. The host can reject an attempt while the old runner is retiring. A later click can proceed once cleanup finishes. The new fixture starts with its usual route and empty capture and held-control state. Playback starts with a fresh key press after the user explicitly enables audio. Route gestures continue to set the route state.
+
+The Route-view acceptance checks cover overlapping keyboard presses, the full 25-note cancellation burst and continued route control. They also cover cleanup beyond the 16-row retained history, a true 26th press and successful manual recovery after both overload and a real host stop. The four-case native proof remains a separate acceptance check.
 
 ## One-pad APC route toggle
 

@@ -3,6 +3,11 @@
 
 #include "api/native_proof.h"
 
+enum {
+    GRIDPICO_BROWSER_NOTE_OCCURRENCES = 25,
+    GRIDPICO_BROWSER_RELEASE_CREDITS = 25,
+};
+
 typedef struct {
     uint8_t channel_index;
     uint8_t key;
@@ -25,18 +30,28 @@ typedef struct {
     bool configured;
     bool enabled;
     int8_t transpose_offset;
+    size_t occurrence_limit;
+    size_t release_credit_limit;
     size_t occurrence_count;
-    gridpico_midi_occurrence occurrences[GRIDPICO_PROOF_NOTE_OCCURRENCES];
-    gridpico_midi_release_credit release_credits[GRIDPICO_PROOF_RELEASE_CREDITS];
+    gridpico_midi_occurrence occurrences[GRIDPICO_BROWSER_NOTE_OCCURRENCES];
+    gridpico_midi_release_credit release_credits[GRIDPICO_BROWSER_RELEASE_CREDITS];
 } gridpico_midi_graph;
 
-/* The caller owns storage. Calls and synchronous delivery are serialized. */
+/* The caller owns storage. Calls and synchronous delivery are serialized.
+ * The default uses the native proof limits. The browser initializer admits
+ * one outstanding occurrence and release credit for each of the 25 keys. */
 gridpico_result gridpico_midi_graph_init(gridpico_midi_graph *graph,
                                         gridpico_connection source,
                                         gridpico_connection destination,
                                         gridpico_transpose_note_fn transpose,
                                         gridpico_deliver_note_fn deliver,
                                         void *delivery_context);
+gridpico_result gridpico_midi_graph_init_browser(gridpico_midi_graph *graph,
+                                                gridpico_connection source,
+                                                gridpico_connection destination,
+                                                gridpico_transpose_note_fn transpose,
+                                                gridpico_deliver_note_fn deliver,
+                                                void *delivery_context);
 
 gridpico_result gridpico_midi_graph_submit_note(void *context,
                                                const gridpico_ingress_note *input);

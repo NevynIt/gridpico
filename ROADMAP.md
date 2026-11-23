@@ -41,15 +41,17 @@ Independent Chromium checks exercised all 40 pads and 25 keys at 1440, 390 and 3
 
 Request RP2040 HAL approval when CDC, the mounted drive and target tests can be scheduled. Read `/status` before each batch and reserve independent verification and fixes.
 
-## Next Web Monitor update
+## Web APC rapid-play regression and next Monitor update
 
-Fix the connected one-pad rapid-play regression first. In the published runner, three overlapping presses exceed its inherited two-note proof profile. The runner releases the notes it accepted and reports an error. The host then closes the demo socket, leaving the disconnected Route pad unable to toggle. Verify the failure with real keyboard input, then verify fast sequential and overlapping playback, held-note cleanup and fresh playback after a connection loss. Keep the two-note native proof independent.
+The Web APC Route view rapid-play fix is verified. Independent Chromium testing reproduced a disconnect with three overlapping presses on the published baseline. The runner had inherited the proof's two-note limit. The application now admits all 25 playable controls, reserves a release for each and accommodates a full press and cancellation burst with Route edges. The local Monitor supports all 25 voices and reclaims release tails first. Testing confirmed fast runs, chords, cleanup before Route feedback, and no held-note replay after manual reconnect. The native proof retains its separate two-note profile. [Route view startup](connections/README.md) · [Playback profile](api/README.md#browser-performance-profile)
+
+After publishing that fix, independently verify fast playing in the Web APC Patch view before adding the Monitor destination. Size Patch note admission, release credits and response staging for all 25 playable controls at the supported fan-out. Verify rapid runs, chords, a full cancellation burst, branch-specific cleanup and recovery from actual exhaustion. Keep the native Patch proof profile unchanged.
 
 Add a listening selector with **All channels** as the default and MIDI channels 1–16 as choices. Keep the existing per-channel sound and mute settings. Selecting a channel changes local audio playback only. It does not edit a Patch route or discard accepted MIDI from Capture.
 
 Present **Web Monitor** as a named virtual destination in Patch with its own stable port assignment and destination-specific accepted event feed. The acceptance case routes the same source to an instrument and Web Monitor, then disables the instrument branch while the note is held. The instrument receives its release and Web Monitor continues sounding until its own branch or the source releases it. Also verify channel filtering, switch and disconnect cleanup, and that reconnect does not replay a held note.
 
-Architect is reviewing endpoint identity and attachment, cleanup across browser connect and disconnect, and the fixture and transport changes needed to carry destination identity. Settle simultaneous browser behavior and fixture capacity before assigning implementation. Preserve the separate one-pad demo as a regression baseline.
+Architect recommends a stable Web Monitor device and output port in the third destination column, keeping both instrument outputs. Each Patch fixture has one owning browser subscription. Turning audio off releases its local voices and leaves the endpoint attached. Detaching the receiver marks an enabled route pending, while reattaching with a newer generation reconciles owed releases without replaying held notes. Closing the whole socket still retires that fixture. A shared runtime across browsers or across socket loss requires a separate scope decision. Preserve the Route view and its note frames. [Web Monitor destination proposal](api/web-monitor-proposal.md)
 
 ## Approved follow-ons for the rest of tonight
 
