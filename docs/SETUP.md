@@ -71,7 +71,7 @@ Check the existing image with a disposable container while the current dev servi
 
 The disposable container uses the existing local image, a read-only root filesystem, and no network or credential mounts. The probe derives each supplementary group from the numeric device GID. For a device in group zero it uses the established `pico` group and checks effective access through the device permissions or ACL. It verifies the non-root container UID, numeric groups and matched device GIDs, then calls ALSA `snd_seq_open` in duplex mode. An optional PCM or control node is separately opened read/write to check effective device access. This uses kernel and ALSA checks and makes no assumption about the host login UID. Resolve denied access through the host's approved group or ACL setup before enabling the override.
 
-Render and validate the opt-in Compose configuration without starting anything:
+Validate the opt-in Compose configuration without starting anything:
 
 ```sh
 ./scripts/start.sh --alsa-config
