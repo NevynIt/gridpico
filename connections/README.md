@@ -171,3 +171,54 @@ committed APC feedback. **Reset** also returns the cursor to row 1.
 The typed `route SRC DST raw off` command, peer loss, or the router's
 30-second lease expiry also ends the run. Connect a fresh Diagnostics TX
 binding and issue Raw on again to start another run.
+
+### Opt-in HTTPS/WSS MIDI
+
+On the selected deployment, create a JSON configuration outside the
+repository and use absolute paths to the operator-provisioned TLS files.
+An example with placeholder paths and leaf fingerprint:
+
+```json
+{
+  "address": "192.0.2.17",
+  "port": 9443,
+  "origin": "https://gridpico.example:9443",
+  "certificate": "/path/to/server-chain.pem",
+  "key": "/path/to/server-key.pem",
+  "clientCA": "/path/to/client-ca.pem",
+  "allowedClientFingerprints": ["<64 lowercase SHA-256 hex digits>"],
+  "midiPorts": [
+    { "id": 1, "direction": "in" },
+    { "id": 3, "direction": "out" },
+    { "id": 5, "direction": "out" }
+  ]
+}
+```
+
+Use the selected IPv4 interface address, HTTPS origin and Graph port
+directions for the deployment. Run from the repository root:
+
+```sh
+node connections/local-host.js --wss-config /path/to/wss.json build/local-router/gridpico_local_router
+```
+
+Clients trust the server chain and connect using the certificate name
+in the configured origin. Each client presents a leaf certificate signed
+by the configured client CA with an enrolled SHA-256 fingerprint. Open
+`/apc/` or `/diagnostics/` on that HTTPS origin. A native client can use a
+standard WebSocket library with the same origin, enrolled certificate and
+binary MIDI frames at `/midi/<port-id>`.
+
+Ask the router operator for the published directional Port IDs before
+binding. The operator can check them in the local CLI's `inventory`.
+Route configuration and CLI inventory remain at
+[loopback Diagnostics](http://127.0.0.1:8767/diagnostics/) on the router host.
+HTTPS/WSS serves MIDI only. The standalone Diagnostics file keeps its
+direct-file Web Serial connection.
+
+Both listeners use the same bindings and runtime. Restart the host to
+apply changes to credentials or publication. Isolated TLS checks cover
+the standard WebSocket client path. Desktop Chromium certificate
+selection and the two-host browser and native client checks are part of
+deployment acceptance.
+[Cross-host admission and routing contract](../api/websocket-midi.md)

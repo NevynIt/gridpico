@@ -72,19 +72,20 @@
 <body>
   <main>
     <h1>Gridpico Diagnostics</h1>
-    <div class="connection">
+    <p id="local-midi-only" hidden>Use the loopback CLI on the router host to configure routes.</p>
+    <div class="connection" data-serial-controls>
       <button id="connect" type="button" disabled>Connect</button>
       <button id="disconnect" type="button" disabled>Disconnect</button>
       <p id="status" role="status">Serial disconnected.</p>
     </div>
-    <section aria-labelledby="transcript-heading">
+    <section aria-labelledby="transcript-heading" data-serial-controls>
       <div class="transcript-heading">
         <h2 id="transcript-heading">Serial transcript</h2>
         <button id="clear" type="button">Clear</button>
       </div>
       <pre id="transcript" tabindex="0" aria-labelledby="transcript-heading"></pre>
     </section>
-    <form id="terminal" autocomplete="off">
+    <form id="terminal" autocomplete="off" data-serial-controls>
       <label for="command">CLI command</label>
       <div class="command-row">
         <input id="command" type="text" aria-describedby="examples input-error"
@@ -145,7 +146,7 @@
   <script>
     "use strict";
 
-    const serial = navigator.serial;
+    const serial = location.protocol === "https:" ? undefined : navigator.serial;
     const settings = {
       baudRate: 115200, dataBits: 8, parity: "none", stopBits: 1, flowControl: "none",
     };
@@ -391,6 +392,11 @@
     window.addEventListener("DOMContentLoaded", () => {
       if (!window.gridpicoLocal) return;
       localSerial = window.gridpicoLocal.openSerial;
+      if (!localSerial) {
+        for (const controls of document.querySelectorAll("[data-serial-controls]")) controls.hidden = true;
+        document.querySelector("#local-midi-only").hidden = false;
+        return;
+      }
       connectButton.textContent = "Connect local CLI";
       showStatus("Local CLI disconnected.");
       updateControls();

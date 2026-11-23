@@ -2,20 +2,26 @@
 
 const { accessSync, constants, readFileSync } = require("node:fs");
 const { createServer } = require("node:http");
+const { randomBytes } = require("node:crypto");
 const path = require("node:path");
 const { WebSocket, WebSocketServer } = require("ws");
 const { maxGeneration, startLocalPipe } = require("./local-pipe");
+const { createWssListener } = require("./wss-listener");
 
 const address = "127.0.0.1";
 const maxSerialChunk = 256;
 const serialQueueBytes = 8192;
 const midiPeerLimit = 6;
 const stallMs = 5000;
+const heartbeatMs = 5000;
 
-const [, , runnerArg, portArg = "8767"] = process.argv;
+const args = process.argv.slice(2);
+const hasWssConfig = args[0] === "--wss-config";
+const wssConfig = hasWssConfig ? args.splice(0, 2)[1] : undefined;
+const [runnerArg, portArg = "8767"] = args;
 const port = Number(portArg);
-if (!runnerArg || !/^\d+$/.test(portArg) || port > 65535 || process.argv.length > 4) {
-  console.error("Usage: node connections/local-host.js <local-router> [port]");
+if (!runnerArg || !/^\d+$/.test(portArg) || port > 65535 || args.length > 2) {
+  console.error("Usage: node connections/local-host.js [--wss-config <file>] <local-router> [port]");
   process.exit(1);
 }
 const runnerPath = path.resolve(runnerArg);
@@ -40,9 +46,33 @@ const assets = new Map([
   ["/local-diagnostics.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-diagnostics.js"))]],
 ]);
 
-const server = createServer((request, response) => {
+const server = createServer();
+let network;
+if (hasWssConfig) {
+  try {
+    network = createWssListener(wssConfig);
+  } catch (error) {
+    console.error(`WSS disabled: ${error.message}`);
+  }
+}
+
+function matchesHeader(request, name, expected) {
+  if (request.headers[name] !== expected) return false;
+  let count = 0;
+  for (let index = 0; index < request.rawHeaders.length; index += 2) {
+    if (request.rawHeaders[index].toLowerCase() === name) count++;
+  }
+  return count === 1;
+}
+
+function serve(request, response, listener) {
+  const host = listener?.host ?? `${address}:${request.socket.localPort}`;
   const asset = assets.get(request.url);
-  if (request.headers.host !== `${address}:${request.socket.localPort}` || !asset) {
+  if (listener && (!listener.authorize(request.socket) || !matchesHeader(request, "host", host))) {
+    response.writeHead(403).end();
+    return;
+  }
+  if (request.headers.host !== host || !asset) {
     response.writeHead(404).end();
     return;
   }
@@ -53,7 +83,7 @@ const server = createServer((request, response) => {
   const [type, body] = asset;
   response.writeHead(200, { "Content-Type": type, "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store" });
   response.end(request.method === "HEAD" ? undefined : body);
-});
+}
 const websockets = new WebSocketServer({
   noServer: true,
   maxPayload: maxSerialChunk,
@@ -79,6 +109,7 @@ function reject(socket, status) {
 function clearPeerTimers(peer) {
   clearTimeout(peer.handshakeTimer);
   clearTimeout(peer.readerTimer);
+  clearTimeout(peer.heartbeatTimer);
 }
 
 function removePeer(peer) {
@@ -89,6 +120,7 @@ function removePeer(peer) {
 function retire(peer, { code = 1011, reason = "Binding closed", graceful = false, retired = false } = {}) {
   clearPeerTimers(peer);
   peer.closing = true;
+  peer.beforeUpgrade.length = 0;
   if (!graceful || retired) {
     peer.input.length = 0;
     peer.inputBytes = 0;
@@ -99,6 +131,28 @@ function retire(peer, { code = 1011, reason = "Binding closed", graceful = false
   // The runner fault already retired this exact generation.
   if (retired || (!peer.bound && busy !== peer)) removePeer(peer);
   queueMicrotask(pump);
+}
+
+function monitorHeartbeat(peer) {
+  let expected;
+  let pongDeadline;
+  peer.socket.on("pong", (data) => {
+    if (expected?.equals(data) && performance.now() <= pongDeadline) expected = undefined;
+  });
+  function ping() {
+    if (peer.closing || peer.socket.readyState !== WebSocket.OPEN) return;
+    if (expected) {
+      retire(peer, { reason: "MIDI heartbeat expired" });
+      return;
+    }
+    expected = randomBytes(8);
+    pongDeadline = performance.now() + heartbeatMs;
+    peer.heartbeatTimer = setTimeout(ping, heartbeatMs);
+    peer.socket.ping(expected, (error) => {
+      if (error) retire(peer, { reason: "MIDI heartbeat failed" });
+    });
+  }
+  peer.heartbeatTimer = setTimeout(ping, heartbeatMs);
 }
 
 function output(peer, data) {
@@ -194,6 +248,7 @@ function completeUpgrade(peer) {
     peer.outputFrames = 0;
     peer.outputBytes = 0;
     for (const data of staged) output(peer, data);
+    if (peer.expectedDirection && !peer.closing) monitorHeartbeat(peer);
     peer.raw.resume();
   });
 }
@@ -215,6 +270,9 @@ function pump() {
           if (!peer.closing) reject(peer.raw, error === "INVALID" ? "404 Not Found" : "503 Service Unavailable");
           if (peer.bound) retire(peer);
           else removePeer(peer);
+        } else if (peer.expectedDirection && peer.direction !== peer.expectedDirection) {
+          reject(peer.raw, "403 Forbidden");
+          retire(peer);
         } else if (peers.get(peer.key) === peer) {
           completeUpgrade(peer);
         }
@@ -247,9 +305,14 @@ function pump() {
   }
 }
 
-server.on("upgrade", (request, raw, head) => {
-  const expectedHost = `${address}:${raw.localPort}`;
-  if (request.headers.host !== expectedHost || request.headers.origin !== `http://${expectedHost}`) {
+function acceptUpgrade(request, raw, head, listener) {
+  const expectedHost = listener?.host ?? `${address}:${raw.localPort}`;
+  const expectedOrigin = listener?.origin ?? `http://${expectedHost}`;
+  const admitted = listener
+    ? listener.authorize(raw) && matchesHeader(request, "host", expectedHost) &&
+      matchesHeader(request, "origin", expectedOrigin)
+    : request.headers.host === expectedHost && request.headers.origin === expectedOrigin;
+  if (!admitted) {
     reject(raw, "403 Forbidden");
     return;
   }
@@ -257,6 +320,11 @@ server.on("upgrade", (request, raw, head) => {
   const match = /^\/midi\/([1-9][0-9]*)$/.exec(request.url);
   const port = match ? Number(match[1]) : undefined;
   if (request.url !== "/serial" && (port === undefined || port > 65535)) {
+    reject(raw, "404 Not Found");
+    return;
+  }
+  const expectedDirection = listener?.ports.get(port);
+  if (listener && !expectedDirection) {
     reject(raw, "404 Not Found");
     return;
   }
@@ -271,7 +339,7 @@ server.on("upgrade", (request, raw, head) => {
 
   raw.pause();
   const peer = {
-    key, port, generation, request, raw, head,
+    key, port, generation, request, raw, head, expectedDirection,
     bound: false, closing: false, input: [], inputBytes: 0,
     beforeUpgrade: [], outputFrames: 0, outputBytes: 0,
   };
@@ -281,13 +349,23 @@ server.on("upgrade", (request, raw, head) => {
   peer.handshakeTimer = setTimeout(() => retire(peer), stallMs);
   peers.set(key, peer);
   pump();
-});
+}
+
+server.on("request", (request, response) => serve(request, response));
+server.on("upgrade", (request, raw, head) => acceptUpgrade(request, raw, head));
+if (network) {
+  network.server.on("request", (request, response) => serve(request, response, network));
+  network.server.on("upgrade", (request, raw, head) => acceptUpgrade(request, raw, head, network));
+  network.server.on("error", (error) => console.error(`WSS listener error: ${error.code ?? "unknown"}`));
+}
 
 function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   server.close();
   server.closeAllConnections();
+  network?.server.close();
+  network?.server.closeAllConnections();
   for (const peer of peers.values()) retire(peer, { code: 1001, reason: "Local router stopped" });
   pipe.stop(); // Runtime EOF retires inputs before outputs and drains accepted cleanup.
 }
@@ -297,6 +375,11 @@ const pipe = startLocalPipe(runnerPath, {
     server.listen(port, address, () => {
       const host = `${address}:${server.address().port}`;
       console.log(`Gridpico local router listening at http://${host}/apc/ and http://${host}/diagnostics/`);
+      if (network && !shuttingDown) {
+        network.server.listen(network.port, network.address, () => {
+          console.log(`Gridpico WSS MIDI listening at ${network.origin}/apc/ and ${network.origin}/diagnostics/`);
+        });
+      }
     });
   },
   onRecord: handleRecord,

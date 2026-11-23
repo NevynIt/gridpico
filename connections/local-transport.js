@@ -3,7 +3,7 @@
 
   function openBytes(path, { direction, onData, onState }, frameLimit, bufferLimit) {
     const url = new URL(path, window.location.href);
-    url.protocol = "ws:";
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(url);
     socket.binaryType = "arraybuffer";
 
@@ -40,7 +40,7 @@
     });
   }
 
-  window.gridpicoLocal = Object.freeze({
+  const transport = {
     openMidi(portId, options) {
       if (!Number.isInteger(portId) || portId < 1 || portId > 65535 ||
           (options?.direction !== "send" && options?.direction !== "receive")) {
@@ -48,8 +48,9 @@
       }
       return openBytes(`/midi/${portId}`, options, (length) => length === 3, 128 * 3);
     },
-    openSerial(options) {
-      return openBytes("/serial", options, (length) => length <= 256, 8192);
-    },
-  });
+  };
+  if (window.location.protocol === "http:") {
+    transport.openSerial = (options) => openBytes("/serial", options, (length) => length <= 256, 8192);
+  }
+  window.gridpicoLocal = Object.freeze(transport);
 })();
