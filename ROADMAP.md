@@ -41,6 +41,16 @@ Independent Chromium checks exercised all 40 pads and 25 keys at 1440, 390 and 3
 
 Request RP2040 HAL approval when CDC, the mounted drive and target tests can be scheduled. Read `/status` before each batch and reserve independent verification and fixes.
 
+## Next Web Monitor update
+
+Fix the connected one-pad rapid-play regression first. In the published runner, three overlapping presses exceed its inherited two-note proof profile. The runner releases the notes it accepted and reports an error. The host then closes the demo socket, leaving the disconnected Route pad unable to toggle. Verify the failure with real keyboard input, then verify fast sequential and overlapping playback, held-note cleanup and fresh playback after a connection loss. Keep the two-note native proof independent.
+
+Add a listening selector with **All channels** as the default and MIDI channels 1–16 as choices. Keep the existing per-channel sound and mute settings. Selecting a channel changes local audio playback only. It does not edit a Patch route or discard accepted MIDI from Capture.
+
+Present **Web Monitor** as a named virtual destination in Patch with its own stable port assignment and destination-specific accepted event feed. The acceptance case routes the same source to an instrument and Web Monitor, then disables the instrument branch while the note is held. The instrument receives its release and Web Monitor continues sounding until its own branch or the source releases it. Also verify channel filtering, switch and disconnect cleanup, and that reconnect does not replay a held note.
+
+Architect is reviewing endpoint identity and attachment, cleanup across browser connect and disconnect, and the fixture and transport changes needed to carry destination identity. Settle simultaneous browser behavior and fixture capacity before assigning implementation. Preserve the separate one-pad demo as a regression baseline.
+
 ## Approved follow-ons for the rest of tonight
 
 The human approved implementation of browser monitoring and the scoped one-pad route toggle. The verified native command and connected Web APC log are the demo fallback.
