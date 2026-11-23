@@ -15,10 +15,27 @@ enum {
 };
 
 typedef struct {
+    void *context;
+    gridpico_result (*send)(void *context, gridpico_connection destination,
+                            const uint8_t bytes[GRIDPICO_LOCAL_MESSAGE_BYTES]);
+    void (*retire)(void *context, gridpico_connection connection);
+} local_midi_adapter;
+
+typedef struct {
+    gridpico_patch_direction direction;
+    unsigned limit;
+    uint32_t generation;
+    bool attached;
+    bool adapter_owned;
+} local_port_state;
+
+typedef struct {
     uint32_t generation;
     size_t queued;
     bool attached;
     bool fault;
+    bool adapter_owned;
+    local_midi_adapter adapter;
 } local_binding;
 
 typedef struct {
@@ -55,6 +72,11 @@ void local_runtime_begin(local_runtime *runtime, uint64_t now_ms);
 gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result result);
 gridpico_result local_runtime_bind(local_runtime *runtime, gridpico_connection connection,
                                   gridpico_patch_direction *direction, unsigned *limit);
+gridpico_result local_runtime_port(const local_runtime *runtime, gridpico_port_id id,
+                                  local_port_state *out);
+gridpico_result local_runtime_reserve_adapter(local_runtime *runtime, gridpico_port_id id);
+gridpico_result local_runtime_bind_adapter(local_runtime *runtime, gridpico_connection connection,
+                                           local_midi_adapter adapter);
 gridpico_result local_runtime_detach(local_runtime *runtime, gridpico_connection connection);
 gridpico_result local_runtime_midi(local_runtime *runtime, const gridpico_local_raw_ingress *input);
 gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t generation);

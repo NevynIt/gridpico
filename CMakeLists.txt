@@ -55,6 +55,21 @@ target_include_directories(gridpico_local_runtime PUBLIC "${CMAKE_CURRENT_SOURCE
 add_executable(gridpico_local_router app/local_router.c)
 target_link_libraries(gridpico_local_router PRIVATE gridpico_local_runtime)
 
+option(GRIDPICO_ENABLE_ALSA "Build the Linux ALSA router" OFF)
+if(GRIDPICO_ENABLE_ALSA)
+    if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        message(FATAL_ERROR "GRIDPICO_ENABLE_ALSA requires a Linux target")
+    endif()
+    find_package(ALSA REQUIRED)
+    add_executable(gridpico_linux_router
+        app/linux_router.c
+        app/local_router.c
+        platform/linux/linux_midi.c
+    )
+    target_compile_definitions(gridpico_linux_router PRIVATE GRIDPICO_LOCAL_ROUTER_RUNNER_ONLY)
+    target_link_libraries(gridpico_linux_router PRIVATE gridpico_local_runtime ALSA::ALSA)
+endif()
+
 set(gridpico_asset_dir "${CMAKE_CURRENT_BINARY_DIR}/GRIDPICO")
 add_custom_target(gridpico_offline_assets
     COMMAND "${CMAKE_COMMAND}"
@@ -79,6 +94,9 @@ set(fixture_targets
     gridpico_local_runtime
     gridpico_local_router
 )
+if(GRIDPICO_ENABLE_ALSA)
+    list(APPEND fixture_targets gridpico_linux_router)
+endif()
 set_target_properties(${fixture_targets}
     PROPERTIES
     C_STANDARD 11

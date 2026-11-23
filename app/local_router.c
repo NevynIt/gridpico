@@ -1,6 +1,6 @@
 #define _POSIX_C_SOURCE 200809L
 
-#include "app/local_runtime.h"
+#include "app/local_router.h"
 
 #include <errno.h>
 #include <inttypes.h>
@@ -12,7 +12,7 @@
 #include <time.h>
 #include <unistd.h>
 
-enum { MAX_LINE_BYTES = 544, MAX_FIELDS = 4 };
+enum { MAX_LINE_BYTES = 544, MAX_FIELDS = 4, SERVICE_BATCH = 16 };
 
 typedef struct {
     gridpico_connection connection;
@@ -104,7 +104,7 @@ static size_t split_fields(char *line, char *fields[MAX_FIELDS])
 
 static gridpico_result dispatch(local_runtime *runtime, char *line, reply *response)
 {
-    char *fields[MAX_FIELDS];
+    char *fields[MAX_FIELDS] = {0};
     const size_t count = split_fields(line, fields);
     if (count < 2) {
         return GRIDPICO_INVALID;
@@ -141,6 +141,11 @@ static gridpico_result dispatch(local_runtime *runtime, char *line, reply *respo
         response->bound = result == GRIDPICO_OK;
         response->connection = connection;
         return result;
+    }
+    local_port_state port_state;
+    if (local_runtime_port(runtime, connection.endpoint, &port_state) == GRIDPICO_OK &&
+        port_state.adapter_owned) {
+        return GRIDPICO_UNAVAILABLE;
     }
     if (count == 3 && strcmp(command, "detach") == 0) {
         return local_runtime_detach(runtime, connection);
@@ -234,18 +239,40 @@ static bool handle_line(local_runtime *runtime, char *line, bool malformed)
     return write_records(runtime) && puts(result_line(result)) != EOF && fflush(stdout) == 0;
 }
 
-static bool serve(local_runtime *runtime)
+static bool service_adapter(local_runtime *runtime, const local_router_service *service, uint64_t now)
+{
+    for (size_t i = 0; service != NULL && i < SERVICE_BATCH; ++i) {
+        bool handled = false;
+        local_runtime_begin(runtime, now);
+        const gridpico_result result = service->next(service->context, runtime, &handled);
+        if (!handled) {
+            return result == GRIDPICO_OK;
+        }
+        local_runtime_finish(runtime, result);
+        if ((runtime->output_count != 0 || runtime->serial_count != 0 ||
+             runtime->serial.fault) && !write_event(runtime)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool serve(local_runtime *runtime, const local_router_service *service)
 {
     char line[MAX_LINE_BYTES + 1];
     size_t position = 0;
     bool malformed = false;
     for (;;) {
         uint64_t now;
-        if (!monotonic_ms(&now) || !expire(runtime, now)) {
+        if (!monotonic_ms(&now) || !expire(runtime, now) ||
+            !service_adapter(runtime, service, now)) {
             return false;
         }
-        const int wait = runtime->raw_deadline_ms == 0 ? -1 :
+        int wait = runtime->raw_deadline_ms == 0 ? -1 :
             (int)(runtime->raw_deadline_ms - now);
+        if (service != NULL && (wait < 0 || wait > service->interval_ms)) {
+            wait = service->interval_ms;
+        }
         struct pollfd input = {.fd = STDIN_FILENO, .events = POLLIN};
         const int ready = poll(&input, 1, wait);
         if (ready == 0 || (ready < 0 && errno == EINTR)) {
@@ -280,23 +307,31 @@ static bool serve(local_runtime *runtime)
     }
 }
 
-int main(void)
+int local_router_run(local_runtime *runtime, const local_router_service *service)
 {
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
         return EXIT_FAILURE;
     }
-    local_runtime runtime;
-    if (local_runtime_init(&runtime) != GRIDPICO_OK) {
-        fputs("Local router could not initialize the production graph\n", stderr);
-        return EXIT_FAILURE;
-    }
-    const bool complete = puts("ready") != EOF && fflush(stdout) == 0 && serve(&runtime);
-    local_runtime_begin(&runtime, 0);
-    const gridpico_result retired = local_runtime_retire(&runtime);
-    const bool flushed = complete && (runtime.output_count == 0 || write_event(&runtime));
+    const bool complete = puts("ready") != EOF && fflush(stdout) == 0 &&
+        (runtime->output_count == 0 || write_event(runtime)) && serve(runtime, service);
+    local_runtime_begin(runtime, 0);
+    const gridpico_result retired = local_runtime_retire(runtime);
+    const bool flushed = complete && (runtime->output_count == 0 || write_event(runtime));
     if (!flushed || retired != GRIDPICO_OK) {
         fputs("Local router stopped with a pipe or cleanup error\n", stderr);
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
 }
+
+#ifndef GRIDPICO_LOCAL_ROUTER_RUNNER_ONLY
+int main(void)
+{
+    local_runtime runtime;
+    if (local_runtime_init(&runtime) != GRIDPICO_OK) {
+        fputs("Local router could not initialize the production graph\n", stderr);
+        return EXIT_FAILURE;
+    }
+    return local_router_run(&runtime, NULL);
+}
+#endif
