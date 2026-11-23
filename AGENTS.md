@@ -10,4 +10,6 @@ Read the whole repository as useful; edit only your assigned paths. Architect ow
 
 Only Strategist initiates human communication. Direct peer clarification is allowed. Answer a brief question from the human when addressed, but route broader decisions through Strategist. Do not treat discussion as authorization.
 
+Start every message to another agent with `FROM: seat@location` on its own line, followed by the message. Use your own seat name and location label, for example `FROM: strategist@dev`.
+
 Do not import another project's product code or legacy compatibility constraints. There is no synthesis/audio subsystem. Never inspect, print, commit, replace or delete raw credential material. Use the configured authentication tools without exposing their secrets. Shared credential/session volumes and the other project's configuration are not project source files. No blanket cleanup/reset or automatic commit is authorized.
