@@ -45,6 +45,7 @@ const assets = new Map([
   ["/local-transport.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-transport.js"))]],
   ["/local-diagnostics.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-diagnostics.js"))]],
 ]);
+const home = ["text/html; charset=utf-8", readFileSync(path.join(__dirname, "home.html"))];
 
 const server = createServer();
 let network;
@@ -67,7 +68,7 @@ function matchesHeader(request, name, expected) {
 
 function serve(request, response, listener) {
   const host = listener?.host ?? `${address}:${request.socket.localPort}`;
-  const asset = assets.get(request.url);
+  const asset = !listener && request.url === "/" ? home : assets.get(request.url);
   if (listener && (!listener.authorize(request.socket) || !matchesHeader(request, "host", host))) {
     response.writeHead(403).end();
     return;
@@ -374,7 +375,7 @@ const pipe = startLocalPipe(runnerPath, {
   onReady() {
     server.listen(port, address, () => {
       const host = `${address}:${server.address().port}`;
-      console.log(`Gridpico local router listening at http://${host}/apc/ and http://${host}/diagnostics/`);
+      console.log(`Gridpico local router listening at http://${host}/`);
       if (network && !shuttingDown) {
         network.server.listen(network.port, network.address, () => {
           console.log(`Gridpico WSS MIDI listening at ${network.origin}/apc/ and ${network.origin}/diagnostics/`);

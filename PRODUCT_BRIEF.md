@@ -37,6 +37,10 @@ Linux x86, Linux ARM (including Raspberry Pi Zero) and Windows run the same musi
 
 Gridpico supports two network MIDI transports. RTP-MIDI is a product path for native Linux and Windows routers and compatible MIDI applications. WebSocket MIDI is a product path for the Web APC, Diagnostics, Monitor, and other compatible browser or native clients. Both connect to the production routing system through selectable MIDI ports. Separately running components exchange MIDI or the serial CLI byte stream.
 
+A web landing page links to the available tools, starting with Web APC and Diagnostics. On a computer, `scripts/web-ui.sh` opens that landing page. The Pico's read-only drive carries the landing page and self-contained offline tools. Browser tools share a MIDI connection layer for port selection and sending or receiving messages over Web MIDI or WebSocket MIDI. Web MIDI can select RTP-MIDI ports exposed by the operating system.
+
+Optional instruments are separate MIDI destinations. A FluidSynth wrapper plays routed MIDI on a Linux host, and a standalone browser FM instrument plays it through Web Audio. The initial browser acceptance case is a routed note that sounds and releases using a built-in FM voice. These instruments generate sound at the receiving end, alongside the existing browser Monitor.
+
 ## Value
 
 The value is reuse and integration of instruments already owned: deliberate routing, useful transformations, visible control and eventual recording/pattern workflows. A common kernel makes controller experiments and hardware-free tests possible without separate products or inconsistent implementations.

@@ -111,7 +111,13 @@ browser audio on the `/demo/midi` connection.
 
 ## Local router
 
-From the repository root:
+Run `./scripts/web-ui.sh` from the repository root. Open the
+[Gridpico home](http://127.0.0.1:8767/) and choose **Web APC** or
+**Diagnostics**. Diagnostics connects to the local CLI and MIDI
+independently. For offline use, open the staged `HOME.HTM` and choose
+**Diagnostics** for a Web Serial connection.
+
+To start the host directly:
 
 ```sh
 cmake -S . -B build/local-router
@@ -120,10 +126,7 @@ npm --prefix connections ci --ignore-scripts
 node connections/local-host.js build/local-router/gridpico_local_router
 ```
 
-Open [Web APC](http://127.0.0.1:8767/apc/) and
-[Diagnostics](http://127.0.0.1:8767/diagnostics/). An optional port argument
-overrides 8767. Diagnostics connects to the local CLI and MIDI independently.
-Open the standalone Diagnostics file directly for Web Serial.
+An optional port argument overrides 8767.
 
 Use the CLI's `inventory` command to identify the configured MIDI bindings.
 For the default fixture, Web APC can bind Keybed TX to port 1, Panel TX to

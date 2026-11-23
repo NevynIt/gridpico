@@ -12,6 +12,8 @@ The [local production router contract](local-router.md) defines the shared runti
 
 The [WebSocket MIDI contract](websocket-midi.md) covers the verified loopback profile and the opt-in authenticated cross-host profile. The [Linux ALSA MIDI adapter](linux-midi-adapter.md) binds native sequencer ports to that router for the separate Linux↔Linux RTP-MIDI gate. Windows RTP-MIDI acceptance is deferred.
 
+The [browser MIDI contract](browser-midi.md) defines the canonical landing page and the shared in-page Web MIDI and WebSocket adapter. [Optional instrument peers](instrument-peers.md) use those MIDI bindings or native OS ports and generate audio locally.
+
 ## Session/control
 
 - Accept intent to change a binding, route or processor setting. Return an outcome that distinguishes invalid input, unsupported features, resource limits and temporary unavailability. An accepted route may be pending if its binding is unresolved. Queries expose the reason it is pending and which routes are active.

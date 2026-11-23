@@ -15,7 +15,7 @@ The planned embedded deployment uses RP2040. Native USB connects to the computer
 
 The first proof runs in a Linux x86_64 container. It exercises production Session/control, MIDI graph and transpose against deterministic in-process MIDI services. The [proof contract](api/README.md#linux-x86_64-route-and-transpose-proof) defines the scope of that evidence. The standalone rehearsal and RP2040 acceptance depend on access to hardware.
 
-The portable kernel, platform backends and firmware handle MIDI. Tracks target MIDI destinations. Optional audible monitoring belongs to Web APC and generates sound in the host browser from routed destination events.
+The portable kernel, platform backends and firmware handle MIDI. Tracks target MIDI destinations. Optional Web APC monitoring and standalone instrument peers generate sound at the receiving end.
 
 CodeZero/GridZero, miniMIDI and rpico-bridge are references and experimental evidence only. There is no legacy code, configuration, wire-protocol or storage compatibility requirement. Reusing the development-container recipe is tooling reuse, not adoption of another product's implementation.
 
@@ -95,7 +95,7 @@ The computer-visible read-only filesystem is **not** this writable project store
 | **Piano frontend** `frontends/piano/` | Later: interpret 88-key/pedal control gestures and render feedback through an abstract RGB strip; distinguish control consumption from musical forwarding |
 | **CLI frontend** `frontends/cli/` | Translate text into the common commands and present queries/state; no musical logic duplicated in the parser |
 | **Web APC simulator** `web/apc/` | Emulate APC controls, keybed and received LED feedback, and present the destination capture and optional browser Monitor |
-| **Computer connections** `connections/` | Local serial and WebSocket MIDI transports, network admission, framing and connection lifecycle |
+| **Computer connections** `connections/` | Production web home, shared browser MIDI adapter, local serial, WebSocket admission, framing and connection lifecycle |
 
 Inside the APC frontend, keep protocol decoding/encoding separate from view/gesture interpretation even though one owner initially owns both. Other frontends neither impersonate the APC nor import its view implementation.
 
@@ -105,11 +105,21 @@ Independently running components exchange MIDI or the serial CLI byte stream. On
 
 The piano frontend must remember whether a press/pedal transition was consumed or forwarded until its matching release, even across mode changes. Gesture interpretation is frontend-owned; ordinary MIDI note/sustain cleanup stays graph-owned. RGB-strip drawing describes logical feedback; the physical strip driver is a platform service.
 
+### Web landing page and browser MIDI
+
+Assembly owns `scripts/web-ui.sh` as the computer entry point for the production web home. Connections hosts the landing page with links to Web APC and Diagnostics. Assembly stages the landing page and self-contained tools for read-only `GRIDPICO` distribution. The existing tools also open directly, and each retains its own UI and selected connections.
+
+Connections shares one in-page browser MIDI layer for provider and port selection, send, receive and binding lifecycle. Web MIDI can select ordinary OS ports, including OS-exposed RTP-MIDI endpoints when the browser grants access. The WebSocket provider binds directional ports to the production router over the existing binary MIDI wire. This shared layer is a code boundary inside the page. Diagnostics opens its serial CLI stream independently. [Browser MIDI and landing page contract](api/browser-midi.md)
+
 ### Browser Monitor
 
 In the shared production router, Monitor and the visible MIDI Log bind independently to selectable MIDI inputs. Monitor starts audio from live Note On and releases voices on the corresponding Note Off for its binding. MIDI Log shows its own received bytes. Monitor audio starts after explicit enablement. Master volume, per-channel sound or mute, lightweight presets and bounded voice state belong to Web APC. Monitor settings are local to the browser. The earlier Route and Patch demos retain their verified Capture paths. [Local router](api/local-router.md)
 
 Track voices by destination, MIDI channel and key so two channels using the same key can sound and release independently. Muting a channel releases its voices. Disabling audio or losing the connection releases all browser voices. The graph continues to own MIDI cleanup, including releases that occur after the browser has disconnected. The Monitor uses the existing routed MIDI delivery path and runs independently of its timing and acceptance.
+
+### Optional instrument peers
+
+Sound-generating peers open ordinary MIDI inputs. The first Pi sound proof uses stock FluidSynth through the production ALSA route and retrieves measured audio as a bench artifact. A later standalone FluidSynth wrapper owns the engine process, SoundFont and local output. A standalone browser FM instrument uses the shared browser receive adapter and owns its built-in voice, Web Audio and local voice cleanup. It starts with routed Note On and Note Off. Each ships independently from the router and firmware. [Instrument-peer contracts](api/instrument-peers.md)
 
 ### Patch and Circuit views
 
@@ -146,7 +156,7 @@ Raspberry Pi Zero runs the Linux application. It is not required to emulate RP20
 
 Gridpico supports two product transports for production routes and selectable MIDI ports. Each has independent acceptance evidence.
 
-- **RTP-MIDI** uses native OS-presented MIDI ports and the selected platform's RTP service. On Linux, the production router binds ALSA sequencer ports provided by `rtpmidid`. The real Linux↔Linux gate is underway. Windows uses native OS-presented RTP ports with acceptance deferred to the nominated Windows target. [Linux ALSA adapter](api/linux-midi-adapter.md) · [Windows RTP endpoints](https://microsoft.github.io/MIDI/sdk-reference/Transports/Rtp/)
+- **RTP-MIDI** uses native OS-presented MIDI ports and the selected platform's RTP service. On Linux, the production router binds ALSA sequencer ports provided by `rtpmidid`. The Linux↔Linux run observed exact receipt and scoped release on selected disconnects. Repeatability, controlled packet loss and timing require further evidence. Windows uses native OS-presented RTP ports with acceptance deferred to the nominated Windows target. [Linux ALSA adapter](api/linux-midi-adapter.md) · [Linux bench evidence](ROADMAP.md#4-verify-rtp-midi-and-productize-cross-host-websocket-midi) · [Windows RTP endpoints](https://microsoft.github.io/MIDI/sdk-reference/Transports/Rtp/)
 - **WebSocket MIDI** defaults to the verified IPv4 loopback profile. The opt-in cross-host profile binds a selected LAN address and authenticates standard browser and native clients over TLS. Both listeners use the same directional binary MIDI bindings and production route and cleanup rules. The cross-host listener serves MIDI controls. The local serial listener retains its independent CLI byte stream. [WebSocket MIDI contract](api/websocket-midi.md)
 
 The operator selects available ports and routes explicitly. A local adapter's acceptance establishes its own delivery boundary. Actual remote receipt and peer loss require evidence for the selected transport.
@@ -164,7 +174,7 @@ Native USB provides one composite device with:
 
 The five MIDI pairs are a proposed port allocation satisfying the minimum of three general-purpose pairs. They are ports/cables, not MIDI channels. Application Assembly and RP2040 HAL must budget descriptors, endpoints, buffers, flash and CPU together. Public names are product configuration, not legacy compatibility commitments.
 
-The read-only volume contains `INDEX.HTM`, documentation and a version manifest. Generate its immutable filesystem image at build time; serve it without copying the entire image into RAM. Host writes are rejected at the storage protocol boundary. Keep it separate from writable settings/projects, with defined behavior during any flash operation.
+The read-only volume contains `HOME.HTM`, the standalone `INDEX.HTM` and `DIAG.HTM` tools, documentation and a version manifest. Generate its immutable filesystem image at build time and serve it directly from flash. Host writes are rejected at the storage protocol boundary. Keep it separate from writable settings and projects, with defined behavior during flash operations.
 
 At revision `36c61af1`, rpico-bridge sets up a native TinyUSB composite device with one MIDI cable pair, CDC and build-optional MSC. Its PIO host task services a separate root port. It links the prebuilt documentation image into read-only data and serves bounded reads while rejecting writes. These source patterns are reference evidence for firmware planning. [Composite descriptor](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_device.c#L62-L71) · [Host and device servicing](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_host.c#L70-L108) · [Image build](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/CMakeLists.txt#L64-L89) · [Read-only storage callbacks](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_docs_msc.c#L46-L88)
 

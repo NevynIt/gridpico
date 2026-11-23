@@ -22,6 +22,7 @@
   h2 { line-height: 1.25; font-size: 1.125rem; }
   header { margin-bottom: 1.25rem; }
   header p { margin-bottom: .5rem; color: var(--muted); }
+  .local-nav:not([hidden]) { display: flex; flex-wrap: wrap; gap: .35rem 1rem; margin-top: .65rem; font-size: .875rem; }
   .fixture {
     display: grid; grid-template-columns: minmax(9rem, .8fr) minmax(0, 3fr); gap: .8rem 1.25rem;
     align-items: center; margin-bottom: 1rem; padding: .9rem 1.1rem;
@@ -282,6 +283,37 @@
     background: color-mix(in srgb, var(--led-color, #25252d) var(--brightness, 100%), #25252d);
   }
   .lab-leds span[data-fixed] { width: 70%; justify-self: center; }
+  @media (min-width: 64rem) {
+    /* Akai's 315 × 193 mm chassis and top-panel drawing in User Guide v1.2. */
+    .instrument {
+      container-type: inline-size; display: grid; grid-template-rows: 56.5% minmax(0, 1fr);
+      aspect-ratio: 315 / 193; padding: 0 2.4%; border-radius: .35rem;
+    }
+    .deck {
+      grid-template-columns: minmax(0, 62%) minmax(0, 1fr); gap: 1.8cqw;
+      grid-template-rows: minmax(0, 1fr); min-height: 0;
+      margin: 0; padding: 3.5cqw 0 2.1cqw;
+    }
+    .panel {
+      padding-top: 0; gap: 1.15cqw .85cqw;
+      grid-template-columns: repeat(8, minmax(0, 1fr)) minmax(0, .85fr);
+      grid-template-rows: repeat(5, minmax(0, 1fr)) auto auto;
+    }
+    .pad { aspect-ratio: auto; min-height: 0; }
+    .scene, .track { min-height: max(15px, 2.35cqw); }
+    .scene { width: 64%; }
+    .panel .printed-control { gap: .18cqw; }
+    .scene:not(.stop) + .legend { font-size: clamp(.37rem, 1.02cqw, .51rem); white-space: nowrap; }
+    .soft-keys-label { top: -1.5cqw; }
+    .deck-side { grid-template-rows: 62% minmax(0, 1fr); }
+    .knobs { margin: 0; padding-top: 1.2cqw; align-content: space-around; }
+    .knob-cap { width: min(76%, 5.9cqw); }
+    .transport { align-content: start; row-gap: 2cqw; }
+    .transport .control { width: 82%; }
+    .transport .legend { font-size: 1.14cqw; }
+    .transport .printed-control:last-child { grid-column: 1; }
+    .keys { height: 100%; min-height: 0; aspect-ratio: auto; }
+  }
   @media (max-width: 55rem) {
     .workspace { grid-template-columns: minmax(0, 1fr); }
   }
@@ -302,6 +334,10 @@
   <header>
     <p class="mono">Gridpico</p>
     <h1>Web APC</h1>
+    <nav class="local-nav" id="local-nav" aria-label="Gridpico" hidden>
+      <a href="/">Gridpico home</a>
+      <a href="/diagnostics/">Diagnostics</a>
+    </nav>
   </header>
 
   <section class="fixture" aria-labelledby="fixture-title">
@@ -329,7 +365,7 @@
   </section>
   <section class="patch-section" id="local-port-view" aria-labelledby="local-port-title" hidden>
     <h2 id="local-port-title">MIDI ports</h2>
-    <p class="patch-status" id="local-port-guide">Use the port IDs from <a href="/diagnostics/">Diagnostics</a> inventory. Bind each direction separately.</p>
+    <p class="patch-status" id="local-port-guide">Use the port IDs from Diagnostics inventory. Bind each direction separately.</p>
     <div class="local-bindings" id="local-bindings"></div>
   </section>
 
@@ -429,7 +465,7 @@
         <div id="monitor-channels" class="channels" role="group" aria-labelledby="channel-heading"></div>
       </div>
       <div class="activity-panel" id="protocol-panel" role="tabpanel" aria-labelledby="protocol-tab" hidden>
-        <h2>APC protocol</h2>
+        <h2>Protocol Lab</h2>
         <div class="lab-controls">
           <label for="protocol-sequence">Sequence</label>
           <select id="protocol-sequence">
@@ -452,7 +488,7 @@
           </table>
         </div>
         <details class="lab-detail" id="direct-leds" open>
-          <summary>Isolated LED surface</summary>
+          <summary>Isolated LED preview</summary>
           <p class="lab-status">Local preview · 120 BPM · quarter note 500 ms. Fixed LED blink uses a 1,000 ms fixture cycle.</p>
           <div class="lab-leds" id="lab-leds" role="group" aria-label="Isolated pad, scene and track LEDs"></div>
           <form class="lab-controls" id="led-input">
@@ -1934,6 +1970,7 @@ function mountLocalMidi(adapter) {
     document.querySelector("#local-port-guide").textContent = "The local MIDI adapter is unavailable.";
     return null;
   }
+  document.querySelector("#local-nav").hidden = false;
 
   const definitions = [
     ["keybed", "Port 0 keybed TX", "send"],

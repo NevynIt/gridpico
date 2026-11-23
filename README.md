@@ -63,6 +63,18 @@ On the M5 the nested sandbox is known to fail; [Docker-only Codex execution](doc
 
 VS Code's **Reopen in Container** uses the same Compose definition. See [setup](docs/SETUP.md) for authentication checks and the first Session Manager prompt. No setup command automatically launches agents.
 
+## Launch the web UI
+
+With the checkout's Compose `dev` service already running, run this from the Docker host or WSL with Python 3 and Docker Compose:
+
+```sh
+./scripts/web-ui.sh
+```
+
+The launcher opens [http://127.0.0.1:8767/](http://127.0.0.1:8767/) when a desktop opener is available and always prints the link. The home links to Web APC and Diagnostics. The launcher builds the portable production router and installs the locked browser host dependencies in `dev`. Press Ctrl+C to stop the host and loopback relay. The legacy one-pad demo is still available through `./scripts/web-apc.sh` on port 8765.
+
+To stage the offline home and tools on the build host, configure with `cmake -S . -B build/web-ui` and run `cmake --build build/web-ui --target gridpico_offline_assets`. Open `build/web-ui/GRIDPICO/HOME.HTM` directly. `VERSION.TXT` records SHA-256 checksums for the home and both tools.
+
 ## Get the source
 
 ```sh

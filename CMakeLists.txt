@@ -77,6 +77,7 @@ add_custom_target(gridpico_offline_assets
             "-Dasset_dir=${gridpico_asset_dir}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/app/stage_gridpico_assets.cmake"
     BYPRODUCTS
+        "${gridpico_asset_dir}/HOME.HTM"
         "${gridpico_asset_dir}/INDEX.HTM"
         "${gridpico_asset_dir}/DIAG.HTM"
         "${gridpico_asset_dir}/VERSION.TXT"
