@@ -24,7 +24,7 @@
     .connection { margin-bottom: 1.5rem; }
     .transcript-heading { justify-content: space-between; }
     h2 { font-size: 1rem; margin: 0; }
-    button, input {
+    button, input, select {
       min-height: 2.65rem;
       border: 1px solid #66726e;
       border-radius: .35rem;
@@ -100,10 +100,22 @@
       </p>
     </form>
     <section id="local-midi" hidden aria-labelledby="local-midi-title">
-      <h2 id="local-midi-title">Routed APC LEDs</h2>
-      <label for="local-midi-port">MIDI output binding</label>
-      <div class="command-row">
+      <h2 id="local-midi-title">APC LED messages</h2>
+      <label for="local-midi-provider">MIDI provider</label>
+      <select id="local-midi-provider"></select>
+      <div id="local-midi-web-midi" hidden>
+        <label for="local-midi-os-port">System MIDI output</label>
+        <div class="command-row">
+          <select id="local-midi-os-port" required></select>
+          <button id="local-midi-access" type="button">Enable Web MIDI</button>
+        </div>
+        <p>Select an output connected to the APC LED input.</p>
+      </div>
+      <div id="local-midi-router-port">
+        <label for="local-midi-port">Router MIDI output binding</label>
         <input id="local-midi-port" type="number" min="1" max="65535" step="1" value="4" required>
+      </div>
+      <div class="command-row">
         <button id="local-midi-connect" type="button">Connect MIDI</button>
         <button id="local-midi-disconnect" type="button" disabled>Disconnect MIDI</button>
       </div>
@@ -114,18 +126,20 @@
       </div>
 
       <h3>Timed RGB pads</h3>
-      <label for="local-midi-destination">APC LED RX port</label>
-      <input id="local-midi-destination" type="number" min="1" max="65535" step="1" value="3" required>
-      <p>
-        Connect both MIDI ports and enter <code id="local-midi-lease-on">route 4 3 raw on</code>
-        in the local CLI. Wait for the route to report Active. Use
-        <code id="local-midi-lease-off">route 4 3 raw off</code> to end it from the CLI.
-      </p>
+      <div id="local-midi-lease">
+        <label for="local-midi-destination">APC LED RX port</label>
+        <input id="local-midi-destination" type="number" min="1" max="65535" step="1" value="3" required>
+        <p>
+          Connect both MIDI ports and enter <code id="local-midi-lease-on">route 4 3 raw on</code>
+          in the local CLI. Wait for the route to report Active. Use
+          <code id="local-midi-lease-off">route 4 3 raw off</code> to end it from the CLI.
+          The router may end the run when the Raw lease expires.
+        </p>
+      </div>
       <p>
         120 BPM fixture tempo, with a 500 ms quarter note. Step sends one row at
         your pace. Replay sends rows once, with the minimum waits below. A run
-        ends within 20 seconds of its first send, or when the router ends the
-        Raw lease.
+        ends within 20 seconds of its first send.
       </p>
       <div class="sequence-table">
         <table aria-label="Timed RGB pad sequence">
@@ -390,7 +404,7 @@
     });
 
     window.addEventListener("DOMContentLoaded", () => {
-      if (!window.gridpicoLocal) return;
+      if (!window.gridpicoLocal || location.protocol === "file:") return;
       localSerial = window.gridpicoLocal.openSerial;
       if (!localSerial) {
         for (const controls of document.querySelectorAll("[data-serial-controls]")) controls.hidden = true;

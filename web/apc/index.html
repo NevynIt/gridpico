@@ -56,6 +56,10 @@
   .local-binding input {
     width: 4.15rem; min-width: 0; padding: .32rem; border: 1px solid var(--line); border-radius: .35rem; font: inherit;
   }
+  .local-binding select, #local-midi-provider {
+    min-width: 0; max-width: 100%; padding: .32rem; border: 1px solid var(--line); border-radius: .35rem; font: inherit;
+  }
+  #local-provider-controls:not([hidden]) { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
   .local-log td:nth-child(3) { white-space: nowrap; }
   .control[data-local-led], .control[data-local-led][data-held] { background: var(--local-led-color); }
   .control[data-local-led][data-held] { box-shadow: inset 0 0 0 3px var(--accent); }
@@ -365,6 +369,12 @@
   </section>
   <section class="patch-section" id="local-port-view" aria-labelledby="local-port-title" hidden>
     <h2 id="local-port-title">MIDI ports</h2>
+    <div class="lab-actions" id="local-provider-controls" hidden>
+      <label for="local-midi-provider">Transport</label>
+      <select id="local-midi-provider"></select>
+      <button type="button" id="local-midi-access" hidden>Allow Web MIDI</button>
+    </div>
+    <p class="patch-status" id="local-midi-access-status" role="status" hidden></p>
     <p class="patch-status" id="local-port-guide">Use the port IDs from Diagnostics inventory. Bind each direction separately.</p>
     <div class="local-bindings" id="local-bindings"></div>
   </section>
@@ -525,7 +535,8 @@
 
 const panel = document.querySelector("#panel");
 const patchMode = /^\/patch(?:\/|$)/.test(location.pathname);
-const localPage = location.protocol === "http:" && /^\/apc(?:\/|$)/.test(location.pathname);
+const servedLocalPage = /^https?:$/.test(location.protocol) && /^\/apc(?:\/|$)/.test(location.pathname);
+const localPage = servedLocalPage || (location.protocol === "file:" && window.gridpicoLocal?.midiProviders?.includes("web-midi"));
 const transport = document.querySelector("#transport");
 const knobs = document.querySelector(".knobs");
 const keys = document.querySelector("#keys");
@@ -1952,8 +1963,7 @@ function updatePatchMonitor(active, frame) {
   renderPatchMonitorStatus(active.monitor);
 }
 
-// This view binds the controller and its listeners independently to the local
-// adapter. IDs come from the router's CLI inventory, not from browser state.
+// Each role owns an independent binding through the selected browser MIDI provider.
 function mountLocalMidi(adapter) {
   document.querySelector(".fixture").hidden = true;
   document.querySelector(".mapping-note").hidden = true;
@@ -1970,7 +1980,19 @@ function mountLocalMidi(adapter) {
     document.querySelector("#local-port-guide").textContent = "The local MIDI adapter is unavailable.";
     return null;
   }
-  document.querySelector("#local-nav").hidden = false;
+  document.querySelector("#local-nav").hidden = !servedLocalPage;
+  const provider = document.querySelector("#local-midi-provider");
+  const access = document.querySelector("#local-midi-access");
+  const accessStatus = document.querySelector("#local-midi-access-status");
+  const guide = document.querySelector("#local-port-guide");
+  let accessGranted = false;
+  const providers = adapter.midiProviders;
+  for (const id of providers) provider.add(new Option(id === "websocket" ? "Gridpico WebSocket" : "Web MIDI", id));
+  if (!providers.length) {
+    guide.textContent = "No MIDI transport is available in this browser.";
+    return null;
+  }
+  document.querySelector("#local-provider-controls").hidden = false;
 
   const definitions = [
     ["keybed", "Port 0 keybed TX", "send"],
@@ -2061,7 +2083,7 @@ function mountLocalMidi(adapter) {
     const row = ledger.insertRow();
     const summary = note ? `${note.type === "note-on" ? "Note On" : "Note Off"} · Ch ${note.channel} · ${note.note} · Vel ${note.velocity}`
       : (bytes[0] & 0xf0) === 0xb0 ? `CC ${bytes[1]} · Ch ${(bytes[0] & 0x0f) + 1} · ${bytes[2]}` : "MIDI";
-    for (const value of [binding.id, performance.now().toFixed(1), hexBytes(Array.from(bytes)), summary]) {
+    for (const value of [binding.label, performance.now().toFixed(1), hexBytes(Array.from(bytes)), summary]) {
       row.insertCell().textContent = value;
     }
     if (ledger.rows.length > 100) ledger.deleteRow(0);
@@ -2089,36 +2111,64 @@ function mountLocalMidi(adapter) {
     }
   }
 
-  function bind(role, direction, field) {
-    const id = Number(field.value);
-    if (!/^[1-9]\d{0,4}$/.test(field.value) || id > 0xffff) {
+  function bind(role, direction, field, ports) {
+    const webMidi = provider.value === "web-midi";
+    const id = webMidi ? ports.value : Number(field.value);
+    if (webMidi && !id) return;
+    if (!webMidi && (!/^[1-9]\d{0,4}$/.test(field.value) || id > 0xffff)) {
       field.setCustomValidity("Enter a port ID from 1 to 65535.");
       field.reportValidity();
       return;
     }
+    const label = webMidi ? ports.selectedOptions[0].textContent : id;
     const previous = bindings.get(role);
     if (previous?.id === id) return;
     if (previous) retire(role, previous, true);
-    const binding = { id, state: "connecting", handle: null };
+    const binding = { id, label, state: "connecting", handle: null };
     bindings.set(role, binding);
-    setBindingStatus(role, "connecting", `Binding port ${id}…`);
+    setBindingStatus(role, "connecting", `Binding port ${label}…`);
     try {
       binding.handle = adapter.openMidi(id, {
         direction,
+        provider: provider.value,
         onData: bytes => receive(role, binding, bytes),
         onState(state, reason) {
           if (bindings.get(role) !== binding) return;
           if (state === "connected") {
             binding.state = state;
-            setBindingStatus(role, state, `Port ${id} bound`);
+            setBindingStatus(role, state, `Port ${label} bound`);
           } else if (state === "disconnected") {
             retire(role, binding, false, typeof reason === "string" ? reason : "");
           }
         },
       });
       if (bindings.get(role) !== binding) binding.handle.close();
-    } catch {
-      retire(role, binding, false, `Could not bind port ${id}.`);
+    } catch (error) {
+      retire(role, binding, false, error instanceof Error ? error.message : `Could not bind port ${label}.`);
+    }
+  }
+
+  function showPorts() {
+    const webMidi = provider.value === "web-midi";
+    access.hidden = !webMidi;
+    accessStatus.hidden = !webMidi;
+    guide.textContent = webMidi
+      ? "Choose your system MIDI outputs for TX and inputs for RX."
+      : "Use the port IDs from Diagnostics inventory. Bind each direction separately.";
+    for (const { label, field, ports, submit, direction } of choices.values()) {
+      field.hidden = field.disabled = webMidi;
+      ports.hidden = ports.disabled = !webMidi;
+      label.htmlFor = webMidi ? ports.id : field.id;
+      if (!webMidi) {
+        submit.disabled = false;
+        continue;
+      }
+      const selected = ports.value;
+      const available = adapter.listMidiPorts(direction);
+      ports.replaceChildren(new Option("Select a MIDI port", ""));
+      for (const { id, name } of available) ports.add(new Option(name, id));
+      ports.value = available.some(port => port.id === selected) ? selected : "";
+      submit.disabled = !ports.value;
     }
   }
 
@@ -2141,7 +2191,9 @@ function mountLocalMidi(adapter) {
     field.placeholder = "Port ID";
     field.required = true;
     field.addEventListener("input", () => field.setCustomValidity(""));
-    actions.append(field);
+    const ports = document.createElement("select");
+    ports.id = `${id}-web`;
+    actions.append(field, ports);
     const submit = addButton(actions, "Bind", "", `Bind ${name}`);
     submit.type = "submit";
     const disconnect = addButton(actions, "Disconnect", "", `Disconnect ${name}`);
@@ -2150,12 +2202,14 @@ function mountLocalMidi(adapter) {
     status.setAttribute("role", "status");
     status.id = `local-${role}-status`;
     field.setAttribute("aria-describedby", status.id);
-    choices.set(role, { status, disconnect });
+    ports.setAttribute("aria-describedby", status.id);
+    ports.addEventListener("change", () => { submit.disabled = !ports.value; });
+    choices.set(role, { status, disconnect, direction, field, ports, submit, label });
     setBindingStatus(role, "disconnected", "Disconnected");
     form.append(label, actions, status);
     form.addEventListener("submit", event => {
       event.preventDefault();
-      bind(role, direction, field);
+      bind(role, direction, field, ports);
     });
     disconnect.addEventListener("click", () => {
       const binding = bindings.get(role);
@@ -2163,6 +2217,27 @@ function mountLocalMidi(adapter) {
     });
     container.append(form);
   }
+
+  provider.addEventListener("change", () => {
+    for (const [role, binding] of bindings) retire(role, binding, true);
+    showPorts();
+  });
+  access.addEventListener("click", async () => {
+    access.disabled = true;
+    accessStatus.textContent = "Requesting MIDI access…";
+    try {
+      await adapter.requestMidiAccess();
+      accessGranted = true;
+      accessStatus.textContent = "MIDI ports updated.";
+    } catch (error) {
+      accessStatus.textContent = error instanceof Error ? error.message : "Could not access Web MIDI.";
+    } finally {
+      access.disabled = false;
+      access.textContent = accessGranted ? "Refresh MIDI ports" : "Allow Web MIDI";
+      showPorts();
+    }
+  });
+  showPorts();
 
   window.addEventListener("pagehide", () => {
     for (const [role, binding] of bindings) retire(role, binding, true);

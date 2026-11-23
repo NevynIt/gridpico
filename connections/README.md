@@ -112,10 +112,10 @@ browser audio on the `/demo/midi` connection.
 ## Local router
 
 Run `./scripts/web-ui.sh` from the repository root. Open the
-[Gridpico home](http://127.0.0.1:8767/) and choose **Web APC** or
-**Diagnostics**. Diagnostics connects to the local CLI and MIDI
-independently. For offline use, open the staged `HOME.HTM` and choose
-**Diagnostics** for a Web Serial connection.
+[Gridpico home](http://127.0.0.1:8767/) and choose **Web APC**,
+**Diagnostics**, or **FM Instrument** when available. Diagnostics connects
+to the local CLI and MIDI independently. The offline `HOME.HTM` opens
+the packaged tools. Offline Diagnostics uses Web Serial for its transcript.
 
 To start the host directly:
 
@@ -150,11 +150,21 @@ The local host keeps one router running for all bindings. It accepts MIDI
 as three-byte binary frames at `/midi/<port-id>` and serial CLI bytes at
 `/serial`. The serial connection has its own input and output limits.
 
+### MIDI provider selection
+
+Served pages default to **WebSocket**. Select the directional numeric port
+from CLI inventory or the router operator. Choose **Web MIDI** to use an
+OS MIDI port. Enable Web MIDI in the page, select the named system output
+for sending or input for receiving, then connect. Refresh the list after
+adding or replacing a port. A lost port needs a fresh selection. The
+offline pages use Web MIDI where the browser grants access.
+
 ### Timed RGB pads
 
-In hosted Diagnostics, use the same selected MIDI TX and APC LED RX
-bindings. Enter the shown `route SRC DST raw on` command and wait for the CLI
-to report Active. **Step** queues one row at your pace. **Replay** starts
+In Diagnostics, select the MIDI output. For WebSocket, connect the APC LED
+receiver, enter the shown `route SRC DST raw on` command and wait for the
+CLI to report Active. For Web MIDI, choose a system output connected to
+the APC LED input. **Step** queues one row at your pace. **Replay** starts
 from row 1 and queues each row once with these minimum waits.
 
 | Hex sent and expected at LED RX | Minimum wait after send | Expected at 120 BPM fixture tempo |
@@ -169,11 +179,12 @@ The sequence uses the APC RGB pad messages. The 120 BPM label describes the
 browser renderer's fixture tempo. [Akai APC Key 25 mk2 Communication Protocol](https://cdn.inmusicbrands.com/akai/attachments/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1.pdf)
 
 Completion, **Stop**, **Reset**, and the 20-second client limit close the
-Diagnostics TX binding. The router ends the Raw lease and restores current
-committed APC feedback. **Reset** also returns the cursor to row 1.
-The typed `route SRC DST raw off` command, peer loss, or the router's
-30-second lease expiry also ends the run. Connect a fresh Diagnostics TX
-binding and issue Raw on again to start another run.
+Diagnostics TX binding. **Reset** also returns the cursor to row 1.
+For WebSocket runs the router ends the Raw lease on close and restores
+current committed APC feedback. The typed `route SRC DST raw off` command,
+peer loss, or the router's 30-second lease expiry also ends that run.
+Connect a fresh Diagnostics TX binding before starting again. WebSocket
+runs also need a fresh Raw on command.
 
 ### Opt-in HTTPS/WSS MIDI
 

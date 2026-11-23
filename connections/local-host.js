@@ -1,6 +1,6 @@
 "use strict";
 
-const { accessSync, constants, readFileSync } = require("node:fs");
+const { accessSync, constants, existsSync, readFileSync } = require("node:fs");
 const { createServer } = require("node:http");
 const { randomBytes } = require("node:crypto");
 const path = require("node:path");
@@ -45,7 +45,13 @@ const assets = new Map([
   ["/local-transport.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-transport.js"))]],
   ["/local-diagnostics.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-diagnostics.js"))]],
 ]);
-const home = ["text/html; charset=utf-8", readFileSync(path.join(__dirname, "home.html"))];
+const fmPage = "../web/fm/index.html";
+if (existsSync(path.join(__dirname, fmPage))) {
+  assets.set("/fm/", ["text/html; charset=utf-8", page(fmPage)]);
+}
+const homePage = readFileSync(path.join(__dirname, "home.html"), "utf8");
+const home = ["text/html; charset=utf-8", assets.has("/fm/") ? homePage :
+  homePage.replace(/^ *<li data-optional-tool="fm">.*<\/li>\n/m, "")];
 
 const server = createServer();
 let network;

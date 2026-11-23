@@ -80,6 +80,7 @@ add_custom_target(gridpico_offline_assets
         "${gridpico_asset_dir}/HOME.HTM"
         "${gridpico_asset_dir}/INDEX.HTM"
         "${gridpico_asset_dir}/DIAG.HTM"
+        "${gridpico_asset_dir}/FM.HTM"
         "${gridpico_asset_dir}/VERSION.TXT"
     COMMENT "Staging GRIDPICO offline HTML assets"
     VERBATIM

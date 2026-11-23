@@ -1,8 +1,16 @@
-(() => {
+window.addEventListener("DOMContentLoaded", () => {
   "use strict";
 
+  const adapter = window.gridpicoLocal;
+  if (!adapter?.midiProviders?.length) return;
   const section = document.querySelector("#local-midi");
+  const provider = document.querySelector("#local-midi-provider");
+  const access = document.querySelector("#local-midi-access");
+  const osPort = document.querySelector("#local-midi-os-port");
+  const osControls = document.querySelector("#local-midi-web-midi");
+  const routerPort = document.querySelector("#local-midi-router-port");
   const port = document.querySelector("#local-midi-port");
+  const lease = document.querySelector("#local-midi-lease");
   const destination = document.querySelector("#local-midi-destination");
   const connect = document.querySelector("#local-midi-connect");
   const disconnect = document.querySelector("#local-midi-disconnect");
@@ -29,6 +37,24 @@
   let current;
   let run;
   let position = 0;
+  let requesting = false;
+
+  for (const id of adapter.midiProviders) {
+    provider.add(new Option(id === "web-midi" ? "Web MIDI" : "WebSocket", id));
+  }
+
+  function directMidi() {
+    return provider.value === "web-midi";
+  }
+
+  function refreshPorts() {
+    const previous = osPort.value;
+    osPort.replaceChildren(new Option("Choose a MIDI output", ""));
+    const outputs = adapter.listMidiPorts("send");
+    for (const { id, name } of outputs) osPort.add(new Option(name, id));
+    if (outputs.some(({ id }) => id === previous)) osPort.value = previous;
+    return outputs.length;
+  }
 
   function hex(bytes) {
     return bytes.map((byte) => byte.toString(16).toUpperCase().padStart(2, "0")).join(" ");
@@ -43,23 +69,33 @@
     const sink = validPort(destination) ? destination.valueAsNumber : "DST";
     leaseOn.textContent = `route ${source} ${sink} raw on`;
     leaseOff.textContent = `route ${source} ${sink} raw off`;
+    const direction = directMidi()
+      ? osPort.selectedOptions[0]?.text || "MIDI output"
+      : `TX ${source} → LED RX ${sink}`;
     steps.replaceChildren();
     for (const [index, frame] of sequence.entries()) {
       const row = steps.insertRow();
       if (index === position) row.setAttribute("aria-current", "step");
       for (const value of [
-        index + 1, `TX ${source} → LED RX ${sink}`, hex(frame.bytes),
+        index + 1, direction, hex(frame.bytes),
         frame.dwell ? `${frame.dwell} ms` : "End", frame.effect,
       ]) row.insertCell().textContent = value;
     }
   }
 
   function updateControls() {
-    connect.disabled = Boolean(current);
+    const direct = directMidi();
+    osControls.hidden = !direct;
+    routerPort.hidden = direct;
+    lease.hidden = direct;
+    provider.disabled = Boolean(current || requesting);
+    access.disabled = Boolean(current || requesting);
+    osPort.disabled = Boolean(current || requesting);
+    connect.disabled = Boolean(current || requesting || (direct && !osPort.value));
     port.disabled = Boolean(current);
     disconnect.disabled = !current || current.closing;
     const available = Boolean(current?.ready && !current.closing);
-    const sequenceReady = available && validPort(destination) && !document.hidden;
+    const sequenceReady = available && (direct || validPort(destination)) && !document.hidden;
     destination.disabled = Boolean(run);
     solid.disabled = !available || Boolean(run);
     off.disabled = solid.disabled;
@@ -87,13 +123,39 @@
     updateControls();
   }
 
+  provider.addEventListener("change", () => {
+    if (directMidi()) refreshPorts();
+    status.textContent = "MIDI disconnected.";
+    renderSteps();
+    updateControls();
+  });
+  access.addEventListener("click", async () => {
+    requesting = true;
+    updateControls();
+    try {
+      await adapter.requestMidiAccess();
+      access.textContent = "Refresh MIDI outputs";
+      status.textContent = refreshPorts() ? "Choose a MIDI output." : "No connected MIDI outputs.";
+    } catch (error) {
+      status.textContent = `Could not access Web MIDI: ${error.message}`;
+    } finally {
+      requesting = false;
+      renderSteps();
+      updateControls();
+    }
+  });
+  osPort.addEventListener("change", () => { renderSteps(); updateControls(); });
+
   connect.addEventListener("click", () => {
-    if (current || !port.reportValidity()) return;
-    const active = { ready: false, closing: false };
-    const id = port.valueAsNumber;
+    const direct = directMidi();
+    if (current || !(direct ? osPort.reportValidity() : port.reportValidity())) return;
+    const id = direct ? osPort.value : port.valueAsNumber;
+    const name = direct ? osPort.selectedOptions[0].text : `MIDI port ${id}`;
+    const active = { ready: false, closing: false, name };
     current = active;
     try {
-      active.handle = window.gridpicoLocal.openMidi(id, {
+      active.handle = adapter.openMidi(id, {
+        provider: provider.value,
         direction: "send",
         onState(state, reason) {
           if (current !== active) return;
@@ -103,9 +165,9 @@
             if (!active.closing) status.textContent = reason || "MIDI disconnected.";
           } else if (state === "connected" && !active.closing) {
             active.ready = true;
-            status.textContent = `MIDI port ${id} connected.`;
+            status.textContent = `${name} connected.`;
           } else if (state === "connecting" && !active.closing) {
-            status.textContent = `Connecting to MIDI port ${id}…`;
+            status.textContent = `Connecting to ${name}…`;
           }
           updateControls();
         },
@@ -120,7 +182,7 @@
   function queue(bytes) {
     if (!current?.ready || current.closing) return false;
     if (current.handle.send(Uint8Array.from(bytes))) {
-      status.textContent = `Queued ${hex(bytes)} on MIDI port ${port.value}.`;
+      status.textContent = `Queued ${hex(bytes)} on ${current.name}.`;
       return true;
     }
     finish("MIDI output could not queue the message. Reconnect MIDI before retrying.");
@@ -154,7 +216,7 @@
   }
 
   function start(automatic) {
-    if (!current?.ready || current.closing || !validPort(destination) || document.hidden) return;
+    if (!current?.ready || current.closing || (!directMidi() && !validPort(destination)) || document.hidden) return;
     const active = { binding: current, automatic, deadline: performance.now() + runLimitMs };
     run = active;
     position = 0;
@@ -185,4 +247,4 @@
   renderSteps();
   updateControls();
   section.hidden = false;
-})();
+});

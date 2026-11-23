@@ -71,9 +71,9 @@ With the checkout's Compose `dev` service already running, run this from the Doc
 ./scripts/web-ui.sh
 ```
 
-The launcher opens [http://127.0.0.1:8767/](http://127.0.0.1:8767/) when a desktop opener is available and always prints the link. The home links to Web APC and Diagnostics. The launcher builds the portable production router and installs the locked browser host dependencies in `dev`. Press Ctrl+C to stop the host and loopback relay. The legacy one-pad demo is still available through `./scripts/web-apc.sh` on port 8765.
+The launcher opens [http://127.0.0.1:8767/](http://127.0.0.1:8767/) when a desktop opener is available and always prints the link. The home links to Web APC, Diagnostics, and the FM Instrument. The launcher builds the portable production router and installs the locked browser host dependencies in `dev`. Press Ctrl+C to stop the host and loopback relay. The legacy one-pad demo is still available through `./scripts/web-apc.sh` on port 8765.
 
-To stage the offline home and tools on the build host, configure with `cmake -S . -B build/web-ui` and run `cmake --build build/web-ui --target gridpico_offline_assets`. Open `build/web-ui/GRIDPICO/HOME.HTM` directly. `VERSION.TXT` records SHA-256 checksums for the home and both tools.
+To stage the offline home and tools on the build host, configure with `cmake -S . -B build/web-ui` and run `cmake --build build/web-ui --target gridpico_offline_assets`. Open `build/web-ui/GRIDPICO/HOME.HTM` directly. The tools include the shared browser MIDI code, and Diagnostics can still use Web Serial. `VERSION.TXT` records SHA-256 checksums for each staged page.
 
 ## Get the source
 
