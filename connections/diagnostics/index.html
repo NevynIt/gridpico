@@ -57,6 +57,16 @@
     #examples, #input-error { margin: .6rem 0 0; font-size: .875rem; }
     #examples { color: #b8c8c1; }
     #input-error:empty { margin: 0; }
+    #local-midi { margin-top: 2rem; }
+    #local-midi label { margin-top: .65rem; }
+    .sequence-table { overflow-x: auto; }
+    #local-midi table { width: 100%; border-collapse: collapse; margin: .7rem 0; }
+    #local-midi th, #local-midi td {
+      text-align: left;
+      padding: .35rem .55rem;
+      border-bottom: 1px solid #56615e;
+    }
+    #local-midi tr[aria-current="step"] { background: #242b2a; }
   </style>
 </head>
 <body>
@@ -89,10 +99,10 @@
       </p>
     </form>
     <section id="local-midi" hidden aria-labelledby="local-midi-title">
-      <h2 id="local-midi-title">APC solid / off</h2>
+      <h2 id="local-midi-title">Routed APC LEDs</h2>
       <label for="local-midi-port">MIDI output binding</label>
       <div class="command-row">
-        <input id="local-midi-port" type="number" min="1" max="65535" step="1" value="4">
+        <input id="local-midi-port" type="number" min="1" max="65535" step="1" value="4" required>
         <button id="local-midi-connect" type="button">Connect MIDI</button>
         <button id="local-midi-disconnect" type="button" disabled>Disconnect MIDI</button>
       </div>
@@ -100,6 +110,35 @@
       <div class="command-row">
         <button id="local-midi-solid" type="button" disabled>Solid green · 96 00 15</button>
         <button id="local-midi-off" type="button" disabled>Off · 96 00 00</button>
+      </div>
+
+      <h3>Timed RGB pads</h3>
+      <label for="local-midi-destination">APC LED RX port</label>
+      <input id="local-midi-destination" type="number" min="1" max="65535" step="1" value="3" required>
+      <p>
+        Connect both MIDI ports and enter <code id="local-midi-lease-on">route 4 3 raw on</code>
+        in the local CLI. Wait for the route to report Active. Use
+        <code id="local-midi-lease-off">route 4 3 raw off</code> to end it from the CLI.
+      </p>
+      <p>
+        120 BPM fixture tempo, with a 500 ms quarter note. Step sends one row at
+        your pace. Replay sends rows once, with the minimum waits below. A run
+        ends within 20 seconds of its first send, or when the router ends the
+        Raw lease.
+      </p>
+      <div class="sequence-table">
+        <table aria-label="Timed RGB pad sequence">
+          <thead><tr><th scope="col">Step</th><th scope="col">Direction</th>
+            <th scope="col">Hex</th><th scope="col">Replay wait</th>
+            <th scope="col">Expected at APC</th></tr></thead>
+          <tbody id="local-midi-steps"></tbody>
+        </table>
+      </div>
+      <div class="command-row">
+        <button id="local-midi-step" type="button" disabled>Step</button>
+        <button id="local-midi-replay" type="button" disabled>Replay</button>
+        <button id="local-midi-stop" type="button" disabled>Stop</button>
+        <button id="local-midi-reset" type="button">Reset</button>
       </div>
     </section>
   </main>

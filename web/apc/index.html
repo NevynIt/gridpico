@@ -1103,7 +1103,7 @@ const fixedBlinkPeriod = 1000;
 const timedDivisions = [16, 8, 4, 2, 24, 16, 8, 4, 2];
 const ledDark = "#25252d";
 const isolatedLeds = new Map();
-const ledAnimations = new Map();
+const ledAnimations = new WeakMap();
 const ledSurface = document.querySelector("#lab-leds");
 for (const button of panel.querySelectorAll("[data-apc-note]")) {
   const note = Number(button.dataset.apcNote);
@@ -1207,7 +1207,9 @@ function resetIsolatedLeds() {
 
 function leaveLedPreview() {
   if (sequence?.name === "timed" && !sequence.finished) stopSequence("Timed LED preview stopped.");
-  for (const light of ledAnimations.keys()) clearIsolatedLed(light);
+  for (const light of isolatedLeds.values()) {
+    if (ledAnimations.has(light)) clearIsolatedLed(light);
+  }
 }
 
 const ledInput = document.querySelector("#led-bytes");
@@ -1966,6 +1968,7 @@ function mountLocalMidi(adapter) {
     if (role === "monitor") silenceMonitor();
     if (role === "led") {
       for (const button of controls.values()) {
+        cancelLedAnimation(button);
         delete button.dataset.localLed;
         button.style.removeProperty("--local-led-color");
       }
@@ -2006,12 +2009,15 @@ function mountLocalMidi(adapter) {
 
   function showLocalLed(bytes) {
     const led = decodeLed(bytes);
-    if (!led || led.period) return;
+    // The production restore covers RGB pads only.
+    if (!led || (led.period && led.note >= 40)) return;
     const button = controls.get(led.note);
     if (!button) return;
+    cancelLedAnimation(button);
     button.dataset.localLed = led.mode;
     const color = led.mode === "off" ? ledDark : led.color;
     button.style.setProperty("--local-led-color", `color-mix(in srgb, ${color} ${led.brightness}%, ${ledDark})`);
+    if (led.period) startLedAnimation(button, led);
   }
 
   function logReceipt(binding, bytes, note) {

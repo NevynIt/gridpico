@@ -146,3 +146,28 @@ peer disconnects.
 The local host keeps one router running for all bindings. It accepts MIDI
 as three-byte binary frames at `/midi/<port-id>` and serial CLI bytes at
 `/serial`. The serial connection has its own input and output limits.
+
+### Timed RGB pads
+
+In hosted Diagnostics, use the same selected MIDI TX and APC LED RX
+bindings. Enter the shown `route SRC DST raw on` command and wait for the CLI
+to report Active. **Step** queues one row at your pace. **Replay** starts
+from row 1 and queues each row once with these minimum waits.
+
+| Hex sent and expected at LED RX | Minimum wait after send | Expected at 120 BPM fixture tempo |
+| --- | --- | --- |
+| `9A 00 15` | 100 ms | Pad 00 green pulse, 1,000 ms cycle |
+| `9E 01 2D` | 1,200 ms | Pad 01 blue blink, 500 ms cycle |
+| `96 00 05` | 100 ms | Pad 00 solid red replaces the pulse |
+| `96 01 00` | 100 ms | Pad 01 off |
+| `96 00 00` | End | Pad 00 off |
+
+The sequence uses the APC RGB pad messages. The 120 BPM label describes the
+browser renderer's fixture tempo. [Akai APC Key 25 mk2 Communication Protocol](https://cdn.inmusicbrands.com/akai/attachments/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1.pdf)
+
+Completion, **Stop**, **Reset**, and the 20-second client limit close the
+Diagnostics TX binding. The router ends the Raw lease and restores current
+committed APC feedback. **Reset** also returns the cursor to row 1.
+The typed `route SRC DST raw off` command, peer loss, or the router's
+30-second lease expiry also ends the run. Connect a fresh Diagnostics TX
+binding and issue Raw on again to start another run.

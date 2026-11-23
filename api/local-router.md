@@ -49,6 +49,26 @@ Selecting Raw `on` from the Diagnostics source to the configured APC feedback re
 
 Terminate the run on explicit `off`, completion by the sequence operator, timeout, affected peer loss or a delivery fault. Commit Raw Off, retire and close the Diagnostics raw TX generation, and discard its undispatched work. Frames already sent on the feedback socket precede the restore. Stage a full current committed APC feedback page for the current receiver before resuming incremental feedback. If the page cannot be admitted or the receiver is gone, leave feedback awaiting a full refresh on a verified attachment and stop incremental delivery until the refresh is accepted. A new run requires a fresh Diagnostics raw binding and explicit `on`. Existing panel, keybed, Monitor, Log and serial bindings retain their independent lifetimes.
 
+## Timed Diagnostics replay
+
+Run **Timed RGB pads** through the existing Raw route from the selected Diagnostics TX to the selected live APC Port 1 LED receiver. First bind both peers, then enable the route explicitly in the serial CLI. The default command is `route 4 3 raw on`. Diagnostics displays TX direction, selected port, exact bytes and expected LED effect. The live receiver applies those bytes to its main APC surface. The committed restore refreshes all 40 RGB pads, so the routed sequence uses only RGB pads. Fixed Track and Scene effects remain covered by the isolated renderer exercises. [Akai v1.1 RGB modes and palette](https://cdn.inmusicbrands.com/akai/attachments/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1.pdf)
+
+| Step | Complete hex message | Live effect | Minimum Replay delay before next send |
+| --- | --- | --- | --- |
+| 1 | `9A 00 15` | Pad `00` green half-note pulse | 100 ms |
+| 2 | `9E 01 2D` | Pad `01` blue quarter-note blink | 1,200 ms |
+| 3 | `96 00 05` | Replace pad `00` pulse with solid red | 100 ms |
+| 4 | `96 01 00` | Turn pad `01` off | 100 ms |
+| 5 | `96 00 00` | Turn pad `00` off | End |
+
+Label the renderer tempo **120 BPM fixture tempo**. A full pulse cycle for step 1 is 1,000 ms. A full lit/dark cycle for step 2 is 500 ms, with equal phases. Each effect starts bright on receipt. A replacement, Off or receiver disconnect cancels the prior animation. Measure phase and receiver timing in foreground Chromium. Hardware clock behavior has its own acceptance.
+
+**Step** submits one triplet and lets the operator set the dwell before the next click. **Replay** submits the array once from step 1. The intervals are minimum monotonic delays between submissions. Schedule late steps from their actual submission time to avoid catch-up bursts. Test actual receiver intervals separately. Allow at most 20 seconds from the run's first submission on the client. The existing 30-second router lease begins at CLI `on` and can end earlier than the client deadline. Pause manual solid/off controls while the timed sequence is active. Diagnostics can report progress as queued bytes. Receiver evidence comes from the live MIDI path.
+
+On the last successful submission, **Stop**, **Reset**, client timeout or send failure, cancel scheduled sends and close only the Diagnostics MIDI TX binding. Normal WebSocket close drains already submitted bytes before the router detaches that binding and restores committed feedback. Stop keeps the inspection position. Reset returns to step 1. Neither sends extra cleanup MIDI or writes to the serial CLI. An explicit CLI `route SRC DST raw off`, runtime expiry, or affected peer loss terminates the lease and closes the old source. Drop callbacks from that retired source. A new run explicitly connects a fresh source and uses a new CLI `on`. The serial attachment and other MIDI peers remain independent. [WebSocket closing behavior](https://websockets.spec.whatwg.org/#dom-websocket-close)
+
+For acceptance, compare the five literals in order at private router ingress and accepted egress, then at the actual APC binary receiver. Verify the pulse, blink, solid replacement and Off on the live surface. Test final-frame drain before restore, plus Stop, Reset, timeout, CLI Off and abrupt loss while an effect is running. Check the latest committed 40-pad restore, including an ordinary route LED changed during the lease, and verify fresh receiver attach with no delayed test frames. Rerun ordinary committed feedback and the published solid/off check.
+
 ## Loopback transport
 
 Use the [standard WebSocket upgrade](https://www.rfc-editor.org/info/rfc6455/) on IPv4 loopback, with the URL path selecting the binding. Served pages and compatible native WebSocket clients use the same wire. The host accepts the exact `Host` and `Origin` of its own served pages. For a host listening at `127.0.0.1:8767`, a native client connects to `ws://127.0.0.1:8767` and supplies `Origin: http://127.0.0.1:8767`. The browser supplies the origin when it opens the socket from a served page. Direct-file HTML uses Web MIDI and Web Serial where supported. A network-facing listener and OS-visible virtual ports are separate follow-on proposals.
