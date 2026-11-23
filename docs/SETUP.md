@@ -57,7 +57,45 @@ The recipe retains Debian Bookworm, Pico SDK/picotool 2.2.0, TinyUSB 0.21.0, Pic
 
 The recipe includes amd64/arm64 host selection; successful image builds on each still need verification. Container architecture is **not** evidence that the future musical application supports every Linux ARM ABI. Raspberry Pi CPU/OS targets and Windows build/test environments must be selected and verified by the planning team. Windows product validation is not supplied by running a Linux container.
 
-The container is not privileged and has no automatic USB, sound-device or Docker-socket passthrough. Planning needs none. Hardware/device access can be added explicitly when an approved task needs it; the current setup is not a claim of physical MIDI access from Docker.
+The base container runs without USB, sound-device or Docker-socket passthrough. The local Linux ALSA bench can opt in to the sequencer device below.
+
+## 3a. Opt in to the ALSA sequencer on a Linux Docker host
+
+Run the following from the checkout on the Linux host that runs the Docker daemon. The opt-in maps the single character device `/dev/snd/seq` read/write and keeps the existing Compose service and persistent mounts. For a bench that also needs PCM or control access, repeat `--alsa-node` with the exact paths of the devices you intend to use. The script checks that each path is a present character device and derives its numeric group separately.
+
+Check the existing image with a disposable container while the current dev service stays up:
+
+```sh
+./scripts/start.sh --alsa-probe
+```
+
+The disposable container uses the existing local image, a read-only root filesystem, and no network or credential mounts. The probe derives each supplementary group from the numeric device GID. For a device in group zero it uses the established `pico` group and checks effective access through the device permissions or ACL. It verifies the non-root container UID, numeric groups and matched device GIDs, then calls ALSA `snd_seq_open` in duplex mode. An optional PCM or control node is separately opened read/write to check effective device access. This uses kernel and ALSA checks and makes no assumption about the host login UID. Resolve denied access through the host's approved group or ACL setup before enabling the override.
+
+Render and validate the opt-in Compose configuration without starting anything:
+
+```sh
+./scripts/start.sh --alsa-config
+```
+
+For example, with those exact playback and control nodes present and intended for use:
+
+```sh
+./scripts/start.sh --alsa-probe --alsa-node /dev/snd/pcmC0D0p --alsa-node /dev/snd/controlC0
+./scripts/start.sh --alsa-config --alsa-node /dev/snd/pcmC0D0p --alsa-node /dev/snd/controlC0
+```
+
+When ready for the deliberate dev service change, build the ALSA-enabled image and start the existing service with the override:
+
+```sh
+seq_gid="$(stat -Lc '%g' -- /dev/snd/seq)"
+export GRIDPICO_ALSA_SEQ_GID="$seq_gid"
+if [ "$seq_gid" = 0 ]; then export GRIDPICO_ALSA_SEQ_GID=1000; fi
+docker compose -f .devcontainer/compose.yaml -f .devcontainer/compose.alsa.yaml build dev
+./scripts/start.sh --alsa
+docker compose -f .devcontainer/compose.yaml exec -T dev aconnect -l
+```
+
+Building leaves the running service in place. Starting with the new device or image can replace the dev container; choose the restart window around active sessions. The start script repeats the disposable open before invoking Compose up. The checkout, Codex and GitHub volumes, and Herdr state remain mounted through the same service. Build with the override for the targeted `alsa-utils` tools and use `--alsa` with the same optional `--alsa-node` arguments on subsequent starts to retain the selection. The base `./scripts/start.sh` uses the base configuration. Herdr and the Web scripts attach to the same running service.
 
 ## 4. Sign in and verify authentication without exposing secrets
 

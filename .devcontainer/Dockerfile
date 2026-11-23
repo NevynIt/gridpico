@@ -7,6 +7,7 @@ ARG ARM_GCC_VERSION=15:12.2.rel1-1
 ARG PICO_SDK_REF=2.2.0
 ARG PICOTOOL_REF=2.2.0
 ARG PICO_PIO_USB_REF=0.7.3
+ARG GRIDPICO_ALSA_UTILS=0
 
 ENV PICO_SDK_PATH=/opt/pico/pico-sdk \
     PICO_PIO_USB_PATH=/opt/pico/Pico-PIO-USB \
@@ -20,6 +21,9 @@ RUN apt-get update \
         libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
         usbutils libusb-1.0-0-dev libasound2-dev gdb-multiarch openocd \
         openssh-client procps less ncurses-term \
+    && if [ "$GRIDPICO_ALSA_UTILS" = 1 ]; then \
+        apt-get install -y --no-install-recommends alsa-utils; \
+    fi \
     && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 --branch "$PICO_SDK_REF" \

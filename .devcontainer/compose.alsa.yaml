@@ -1,0 +1,9 @@
+services:
+  dev:
+    build:
+      args:
+        GRIDPICO_ALSA_UTILS: "1"
+    devices:
+      - "/dev/snd/seq:/dev/snd/seq:rw"
+    group_add:
+      - "${GRIDPICO_ALSA_SEQ_GID:?Set GRIDPICO_ALSA_SEQ_GID from the sequencer device group}"
