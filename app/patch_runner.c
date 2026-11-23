@@ -7,6 +7,12 @@
 #include <stdlib.h>
 #include <string.h>
 
+typedef enum {
+    DISPATCH_BAD_FRAME,
+    DISPATCH_COMPLETE,
+    DISPATCH_KEYBED_EXHAUSTED,
+} dispatch_status;
+
 static const char *result_name(gridpico_result result)
 {
     switch (result) {
@@ -140,8 +146,9 @@ static bool write_response(const patch_output *output, const gridpico_patch_snap
            write_page(output) && puts(result_name(result)) != EOF && fflush(stdout) == 0;
 }
 
-static bool dispatch(patch_runtime *runtime, const char *line,
-                     gridpico_patch_snapshot *snapshot, bool *inventory, gridpico_result *result)
+static dispatch_status dispatch(patch_runtime *runtime, const char *line,
+                                gridpico_patch_snapshot *snapshot, bool *inventory,
+                                gridpico_result *result)
 {
     patch_runtime_clear_output(runtime);
     *inventory = false;
@@ -151,23 +158,24 @@ static bool dispatch(patch_runtime *runtime, const char *line,
         if (!*inventory) {
             patch_runtime_clear_output(runtime);
         }
-        return true;
+        return DISPATCH_COMPLETE;
     }
     const char surface_prefix[] = "surface ";
     if (strncmp(line, surface_prefix, sizeof(surface_prefix) - 1) == 0) {
         gridpico_apc_surface_message message;
         if (!parse_surface(line + sizeof(surface_prefix) - 1, &message)) {
-            return false;
+            return DISPATCH_BAD_FRAME;
         }
         *result = gridpico_apc_patch_receive(&runtime->apc, &message);
-        return true;
+        return DISPATCH_COMPLETE;
     }
     gridpico_ingress_note input = {.source = runtime->keybed};
     if (!parse_note(line, &input.note)) {
-        return false;
+        return DISPATCH_BAD_FRAME;
     }
     *result = patch_runtime_submit(runtime, &input);
-    return true;
+    return input.note.kind == GRIDPICO_NOTE_ON && *result == GRIDPICO_CAPACITY
+        ? DISPATCH_KEYBED_EXHAUSTED : DISPATCH_COMPLETE;
 }
 
 int main(void)
@@ -179,14 +187,16 @@ int main(void)
     }
 #endif
     patch_runtime runtime;
-    if (patch_runtime_init(&runtime) != GRIDPICO_OK) {
+    if (patch_runtime_init_browser(&runtime) != GRIDPICO_OK) {
         fputs("Patch runner could not initialize the fixture\n", stderr);
         return EXIT_FAILURE;
     }
 
     bool output_ok = puts("ready") != EOF && fflush(stdout) == 0;
     bool malformed = false;
-    while (output_ok) {
+    bool keybed_exhausted = false;
+    gridpico_result cleanup = GRIDPICO_OK;
+    while (output_ok && !keybed_exhausted) {
         char line[REQUEST_SIZE];
         const request_status status = read_request(line);
         if (status == REQUEST_EOF) {
@@ -195,21 +205,27 @@ int main(void)
         gridpico_patch_snapshot snapshot;
         bool inventory;
         gridpico_result result;
-        if (status == REQUEST_MALFORMED ||
-            !dispatch(&runtime, line, &snapshot, &inventory, &result)) {
+        const dispatch_status dispatched = status == REQUEST_LINE
+            ? dispatch(&runtime, line, &snapshot, &inventory, &result)
+            : DISPATCH_BAD_FRAME;
+        if (dispatched == DISPATCH_BAD_FRAME) {
             fputs("Patch runner received malformed framing\n", stderr);
             malformed = true;
             break;
         }
+        keybed_exhausted = dispatched == DISPATCH_KEYBED_EXHAUSTED;
+        if (keybed_exhausted) {
+            /* Keep all accepted releases, including any accepted on teardown retry. */
+            cleanup = patch_runtime_disconnect_keybed(&runtime);
+        }
         output_ok = write_response(&runtime.output, inventory ? &snapshot : NULL, result);
     }
 
-    patch_runtime_clear_output(&runtime);
-    const gridpico_patch_port_update disconnect = {
-        .connection = runtime.keybed, .state = GRIDPICO_PATCH_DISCONNECTED,
-    };
-    const gridpico_result cleanup = patch_runtime_update_port(&runtime, &disconnect);
-    output_ok = output_ok && write_notes(&runtime.output) && fflush(stdout) == 0;
+    if (!keybed_exhausted) {
+        patch_runtime_clear_output(&runtime);
+        cleanup = patch_runtime_disconnect_keybed(&runtime);
+        output_ok = output_ok && write_notes(&runtime.output) && fflush(stdout) == 0;
+    }
     if (cleanup != GRIDPICO_OK || ferror(stdin) || !output_ok) {
         fputs("Patch runner could not complete stdio or disconnect cleanup\n", stderr);
         return EXIT_FAILURE;

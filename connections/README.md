@@ -80,8 +80,15 @@ the route page updates. Release **Q** and check for the remaining Note
 Off. Refresh and verify the inventory and current route LEDs.
 
 A successful refresh delivers a validated inventory block before its
-40-pad page. Keybed, pad and refresh requests run in order with one
-runner dispatch in flight and up to 16 queued. An ordinary command
-rejection reports its code after any accepted capture and complete LED
-page. Closing the socket or stopping the host closes runner stdin and
-drains output through cleanup.
+40-pad page. The Patch fixture supports up to 25 held keys across two
+routes and up to 50 accepted capture records per dispatch. Keybed, pad
+and refresh requests run in order with one runner dispatch in flight
+and up to 160 queued.
+
+An ordinary command rejection reports its code after any accepted
+capture and complete LED page. If a new key press exceeds the held-note
+limit, the connection delivers the accepted releases, reports the
+capacity error and closes.
+After a disconnect, click **Reconnect** for a fresh Patch connection
+with routes off and an empty capture. Use fresh route and key gestures
+and enable audio again if needed.

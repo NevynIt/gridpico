@@ -41,6 +41,35 @@ There are at most nine inventory frames including the boundaries, ahead of at mo
 
 Assembly may provide a separate native test entry point with an in-process fixture. Inject lifecycle changes through `gridpico_patch_port_update` on the existing Simulation and Graph adapters. Connect a serial byte adapter or pseudo-terminal to the actual CLI. Simulated Diagnostics uses that CLI byte stream through its mocked Web Serial interface. Cross-client tests for APC and CLI use one Session instance for their scenario, with port events, CLI commands and APC actions serialized. The browser runner retains only its existing commands. Lifecycle injection stays in the native test entry point.
 
+## Interactive Patch fast-play proposal
+
+The verified Route-view release is the prerequisite for this connected Patch implementation. Assembly selects the opt-in `gridpico_patch_graph_init_browser` profile for `/patch/midi` and uses its module-owned occurrence and release constants. The stage-one native Patch fixture retains two input occurrences and four release credits through `gridpico_patch_graph_init`. The native transpose proof and Route-view profiles remain independent regressions. Reuse the same Graph, Session, fixture and production APC boundaries.
+
+| App resource | Proposed bound and purpose |
+| --- | --- |
+| Input and fan-out | 25 input occurrences, including retired or suppressed holds, cover the physical controls. Two branches are enabled independently. Reserve up to 50 release credits, one for each potential accepted destination note. |
+| Runner response | Stage at most 50 accepted notes per dispatch, then at most one page marker and 40 LED rows. A single branch disable can emit 25 releases. Ingress cleanup across both branches can emit 50. Keep the retained history at 16 and stage accepted rows independently of eviction. |
+| Input backlog | One request in flight and 160 queued. The connected view forwards 25 keys and 54 panel controls (40 pads, eight Track buttons, five Scene buttons and Shift). A press and cancellation of every forwarded control uses at most 158 requests, leaving room for two refresh requests. A conservative compact browser payload for that burst is 7,542 bytes. |
+| Transport | Retain the 256-byte frame, 8 KiB socket buffer and existing reader and runner deadlines. A full 50-Off, 40-LED response with a page marker and error consumes under 5 KiB of compact frames including framing allowance. Preserve capture-before-feedback order. |
+
+### Early capture and terminal keybed overflow
+
+Process genuine keyboard, pointer and cancellation events in order. The runner writes and flushes accepted note rows before any LED page and dispatch terminator. The host forwards each validated accepted note row in order as it arrives on a writable socket. It keeps the per-dispatch row limit and does not wait for the LED page or `ok` or `err`. Inventory and LEDs remain atomic complete blocks. On a stalled or lost transport, drain runner cleanup and clear held controls and browser audio locally.
+
+The terminal discriminator is `err CAPACITY` for a validated, in-flight keybed Note On request. The graph quiesces that ingress and Assembly completes source teardown before the runner writes the reply. Include all accepted zero-velocity cleanup releases without duplicating releases already delivered. Flush them before `err CAPACITY` and dispatch no further requests. The host sends the existing `{"type":"error","code":"CAPACITY"}` after the accepted rows, then retires the socket with close code `1013` and reason `Patch keybed capacity exceeded`. It discards queued controls for that fixture and drains runner output. These operations use the existing stdin/stdout and browser frame shapes.
+
+A valid surface `CAPACITY`, keybed Note Off `CAPACITY`, and other ordinary command rejections retain the normal recoverable reply. Forward their accepted rows and any complete authoritative LED page before the error. Route gestures keep their normal meaning. The fixture remains available for further valid commands after a recoverable reply.
+
+Expose the disconnected state and a manual **Reconnect** action for a genuine overflow or loss. One click starts one fresh connection attempt. A runner still retiring can reject that attempt. Leave the action available for a later explicit attempt. The next accepted connection starts a fresh Patch fixture with empty capture and routes initially off. Call for fresh route and key gestures and explicit audio enablement. An ordinary Route pad gesture continues to change only its mapped route.
+
+### Independent fast-play gate
+
+1. In connected Chromium, exercise fast sequential presses and a genuine chord of at least three notes. Enable both branches and hold all 25 keys. Confirm all 50 accepted attacks. Cancel the held controls, including panel release, and check all accepted releases and continued route control. Use destination-aware native capture to confirm branch attribution.
+2. Disable one branch with notes held. Check its 25 accepted zero-velocity releases reach the browser before the LED page and the other branch stays active. Delay the remainder of a fixture reply and verify an accepted release is forwarded before the terminator. Verify both-branch cleanup can produce a full 50-row dispatch, independently of the retained 16-row history.
+3. Exercise a deliberate 26th input, a forced valid surface `CAPACITY` reply and sustained transport overflow as separate cases. Verify terminal keybed cleanup and error ordering, recoverable surface rejection, visible loss and one fresh manual reconnect. Verify no held note or route replays. Rerun the small native Patch, native transpose and Route-view proofs.
+
+This gate covers two instrument branches. Destination-specific browser audio belongs to the [separate Web Monitor proposal](web-monitor-proposal.md).
+
 ## Shared runtime colors
 
 Session/control implements `gridpico_session_read_device_color` and `gridpico_session_set_device_color` with the two callback signatures in [patchbay_controls.h](patchbay_controls.h). CLI and APC receive these callbacks through Assembly and use the same logical `DeviceId`. Session owns one nullable RGB preference per known device, including a disconnected device. A known unset device returns `GRIDPICO_OK` with `is_set=false` and zeroed RGB. `#000000` is a set value. A zero or unknown ID returns `GRIDPICO_INVALID`. Setting the same value succeeds without advancing the color revision. A changed value advances the Session-owned color revision once. Stage-one inventory and graph revisions retain their original meanings.

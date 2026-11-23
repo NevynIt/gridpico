@@ -9,7 +9,7 @@ const { parseRequest, PatchResponse } = require("./patch-wire");
 
 const address = "127.0.0.1";
 const maxMessageBytes = 256;
-const maxQueuedRequests = 16;
+const maxQueuedRequests = 160;
 const maxRunnerLine = 128;
 const maxBufferedOutput = 8192;
 const runnerTimeoutMs = 5000;
@@ -124,12 +124,14 @@ function attach(socket, onRetired) {
       return;
     }
     if (line !== "ok" && !line.startsWith("err ")) {
-      response.add(line);
+      const capture = response.add(line);
+      if (capture) sendBatch([capture]);
       return;
     }
 
     const code = line === "ok" ? undefined : line.slice(4);
     const frames = response.finish(code, usesPageMarkers);
+    const exhaustedKeybed = response.kind === "keybed-on" && code === "CAPACITY";
     if (response.kind === "startup") {
       if (code !== undefined) throw new Error(`Patch startup rejected: ${code}`);
       ready = true;
@@ -139,6 +141,8 @@ function attach(socket, onRetired) {
     clearTimeout(runnerTimer);
     response = undefined;
     sendBatch(frames);
+    // WebSocket queues the close after the accepted notes and typed error.
+    if (exhaustedKeybed) retire(1013, "Patch keybed capacity exceeded");
   }
 
   armRunnerTimer(() => retire(1011, "Patch startup timed out"));

@@ -27,7 +27,7 @@ static size_t read_logs(void *context, gridpico_diagnostic_log_entry *rows, size
 static gridpico_result stage_delivery(void *context, const gridpico_note_delivery *delivery)
 {
     patch_runtime *runtime = context;
-    if (runtime->output.note_count == GRIDPICO_PATCH_RELEASE_CREDITS) {
+    if (runtime->output.note_count == GRIDPICO_PATCH_BROWSER_RELEASE_CREDITS) {
         runtime->output.overflowed = true;
         return GRIDPICO_CAPACITY;
     }
@@ -92,14 +92,16 @@ gridpico_result patch_runtime_set_route(void *context, const gridpico_patch_rout
     return result;
 }
 
-gridpico_result patch_runtime_init(patch_runtime *runtime)
+static gridpico_result init_runtime(patch_runtime *runtime, bool browser)
 {
     *runtime = (patch_runtime){.keybed = {KEYBED, 1}, .next_log_sequence = 1};
     gridpico_result result = gridpico_patch_fixture_init(&runtime->sim, &patch_inventory);
     if (result != GRIDPICO_OK) {
         return result;
     }
-    result = gridpico_patch_graph_init(&runtime->graph, &patch_inventory, stage_delivery, runtime);
+    result = browser
+        ? gridpico_patch_graph_init_browser(&runtime->graph, &patch_inventory, stage_delivery, runtime)
+        : gridpico_patch_graph_init(&runtime->graph, &patch_inventory, stage_delivery, runtime);
     if (result != GRIDPICO_OK) {
         return result;
     }
@@ -109,6 +111,16 @@ gridpico_result patch_runtime_init(patch_runtime *runtime)
                             set_color, runtime, stage_led);
     gridpico_apc_patch_set_page_feedback(&runtime->apc, stage_page);
     return GRIDPICO_OK;
+}
+
+gridpico_result patch_runtime_init(patch_runtime *runtime)
+{
+    return init_runtime(runtime, false);
+}
+
+gridpico_result patch_runtime_init_browser(patch_runtime *runtime)
+{
+    return init_runtime(runtime, true);
 }
 
 gridpico_result patch_runtime_bind_cli(patch_runtime *runtime, gridpico_cli_frontend *cli,
@@ -143,8 +155,8 @@ gridpico_result patch_runtime_submit(patch_runtime *runtime, const gridpico_ingr
     return result;
 }
 
-gridpico_result patch_runtime_update_port(patch_runtime *runtime,
-                                         const gridpico_patch_port_update *update)
+static gridpico_result update_port(patch_runtime *runtime, const gridpico_patch_port_update *update,
+                                   bool refresh)
 {
     gridpico_patch_snapshot before;
     gridpico_result result = read_snapshot(runtime, &before);
@@ -176,9 +188,23 @@ gridpico_result patch_runtime_update_port(patch_runtime *runtime,
             }
         }
     }
-    if (before.revision == after.revision) {
+    if (!refresh || before.revision == after.revision) {
         return result;
     }
     const gridpico_result refreshed = gridpico_apc_patch_refresh_snapshot(&runtime->apc, &after);
     return result == GRIDPICO_OK ? refreshed : result;
+}
+
+gridpico_result patch_runtime_update_port(patch_runtime *runtime,
+                                         const gridpico_patch_port_update *update)
+{
+    return update_port(runtime, update, true);
+}
+
+gridpico_result patch_runtime_disconnect_keybed(patch_runtime *runtime)
+{
+    const gridpico_patch_port_update disconnect = {
+        .connection = runtime->keybed, .state = GRIDPICO_PATCH_DISCONNECTED,
+    };
+    return update_port(runtime, &disconnect, false);
 }

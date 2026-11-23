@@ -359,6 +359,7 @@
       </div>
       <div class="demo-reconnect" id="demo-reconnect" hidden>
         <p id="demo-close-reason" role="status"></p>
+        <p id="patch-reconnect-note" hidden>A fresh Patch connection starts with all routes Off.</p>
         <div class="lab-actions"><button type="button" id="demo-reconnect-button">Reconnect</button></div>
       </div>
       <div class="activity-panel" id="capture-panel" role="tabpanel" aria-labelledby="capture-tab">
@@ -1444,8 +1445,8 @@ function createPatchPresentation() {
   let routePage = null;
   let colorPage = null;
 
-  document.querySelector("h1").textContent = "APC Patch";
-  document.title = "Gridpico · APC Patch";
+  document.querySelector("h1").textContent = "Web APC Patch";
+  document.title = "Gridpico · Web APC Patch";
   document.querySelector(".fixture").hidden = true;
   document.querySelector(".mapping-note").hidden = true;
   document.querySelector("#patch-overview").hidden = false;
@@ -1828,14 +1829,16 @@ function appendCapture(event) {
 const demoReconnectPanel = document.querySelector("#demo-reconnect");
 const demoReconnectButton = document.querySelector("#demo-reconnect-button");
 const demoCloseReason = document.querySelector("#demo-close-reason");
+const patchReconnectNote = document.querySelector("#patch-reconnect-note");
 let retryDemoConnection = null;
 
 function showDemoReconnect(reconnect, closeReason) {
-  if (patchMode || connection || typeof reconnect !== "function") return;
+  if (connection || typeof reconnect !== "function") return;
   if (audio) disableAudio();
   retryDemoConnection = reconnect;
   demoCloseReason.textContent = typeof closeReason === "string" && closeReason
     ? closeReason : "The connection closed unexpectedly.";
+  patchReconnectNote.hidden = !patchMode;
   demoReconnectButton.disabled = false;
   demoReconnectPanel.hidden = false;
 }

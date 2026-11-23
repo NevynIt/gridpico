@@ -87,10 +87,13 @@ gesture. [One-pad APC route toggle contract](../../api/README.md#one-pad-apc-rou
 ## Connected Patch
 
 Start the separate [Patch host](../../connections/README.md#connected-patch-view)
-and open its `/patch/` page. The simulator shows the actual device and port
+and open Web APC Patch at `/patch/`. It shows the actual device and port
 inventory, the occupied source rows and destination columns, and unassigned
 ports such as **Panel** and **LED feedback**. Use **Refresh inventory** to
 request a new snapshot. A disconnect clears the inventory and LED page.
+After an unexpected loss, **Reconnect** opens one fresh Patch connection
+with all routes Off. Prior routes and held keys do not carry over. Enable
+the routes you want and turn on Monitor audio explicitly.
 
 Press a pad at the intersection of a source row and destination column.
 An outlined pad has both ports assigned. The LED shows the last authoritative

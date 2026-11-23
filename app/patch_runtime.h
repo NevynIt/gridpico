@@ -8,7 +8,7 @@
 #include "sim/platform/patch_fixture.h"
 
 typedef struct {
-    gridpico_note_delivery notes[GRIDPICO_PATCH_RELEASE_CREDITS];
+    gridpico_note_delivery notes[GRIDPICO_PATCH_BROWSER_RELEASE_CREDITS];
     size_t note_count;
     gridpico_apc_surface_message leds[GRIDPICO_PATCH_LED_FRAMES];
     size_t led_count;
@@ -32,6 +32,7 @@ typedef struct {
 
 /* Use one serialized caller and clear output between dispatches. */
 gridpico_result patch_runtime_init(patch_runtime *runtime);
+gridpico_result patch_runtime_init_browser(patch_runtime *runtime);
 gridpico_result patch_runtime_bind_cli(patch_runtime *runtime, gridpico_cli_frontend *cli,
                                       gridpico_cli_write_fn write, void *write_context);
 void patch_runtime_clear_output(patch_runtime *runtime);
@@ -40,5 +41,7 @@ gridpico_result patch_runtime_set_route(void *context, const gridpico_patch_rout
 gridpico_result patch_runtime_submit(patch_runtime *runtime, const gridpico_ingress_note *input);
 gridpico_result patch_runtime_update_port(patch_runtime *runtime,
                                          const gridpico_patch_port_update *update);
+/* Retain staged releases and append any accepted teardown retries. */
+gridpico_result patch_runtime_disconnect_keybed(patch_runtime *runtime);
 
 #endif

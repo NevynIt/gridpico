@@ -5,7 +5,7 @@ const maxPorts = 5;
 const rows = 5;
 const columns = 8;
 const ledCount = rows * columns;
-const maxCaptures = 4;
+const maxCaptures = 50;
 const maxRevision = (1n << 64n) - 1n;
 const states = new Set(["connected", "disconnected", "ambiguous"]);
 const errorCodes = new Set(["INVALID", "CAPACITY", "UNAVAILABLE"]);
@@ -42,7 +42,7 @@ function parseRequest(data) {
   }
   if (isNote(event) && fields === 4) {
     const direction = event.type === "note-on" ? "on" : "off";
-    return { kind: "keybed", line: `${direction} 1 ${event.note} ${event.velocity}` };
+    return { kind: `keybed-${direction}`, line: `${direction} 1 ${event.note} ${event.velocity}` };
   }
   const { bytes } = event;
   if (event.type === "apc-surface" && fields === 2 && Array.isArray(bytes) &&
@@ -83,7 +83,7 @@ class PatchResponse {
     this.inventoryComplete = false;
     this.ledPage = undefined;
     this.leds = [];
-    this.captures = [];
+    this.captureCount = 0;
   }
 
   addInventory(fields) {
@@ -169,7 +169,7 @@ class PatchResponse {
       return;
     }
     if ((record !== "on" && record !== "off") || this.refresh || this.ledPage || this.leds.length ||
-        this.captures.length === maxCaptures || (this.kind === "surface" && record !== "off")) {
+        this.captureCount === maxCaptures || (this.kind === "surface" && record !== "off")) {
       throw new Error("Unexpected capture record");
     }
     const event = {
@@ -177,7 +177,8 @@ class PatchResponse {
       note: decimal(second, 0, 127), velocity: decimal(third, 0, 127),
     };
     if (!isNote(event)) throw new Error("Invalid capture note");
-    this.captures.push(event);
+    this.captureCount++;
+    return event;
   }
 
   finish(code, usesPageMarkers) {
@@ -199,7 +200,7 @@ class PatchResponse {
         throw new Error("Incomplete Patch refresh");
       }
     }
-    const frames = [...this.captures, ...this.inventory];
+    const frames = [...this.inventory];
     if (this.ledPage) frames.push(this.ledPage);
     frames.push(...this.leds);
     if (rejected) frames.push({ type: "error", code });

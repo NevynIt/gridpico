@@ -4,7 +4,7 @@ enum {
     NO_DEVICE = GRIDPICO_PATCH_DEVICES,
     NO_PORT = GRIDPICO_PATCH_PORTS,
     NO_BRANCH = GRIDPICO_PATCH_BRANCHES,
-    NO_CREDIT = GRIDPICO_PATCH_RELEASE_CREDITS,
+    NO_CREDIT = GRIDPICO_PATCH_BROWSER_RELEASE_CREDITS,
 };
 
 static bool valid_state(gridpico_patch_connection_state state)
@@ -114,7 +114,7 @@ static bool owed_to(const gridpico_patch_release_credit *credit, gridpico_port_i
 static bool has_owed_release(const gridpico_patch_graph *graph, gridpico_port_id destination,
                              gridpico_port_id source)
 {
-    for (size_t i = 0; i < GRIDPICO_PATCH_RELEASE_CREDITS; ++i) {
+    for (size_t i = 0; i < graph->release_credit_limit; ++i) {
         if (owed_to(&graph->credits[i], destination, source)) {
             return true;
         }
@@ -177,7 +177,7 @@ static gridpico_result reconcile_releases(gridpico_patch_graph *graph, gridpico_
                                            gridpico_port_id source)
 {
     gridpico_result result = GRIDPICO_OK;
-    for (size_t i = 0; i < GRIDPICO_PATCH_RELEASE_CREDITS; ++i) {
+    for (size_t i = 0; i < graph->release_credit_limit; ++i) {
         gridpico_patch_release_credit *credit = &graph->credits[i];
         if (!owed_to(credit, destination, source)) {
             continue;
@@ -245,11 +245,21 @@ static bool valid_note(gridpico_note note)
             (note.kind == GRIDPICO_NOTE_ON && note.velocity != 0));
 }
 
+static bool already_selected(const size_t *selected, size_t count, size_t credit)
+{
+    for (size_t i = 0; i < count; ++i) {
+        if (selected[i] == credit) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static size_t reserve_credit(const gridpico_patch_graph *graph, gridpico_connection destination,
-                             gridpico_note note, unsigned reserved)
+                             gridpico_note note, const size_t *selected, size_t selected_count)
 {
     size_t free_credit = NO_CREDIT;
-    for (size_t i = 0; i < GRIDPICO_PATCH_RELEASE_CREDITS; ++i) {
+    for (size_t i = 0; i < graph->release_credit_limit; ++i) {
         const gridpico_patch_release_credit *credit = &graph->credits[i];
         if (credit->contributors != 0 && credit->delivery.destination.endpoint == destination.endpoint &&
             credit->delivery.destination.generation == destination.generation &&
@@ -258,7 +268,7 @@ static size_t reserve_credit(const gridpico_patch_graph *graph, gridpico_connect
             return i;
         }
         if (free_credit == NO_CREDIT && credit->contributors == 0 && credit->owed_source == 0 &&
-            (reserved & (1u << i)) == 0) {
+            !already_selected(selected, selected_count, i)) {
             free_credit = i;
         }
     }
@@ -268,12 +278,11 @@ static size_t reserve_credit(const gridpico_patch_graph *graph, gridpico_connect
 static gridpico_result submit_press(gridpico_patch_graph *graph, size_t source,
                                     const gridpico_ingress_note *input, unsigned active)
 {
-    if (graph->occurrence_count == GRIDPICO_PATCH_NOTE_OCCURRENCES) {
+    if (graph->occurrence_count == graph->occurrence_limit) {
         return quiesce_input(graph, source);
     }
 
     size_t selected[GRIDPICO_PATCH_BRANCHES];
-    unsigned reserved = 0;
     for (size_t i = 0; i < GRIDPICO_PATCH_BRANCHES; ++i) {
         selected[i] = NO_CREDIT;
         const gridpico_patch_graph_branch *branch = &graph->branches[i];
@@ -281,11 +290,10 @@ static gridpico_result submit_press(gridpico_patch_graph *graph, size_t source,
             const size_t output = branch->destination;
             const gridpico_connection destination = {graph->inventory.ports[output].id,
                                                      graph->ports[output].generation};
-            selected[i] = reserve_credit(graph, destination, input->note, reserved);
+            selected[i] = reserve_credit(graph, destination, input->note, selected, i);
             if (selected[i] == NO_CREDIT) {
                 return quiesce_input(graph, source);
             }
-            reserved |= 1u << selected[i];
         }
     }
 
@@ -352,10 +360,9 @@ static gridpico_result submit_release(gridpico_patch_graph *graph, const gridpic
     return GRIDPICO_OK;
 }
 
-gridpico_result gridpico_patch_graph_init(gridpico_patch_graph *graph,
-                                         const gridpico_patch_inventory *inventory,
-                                         gridpico_deliver_note_fn deliver,
-                                         void *delivery_context)
+static gridpico_result init_graph(gridpico_patch_graph *graph, const gridpico_patch_inventory *inventory,
+                                  gridpico_deliver_note_fn deliver, void *delivery_context,
+                                  size_t occurrence_limit, size_t release_credit_limit)
 {
     if (graph == NULL || inventory == NULL || deliver == NULL) {
         return GRIDPICO_INVALID;
@@ -367,13 +374,36 @@ gridpico_result gridpico_patch_graph_init(gridpico_patch_graph *graph,
         return GRIDPICO_INVALID;
     }
 
-    *graph = (gridpico_patch_graph){.inventory = *inventory, .deliver = deliver,
-                                  .delivery_context = delivery_context};
+    *graph = (gridpico_patch_graph){
+        .inventory = *inventory,
+        .deliver = deliver,
+        .delivery_context = delivery_context,
+        .occurrence_limit = occurrence_limit,
+        .release_credit_limit = release_credit_limit,
+    };
     for (size_t i = 0; i < graph->inventory.port_count; ++i) {
         graph->ports[i].generation = 1;
     }
     aggregate_devices(&graph->inventory);
     return GRIDPICO_OK;
+}
+
+gridpico_result gridpico_patch_graph_init(gridpico_patch_graph *graph,
+                                         const gridpico_patch_inventory *inventory,
+                                         gridpico_deliver_note_fn deliver,
+                                         void *delivery_context)
+{
+    return init_graph(graph, inventory, deliver, delivery_context,
+                      GRIDPICO_PATCH_NOTE_OCCURRENCES, GRIDPICO_PATCH_RELEASE_CREDITS);
+}
+
+gridpico_result gridpico_patch_graph_init_browser(gridpico_patch_graph *graph,
+                                                 const gridpico_patch_inventory *inventory,
+                                                 gridpico_deliver_note_fn deliver,
+                                                 void *delivery_context)
+{
+    return init_graph(graph, inventory, deliver, delivery_context,
+                      GRIDPICO_PATCH_BROWSER_NOTE_OCCURRENCES, GRIDPICO_PATCH_BROWSER_RELEASE_CREDITS);
 }
 
 gridpico_result gridpico_patch_graph_update_port(void *context,
