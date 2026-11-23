@@ -119,3 +119,76 @@ gridpico_result gridpico_patch_session_set_route(void *context,
 
     return session->set_graph_route(session->graph_context, request);
 }
+
+static gridpico_result find_device_slot(const gridpico_patch_session *session,
+                                       gridpico_device_id device, size_t *slot)
+{
+    if (device == 0) {
+        return GRIDPICO_INVALID;
+    }
+
+    gridpico_patch_graph_state graph;
+    const gridpico_result result = read_graph(session, &graph);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+
+    for (size_t i = 0; i < graph.inventory.device_count; ++i) {
+        if (graph.inventory.devices[i].id == device) {
+            *slot = i;
+            return GRIDPICO_OK;
+        }
+    }
+    return GRIDPICO_INVALID;
+}
+
+gridpico_result gridpico_session_read_device_color(void *context, gridpico_device_id device,
+                                                 gridpico_device_color *out)
+{
+    const gridpico_patch_session *session = context;
+    if (session == NULL || out == NULL) {
+        return GRIDPICO_INVALID;
+    }
+
+    size_t slot;
+    const gridpico_result result = find_device_slot(session, device, &slot);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+
+    const gridpico_patch_color_preference *color = &session->colors[slot];
+    *out = (gridpico_device_color){
+        .revision = session->color_revision,
+        .is_set = color->is_set,
+        .rgb = color->rgb,
+    };
+    return GRIDPICO_OK;
+}
+
+gridpico_result gridpico_session_set_device_color(void *context, gridpico_device_id device,
+                                                gridpico_rgb8 rgb)
+{
+    gridpico_patch_session *session = context;
+    if (session == NULL) {
+        return GRIDPICO_INVALID;
+    }
+
+    size_t slot;
+    const gridpico_result result = find_device_slot(session, device, &slot);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+
+    gridpico_patch_color_preference *color = &session->colors[slot];
+    if (color->is_set && color->rgb.red == rgb.red && color->rgb.green == rgb.green &&
+        color->rgb.blue == rgb.blue) {
+        return GRIDPICO_OK;
+    }
+    if (session->color_revision == UINT64_MAX) {
+        return GRIDPICO_CAPACITY;
+    }
+
+    *color = (gridpico_patch_color_preference){.is_set = true, .rgb = rgb};
+    ++session->color_revision;
+    return GRIDPICO_OK;
+}
