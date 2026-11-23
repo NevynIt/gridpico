@@ -8,8 +8,9 @@ from disk. To serve it locally, run this from the repository root, then open
 python3 -m http.server 8000 --bind 127.0.0.1 --directory web/apc
 ```
 
-Play using a pointer, touch, or the shortcuts printed on the keys. Focused
-buttons also respond to Space and Enter. Middle C is the key marked **Q**
+Play using a pointer, touch, or the shortcuts printed on the keys. Tab
+skips the keybed and reaches the panel controls, which respond to Space
+and Enter. Middle C is the key marked **Q**
 at start-up, MIDI note 60 on channel 1. The octave buttons shift the keybed
 locally. Cancellation, lost pointer capture, Escape, and leaving the page
 release held controls. Panel buttons and Sustain show their local pressed state.
