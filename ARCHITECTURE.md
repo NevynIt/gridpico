@@ -13,7 +13,7 @@ Gridpico is a portable, controller-independent MIDI workstation kernel. It conne
 
 The planned embedded deployment uses RP2040. Native USB connects to the computer as a device, and PIO USB hosts instruments through a hub. The same product must also run as a Linux or Windows application. Raspberry Pi Zero runs the Linux ARM application.
 
-The first proof runs in a Linux x86_64 container. It exercises production Session/control, MIDI graph and transpose against deterministic in-process MIDI services. The [proof contract](api/README.md#linux-x86_64-route-and-transpose-proof) defines the scope of that evidence. The standalone rehearsal and RP2040 acceptance depend on access to hardware.
+The first proof passed in a Linux x86_64 container. It exercises production Session/control, MIDI graph and transpose against deterministic in-process MIDI services. The [proof contract](api/README.md#linux-x86_64-route-and-transpose-proof) defines the scope of that evidence. The standalone rehearsal and RP2040 acceptance depend on access to hardware.
 
 The portable kernel, platform backends and firmware handle MIDI. Tracks target MIDI destinations. Browser Monitor and standalone instrument peers generate sound at the receiving end.
 
@@ -45,7 +45,7 @@ The Sequencer boundary is retained from the outset; its implementation can be de
 
 ### Session/control and state ownership
 
-Commands express intent, such as changing a route or processor setting. Queries and state notifications describe musical state. APC, CLI and authorized browser helpers use the same command boundary, which also accommodates a future piano frontend.
+Commands express intent, such as changing a route or processor setting. Queries and state notifications describe musical state. In-process APC and CLI frontends use the same typed command boundary, which also accommodates a future piano frontend. Browser peers reach those frontends through APC MIDI and serial CLI respectively.
 
 Session/control validates cross-domain operations and dispatches to the owning module. Each domain remains authoritative for its own state. A coherent snapshot/revision mechanism lets frontends refresh without maintaining independent musical truth. State notifications must not be reinterpreted as new commands and echoed back.
 
@@ -94,7 +94,7 @@ The computer-visible read-only filesystem is **not** this writable project store
 | **APC frontend** `frontends/apc/` | Decode APC MIDI, interpret gestures/pages/modifiers, call the kernel API, and render state into incremental APC feedback plus full reconnect refreshes |
 | **Piano frontend** `frontends/piano/` | Later: interpret 88-key/pedal control gestures and render feedback through an abstract RGB strip; distinguish control consumption from musical forwarding |
 | **CLI frontend** `frontends/cli/` | Translate text into the common commands and present queries/state; no musical logic duplicated in the parser |
-| **Web APC simulator** `web/apc/` | Emulate APC controls, keybed and received LED feedback, and present the destination capture and optional browser Monitor |
+| **Web APC simulator** `web/apc/` | Emulate APC controls, keybed and received LED feedback. The separate Route and Patch demos also present Capture and their profile-specific Monitor controls. |
 | **Computer connections** `connections/` | Production web home, shared browser MIDI adapter, local serial, WebSocket admission, framing and connection lifecycle |
 
 Inside the APC frontend, keep protocol decoding/encoding separate from view/gesture interpretation even though one owner initially owns both. Other frontends neither impersonate the APC nor import its view implementation.
@@ -107,7 +107,7 @@ The piano frontend must remember whether a press/pedal transition was consumed o
 
 ### Web landing page and browser MIDI
 
-Assembly owns `scripts/web-ui.sh` as the computer entry point for the production web home. Connections hosts the landing page with links to Web APC and Diagnostics. Assembly stages the landing page and self-contained tools for read-only `GRIDPICO` distribution. The existing tools also open directly, and each retains its own UI and selected connections.
+Assembly owns `scripts/web-ui.sh` as the computer entry point for the production web home. Connections hosts the landing page with links to Web APC, Diagnostics and the optional FM instrument. Assembly stages `HOME.HTM` with relative links to self-contained `INDEX.HTM`, `DIAG.HTM` and `FM.HTM` for read-only `GRIDPICO` distribution. Staged-file checks verified direct opening. Actual mounted Pico and CDC acceptance remains pending. [Web startup and evidence](api/browser-midi.md)
 
 Connections shares one in-page browser MIDI layer for provider and port selection, send, receive and binding lifecycle. Web MIDI can select ordinary OS ports, including OS-exposed RTP-MIDI endpoints when the browser grants access. The WebSocket provider binds directional ports to the production router over the existing binary MIDI wire. This shared layer is a code boundary inside the page. Diagnostics opens its serial CLI stream independently. [Browser MIDI and landing page contract](api/browser-midi.md)
 
@@ -119,7 +119,7 @@ Track voices by destination, MIDI channel and key so two channels using the same
 
 ### Optional instrument peers
 
-Sound-generating peers open ordinary MIDI inputs. The first Pi sound proof uses stock FluidSynth through the production ALSA route and retrieves measured audio as a bench artifact. A later standalone FluidSynth wrapper owns the engine process, SoundFont and local output. A standalone browser FM instrument uses the shared browser receive adapter and owns its built-in voice, Web Audio and local voice cleanup. It starts with routed Note On and Note Off. Each ships independently from the router and firmware. [Instrument-peer contracts](api/instrument-peers.md)
+Sound-generating peers open ordinary MIDI inputs. Stock FluidSynth and the standalone wrapper each received MIDI through the production Pi ALSA route and produced a verified local WAV. The wrapper owns the engine process, SoundFont and local output. The standalone browser FM instrument uses the shared receive adapter and owns its built-in voice, Web Audio and local voice cleanup. Routed Note On and Note Off were verified through loopback WebSocket and selected ALSA Web MIDI ports. Both peers ship independently from the router and firmware. [Instrument-peer contracts and evidence](api/instrument-peers.md)
 
 ### Patch and Circuit views
 
@@ -132,7 +132,7 @@ Preserve GridZero's useful interaction ideas without inheriting its synth requir
 - Both views operate the same routes, tracks and transport. Changing views does not stop musical behavior.
 - Synth master-filter/volume behavior is not inherited. Any encoder allocation for external-instrument MIDI controls must be explicitly specified.
 
-Final gestures, mappings and behavior-baseline versions belong in later approved specifications, not guessed implementations.
+Published [Patch controls](api/patchbay-controls.md) pin the implemented gestures, mappings and feedback. Future Circuit controls need their own approved specification.
 
 The standalone Diagnostics page exposes the local serial CLI and connection status offline. Its MIDI controls send sequences through a separately selected MIDI port. Computer connections owns both transports and the browser client. The CLI frontend owns command text and calls Session/control for inventory, device colors and route commands. Application Assembly packages Diagnostics on the read-only `GRIDPICO` drive. [Diagnostics and local router](api/local-router.md)
 
@@ -148,7 +148,7 @@ The [platform contracts](api/README.md#platform-services) cover MIDI endpoints a
 | **Windows HAL** `platform/windows/` | Windows MIDI/time/storage services and Windows-specific runtime integration |
 | **Simulation backend** `sim/platform/` | Deterministic fake MIDI, clock, storage and feedback behind the same contracts |
 
-Linux must distinguish architectures from the start, but **does not need duplicate Linux implementations or separate agents**. Suggested structure is `platform/linux/common/`, `platform/linux/x86/` and `platform/linux/arm/`, with target-specific build settings and genuinely necessary differences isolated. The exact x86/ARM ABI profiles and Raspberry Pi generation remain explicit planning decisions. A Linux ARM build/test result must not be inferred from an x86 pass.
+Linux uses one HAL implementation with separate target build and test settings. The native ALSA adapter sits under `platform/linux/` and builds for both x86-64 and arm64. The Pi arm64 bench has its own verified receipts and cleanup results. Additional Linux targets require their own build and runtime evidence. [Linux MIDI adapter](api/linux-midi-adapter.md)
 
 Raspberry Pi Zero runs the Linux application. It is not required to emulate RP2040 USB device behavior, CDC or a mounted disk. A Windows or Linux application talks to devices through the OS and distributes/serves UI assets locally. Direct USB hosting here means using OS services, not writing a desktop USB host stack.
 
@@ -218,7 +218,7 @@ Maintain separate evidence for deterministic simulation, Linux x86, Linux ARM, W
 
 Maintain separate transport results for verified WebSocket loopback, cross-host browser and native WebSocket, Linux RTP-MIDI and Windows RTP-MIDI. Verify actual MIDI receipts and scoped cleanup. Cross-host WebSocket acceptance also exercises TLS client admission, origin checks, port authorization and isolation of the local CLI. [WebSocket MIDI acceptance](api/websocket-midi.md#integration-handoff-and-acceptance)
 
-This list does not assign tasks, dates, release stages or a delivery order. The planning team determines those in the future roadmap.
+The [roadmap](ROADMAP.md) records sequencing, implemented profiles and verification results.
 
 ## 9. Decisions intentionally left to planning
 

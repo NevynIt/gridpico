@@ -31,7 +31,7 @@ The initial team contains exactly four agents. The human starts Session Manager;
 
 The three planning documents are **shared reference documents with single owners**, not three documents each maintained in parallel by every agent. All three planning agents discuss and propose changes; the owner updates the relevant file. Cross-document conflicts are resolved between owners and, when necessary, through Strategist to the human.
 
-`ROADMAP.md` is intentionally absent from the starter repository. Project Manager creates it after discussing the brief and architecture with Strategist and Architect. Do not import GridZero's old roadmap or prepopulate implementation milestones from this starter.
+`ROADMAP.md` records the current delivery plan and verification evidence. Project Manager maintains it after discussing the brief and architecture with Strategist and Architect. Do not import GridZero's old roadmap.
 
 ## 3. Startup and expansion
 
@@ -97,7 +97,7 @@ A module owner may write module-local tests when assigned. Builder runs native/t
 
 These are behavioral ownership rules. Any concrete session sandbox settings are a separate, explicitly configured technical mechanism; do not claim that a shared Unix user provides isolation. Session Manager is not responsible for enforcing that mechanism. Do not relax protections, bypass approvals or access another project's credentials/configuration simply to make an operation work.
 
-The initial repository contains documents and development tooling only. Preparing it does not instantiate the later module-owner agents or assign them implementation work.
+The starter repository contained documents and development tooling. Additional owner seats and implementation assignments follow the approval and request process in section 3.
 
 ## 7. Communication and escalation
 
@@ -148,4 +148,4 @@ The human has explicitly approved `--sandbox danger-full-access --ask-for-approv
 
 > Establish only the planning team in this gridpico checkout: Strategist, Architect and Project Manager, each as a persistent Codex session. Keep the approved roster and exact native session IDs. Let the three maintain their owned brief, architecture and roadmap in discussion with the human through Strategist. Do not create any other agent until Project Manager requests it after the human's approval. After bootstrap, create/start/pause/resume only on Project Manager request. Resume original Codex sessions; never add checkpoint or reconstruction procedures. You are not an enforcer, scheduler or supervisor.
 
-The four role prompts are provided under `.team/roles/`. Installed tool behavior takes precedence over guessed commands; operational limitations must be reported plainly. No agent sessions are created by repository setup.
+Initial and approved additional role prompts are maintained under `.team/roles/`. Installed tool behavior takes precedence over guessed commands; operational limitations must be reported plainly. No agent sessions are created by repository setup.

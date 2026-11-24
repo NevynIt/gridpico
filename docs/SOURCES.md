@@ -2,7 +2,7 @@
 
 ## Product and team decisions
 
-**S1 — Human decisions in the gridpico project discussion, 22 November 2026.** These control the starter: no synthesis; future sequencing boundary; controller-independent kernel; APC simulation as the main configuration experience; read-only HTML/documentation drive; RP2040/Linux x86/Linux ARM/Windows backends; Raspberry Pi as ordinary Linux deployment; four initial agents; single-owner planning documents; Session Manager as operator without enforcement; exact Codex session resumption without checkpoints; roadmap left to Project Manager after discussion.
+**S1 — Human decisions in the gridpico project discussion, 22 November 2026.** These record product and team intent: no synthesis in the kernel; future sequencing boundary; controller-independent kernel; APC simulation as the main configuration experience; a planned read-only HTML/documentation drive; RP2040/Linux x86/Linux ARM/Windows backends; Raspberry Pi as ordinary Linux deployment; four initial agents; single-owner planning documents; Session Manager as operator without enforcement; exact Codex session resumption without checkpoints; roadmap owned by Project Manager after discussion.
 
 **S2 — Supplied reference documents:** `AGENT_TEAM_COORDINATION.md` and `CODEZERO_MUSICAL_PROJECT_OVERVIEW.md`. They were read in full. GridZero's musical interaction ideas and the original coordination agreement inform the new documents, but later explicit decisions take precedence. Original Bootstrap-only startup, enforcement duties, synthesis, Python-specific implementation and old task plans are not inherited.
 
@@ -32,4 +32,4 @@ The repository contains editable Mermaid diagrams rendered in [the diagram page]
 
 **S6 — Herdr lifecycle:** [Session state and restore](https://herdr.dev/tui/docs/session-state/) and [configuration](https://herdr.dev/tui/docs/configuration/). Detaching is distinct from stopping processes; native conversation restoration depends on supported session references/integration. The project uses `HERDR_CONFIG_PATH` and disables `resume_agents_on_restore`. Check these against the pinned installed release.
 
-These references describe tooling, not product approval. No live Docker daemon or user hardware was available during preparation. Current checks and omissions are listed in [Validation](VALIDATION.md).
+These references describe tooling, not product approval. No live Docker daemon or user hardware was available during the original starter preparation. Later product evidence and open checks are tracked in the [roadmap](../ROADMAP.md); the [validation notes](VALIDATION.md) describe the starter snapshot only.

@@ -55,7 +55,7 @@ Alternatively, open the folder in VS Code and select **Dev Containers: Reopen in
 
 The recipe retains Debian Bookworm, Pico SDK/picotool 2.2.0, TinyUSB 0.21.0, Pico-PIO-USB 0.7.3, ARM GCC 12.2 and Herdr 0.9.5 from the inspected source. It adds Linux MIDI development headers and small shell/terminal utilities. Codex uses the source recipe's official installer; its exact installed version is not pinned, so inspect it locally. No copied model policy or global Codex configuration is installed.
 
-The recipe includes amd64/arm64 host selection; successful image builds on each still need verification. Container architecture is **not** evidence that the future musical application supports every Linux ARM ABI. Raspberry Pi CPU/OS targets and Windows build/test environments must be selected and verified by the planning team. Windows product validation is not supplied by running a Linux container.
+The recipe includes amd64/arm64 host selection; successful image builds on each still need verification. Container architecture is **not** evidence that the musical application supports every Linux ARM ABI. The production arm64 router has been exercised on a Raspberry Pi, but broader Linux ARM coverage remains open. Windows product validation is not supplied by running a Linux container.
 
 The base container runs without USB, sound-device or Docker-socket passthrough. The local Linux ALSA bench can opt in to the sequencer device below.
 
@@ -150,6 +150,6 @@ Native Codex resume accepts an explicit session ID; Session Manager records actu
 
 The checkout bind mount holds source/documents and ignored local roster metadata. The external Codex volume holds native session history/authentication; the external GitHub volume holds its configuration/authentication; the separate Herdr volume holds its runtime state. Preserve these volumes when rebuilding. Do not use cleanup/pruning commands that remove session or credential data.
 
-No product CMake targets, firmware, browser application, native backends or product tests are included yet. Starter validation checks documentation/configuration consistency; it does not prove Docker builds, authentication, session resumption, real USB operation or timing. Its four-seat/no-roadmap assertions describe this initial snapshot; update or retire those assertions as approved planning progresses. Checks and omissions are recorded in [Validation](VALIDATION.md).
+The repository now includes product targets, browser tools, native backends and product evidence. `tools/check-starter.py` retains historical starter assertions and is not product acceptance. Its checks do not prove Docker builds, authentication, session resumption, real USB operation or timing. Current product evidence and open boundaries are recorded in the [roadmap](../ROADMAP.md) and [validation notes](VALIDATION.md).
 
 References `[S3]`–`[S6]` are listed in [Sources](SOURCES.md).

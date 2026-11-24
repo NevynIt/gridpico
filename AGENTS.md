@@ -2,7 +2,7 @@
 
 Read `AGENT_TEAM_COORDINATION.md` and your explicitly assigned role. Product intent is in `PRODUCT_BRIEF.md`; technical boundaries are in `ARCHITECTURE.md`. Only Project Manager creates `ROADMAP.md`, after discussion with the other planning agents.
 
-This is a planning/documentation starter, not an instruction to implement the product. The only initial agents are Session Manager, Strategist, Architect and Project Manager. Additional seats require human approval through Strategist and a creation request from Project Manager.
+Work on planning, documentation, or implementation requires explicit authorization. The initial team consists of Session Manager, Strategist, Architect and Project Manager. Additional seats require human approval through Strategist and a creation request from Project Manager.
 
 Use your original persistent Codex session. Do not spawn subagents, fork replacements, add checkpoint/handover procedures or introduce a custom orchestrator. Session Manager performs requested session operations; it does not enforce anything or assign work.
 
@@ -12,4 +12,4 @@ Only Strategist initiates human communication. Direct peer clarification is allo
 
 Start every message to another agent with `FROM: seat@location` on its own line, followed by the message. Use your own seat name and location label, for example `FROM: strategist@dev`.
 
-Do not import another project's product code or legacy compatibility constraints. There is no synthesis/audio subsystem. Never inspect, print, commit, replace or delete raw credential material. Use the configured authentication tools without exposing their secrets. Shared credential/session volumes and the other project's configuration are not project source files. No blanket cleanup/reset or automatic commit is authorized.
+Do not import another project's product code or legacy compatibility constraints. The kernel and firmware handle MIDI. Approved browser and standalone instrument peers generate audio on their receiving hosts. Never inspect, print, commit, replace or delete raw credential material. Use the configured authentication tools without exposing their secrets. Shared credential/session volumes and the other project's configuration are not project source files. No blanket cleanup/reset or automatic commit is authorized.

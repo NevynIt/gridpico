@@ -2,30 +2,32 @@
 
 ## Musical architecture
 
-**Two important distinctions:** the Web APC simulator passes through the production APC frontend, not directly into an independent browser control engine; Linux x86 and ARM are separate build/test targets sharing one Linux HAL owner/implementation family. Application Assembly and Computer connections are explicit modules.
+**Two important distinctions:** Web APC Keybed MIDI reaches the graph through Computer connections, while Panel commands pass through the production APC frontend and its state-derived LED feedback returns to the browser. Linux x86 and ARM share one Linux HAL owner/implementation family. RP2040 composite USB and Windows remain planned or unverified. Platform services are documented in the [API index](../../api/README.md#platform-services).
 
-Arrows describe interaction/dependency boundaries, not a requirement for threads, processes or dynamic loading. The kernel is one portable implementation. These are software modules; agent ownership is shown in the second diagram.
+Arrows describe interaction/dependency boundaries, not a requirement for threads, processes or dynamic loading. The kernel is one portable implementation. The native proof and browser fixtures use separate runtime instances of shared code. Browser Web MIDI selects an OS port directly; it does not require the Node host. Application Assembly gives Raw LED replay exclusive ownership of APC LED RX during replay, then restores the committed APC page. These are software modules; agent ownership is shown in the second diagram.
 
 ```mermaid
 flowchart TB
-  subgraph userif["Interchangeable interfaces"]
-    web["Web APC simulator<br/>Primary graphical interface"]
-    conn["Computer connections<br/>MIDI / optional serial / local browser link"]
+  subgraph userif["Interfaces and browser peers"]
+    webkey["Web APC Keybed TX"]
+    webpanel["Web APC Panel TX / APC LED RX"]
+    diag["Diagnostics<br/>Monitor RX / MIDI Log RX / LED Sequence TX"]
+    fm["Standalone FM Instrument<br/>local browser audio"]
+    webMidi["Shared browser Web MIDI adapter"]
+    osMidi["Selected OS MIDI ports"]
+    conn["Computer connections<br/>WebSocket MIDI / local serial"]
     hw["Physical APC"]
-    apc["APC frontend<br/>Protocol, views, gestures, LEDs"]
-    piano["Piano frontend — later<br/>Keys / pedals / RGB feedback"]
+    apc["Production APC frontend<br/>Panel commands and state-derived LEDs"]
+    piano["Piano frontend — later"]
     cli["CLI frontend"]
-    web <-->|"APC MIDI + LED feedback"| conn
-    conn <--> apc
-    hw <-->|"MIDI via platform"| apc
   end
   subgraph kernel["Portable kernel — same implementation on every target"]
     session["Session / control<br/>Commands, queries, state"]
     midi["MIDI graph<br/>Routes, endpoints, note safety"]
     proc["Processors<br/>Bounded transformations"]
     time["Musical time<br/>Clock, transport, scheduling"]
-    seq["Sequencer — later<br/>Tracks, recording, patterns, scenes"]
-    projects["Projects<br/>Validation, load / save, recovery"]
+    seq["Sequencer — later"]
+    projects["Projects"]
     session <--> midi
     session <--> proc
     session <--> time
@@ -36,23 +38,45 @@ flowchart TB
     midi -->|"Recording feed"| seq
     seq -->|"Playback events"| midi
   end
-  apc <-->|"Commands / state"| session
+  webkey -->|"Keybed MIDI"| conn
+  conn -->|"Keybed events"| midi
+  webpanel -->|"Panel TX"| conn
+  conn -->|"Panel commands"| apc
+  apc -->|"Typed commands"| session
+  session -->|"Route state / snapshots"| apc
+  apc -->|"APC-derived LED bytes"| conn
+  conn --> webpanel
+  diag -->|"LED Sequence TX"| conn
+  conn -->|"Raw MIDI ingress"| midi
+  midi -->|"Explicit Raw route; exact LED bytes"| conn
+  midi -->|"Independent Monitor and Log sinks"| conn
+  conn --> diag
+  conn -->|"WebSocket MIDI"| fm
+  webkey -->|"Keybed TX"| webMidi
+  webMidi <-->|"Panel TX / LED RX"| webpanel
+  webMidi <-->|"LED Sequence TX / Monitor and Log RX"| diag
+  webMidi <-->|"Selected OS MIDI port"| osMidi
+  webMidi -->|"Selected MIDI input"| fm
+  diag -->|"CLI request bytes (local)"| conn
+  conn -->|"Forward CLI bytes"| cli
+  cli -->|"CLI reply bytes"| conn
+  conn --> diag
+  cli <-->|"Typed request / reply"| session
+  hw <-->|"Panel MIDI / LED feedback via platform (planned)"| apc
   piano <-->|"Commands / state"| session
-  cli <-->|"Commands / state"| session
-  conn -.->|"Supplementary controls only"| session
-  hal["Platform contracts — api/platform<br/>MIDI • monotonic time • storage • feedback • capabilities"]
+  hal["Platform contracts<br/>see api/README.md#platform-services"]
   midi <--> hal
   time <--> hal
   projects <--> hal
   piano <-->|"Feedback service"| hal
-  subgraph targets["Swappable backends"]
-    rp["RP2040 HAL<br/>PIO host + native composite USB<br/>5 MIDI pairs / CDC / read-only GRIDPICO drive"]
+  subgraph targets["Platform implementations and target designs"]
+    rp["RP2040 composite USB / PIO host<br/>planned; hardware path pending"]
     subgraph linux["One Linux HAL owner — shared OS implementation"]
-      lx["Linux x86 build / test target"]
-      la["Linux ARM build / test target<br/>Includes Raspberry Pi Zero"]
+      lx["Linux x86_64<br/>ALSA MIDI adapter implemented"]
+      la["Linux ARM<br/>Pi arm64 exercised; broader coverage open"]
     end
-    win["Windows HAL"]
-    sim["Simulation backend<br/>Fake MIDI / time / storage / feedback"]
+    win["Windows HAL<br/>planned / unverified"]
+    sim["Simulation backend<br/>MIDI fixtures implemented"]
   end
   rp -.->|"implements"| hal
   lx -.->|"implements"| hal
@@ -62,21 +86,23 @@ flowchart TB
   assembly["Application Assembly<br/>Wiring, target profiles, build glue, HTML/docs packaging"]
   assembly -.-> kernel
   assembly -.-> targets
+  assembly -.->|"runtime ownership"| rawOwner
   classDef iface fill:#e4f0ff,stroke:#4879a5,color:#10233c;
   classDef core fill:#e7f5e8,stroke:#4a8660,color:#142d20;
   classDef infra fill:#fff3d6,stroke:#ac8b3e,color:#3c321c;
-  class web,conn,hw,apc,piano,cli iface;
+  rawOwner["Assembly gives Raw LED replay exclusive LED RX ownership, then restores the committed APC page"]
+  class webkey,webpanel,diag,fm,webMidi,osMidi,conn,hw,apc,piano,cli iface;
   class session,midi,proc,time,seq,projects core;
-  class hal,rp,lx,la,win,sim,assembly infra;
+  class hal,rp,lx,la,win,sim,assembly,rawOwner infra;
 ```
 
 [Editable architecture source](architecture.mmd) · [Architecture specification](../../ARCHITECTURE.md)
 
 ## Agent team
 
-One numbered card is one agent; grouped frames contain several agents. A Lead badge is an additional duty, not an extra seat. The human starts Session Manager first, which bootstraps Strategist, Architect and Project Manager. The other 19 seats are proposed and created progressively only after approval and Project Manager requests.
+One numbered card is one agent; grouped frames contain several agents. A Lead badge is an additional duty, not an extra seat. The human starts Session Manager first, which bootstraps Strategist, Architect and Project Manager. This original diagram shows 19 proposed module and support seats, created progressively after approval and Project Manager requests. The separately approved Research seat is documented in the coordination agreement.
 
-Session Manager keeps the list and operates sessions; it does not enforce approval or resource policies. Approval remains a human/Strategist/Project Manager responsibility. The three planning agents collaborate, while Strategist owns the brief, Architect the architecture and Project Manager the roadmap. The roadmap is not supplied in this starter.
+Session Manager keeps the list and operates sessions; it does not enforce approval or resource policies. The human approves additional seats through Strategist. Project Manager requests approved delivery seats, while Strategist requests the separately approved Research seat. The three planning agents collaborate, while Strategist owns the brief, Architect the architecture and Project Manager the current roadmap. See the [coordination agreement](../../AGENT_TEAM_COORDINATION.md) for authority and workflow.
 
 Only Strategist initiates human-facing communication; the human may still ask any agent a brief direct question. The coordination agreement governs operational details. Invisible links in the source only arrange the roster vertically; they do not add reporting relationships.
 
@@ -102,7 +128,7 @@ flowchart TB
   gate["Human approval through Strategist<br/>Before any additional agents are created<br/>PM requests progressive creation; SM executes"]
   st --> gate
   gate -.-> pm
-  subgraph later["Proposed later team — 19 individual seats, not all started at once"]
+  subgraph later["Original proposal: 19 later module/support seats, created progressively"]
     subgraph kernel["KERNEL · 6 agents — Architect guides directly"]
       k1["05 · Session / control"]
       k2["06 · MIDI graph"]

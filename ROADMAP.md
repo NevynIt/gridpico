@@ -2,7 +2,7 @@
 
 **Owner** — Project Manager
 
-**Status** — Native transpose and Patch proofs, connected Web APC with destination-specific Monitor playback, shared runtime device colors and standalone Diagnostics are verified in simulation. The RP2040 bench, mounted drive and physical CDC checks are pending.
+**Status** — The production Web UI, Diagnostics playback, MIDI Log and CLI, and the standalone FM instrument are verified in Linux Chromium. Native Linux RTP-MIDI and WSS have two-host receipt and release evidence. RTP repeatability and timing, Windows/WSL, desktop WSS mutual TLS, and the physical Pico, mounted drive and CDC checks remain open. Pi-local routed FluidSynth WAVs are verified.
 
 [Product brief](PRODUCT_BRIEF.md) · [Architecture](ARCHITECTURE.md) · [Team coordination](AGENT_TEAM_COORDINATION.md) · [Model and effort plan](.team/MODEL_PLAN.md)
 
@@ -115,6 +115,8 @@ Web APC and Computer connections own the bounded whole-UI review. Independent Te
 **Independent startup workflow verified.** A clean source snapshot ran the exact launchers through separate Linux namespaces and a Compose stand-in. Chromium sent APC notes before Diagnostics opened. After Diagnostics connected, the first fresh note reached both sinks without manual route commands. Monitor audio required its own gesture and returned to silence on release. Diagnostics also reached the real CLI help and routed the actual solid and timed LED messages with a 40-pad restore. The server chooser opened and bound to a second live loopback server. Chrome with real ALSA verified Web MIDI permissions, directed selection, raw sends, note receive and device loss. A new remote browser mTLS session and the real Windows/WSL launcher remain open. Existing owners covered the whole-UI review.
 
 ## Demo sequence for 23 November at 09:00 CET (08:00 UTC)
+
+Historical delivery plan. The current entry point and startup evidence are in [controller and Diagnostics startup](#approved-follow-up--controller-and-diagnostics-startup).
 
 1. Start the independent native proof and the browser surface in parallel when their approved seats are available. Confirm the minimal fixture contracts first for core integration. Keep the browser surface to the 5×8 pad grid, panel buttons and 25-key keyboard. Verify each deliverable as soon as it is runnable.
 2. Connect the keybed and captured destination log first. Verify the browser Monitor before the approved one-pad route toggle and LED feedback. Leave wider LED coverage and panel parity for later.

@@ -1,18 +1,14 @@
 # Gridpico public contracts
 
-**Owner** Architect. **Status** Draft for planning review.
+**Owner** Architect. **Status** Profile-specific contracts and architecture requirements. See the linked profile for implementation and acceptance evidence.
 
-These are behavioral contracts for the module boundaries in [Architecture](../ARCHITECTURE.md). Command types, wire formats, storage encoding and language bindings will follow the work that needs them. Each module owns its state and returns portable values through its contract. Data crossing a queued boundary must remain valid until consumed. Application Assembly serializes musical state changes and defines how callbacks enter that context.
+These are behavioral contracts for the module boundaries in [Architecture](../ARCHITECTURE.md). Published profiles pin their types and wire formats where implemented. The general requirements below also cover future capabilities such as Sequencer and Projects. Each module owns its state and returns portable values through its contract. Data crossing a queued boundary must remain valid until consumed. Application Assembly serializes musical state changes and defines how callbacks enter that context.
 
-See the [Patchbay, inventory and Diagnostics proposal](patchbay.md) for the next delivery boundary.
-
-The [Web Monitor destination contract](web-monitor-proposal.md) defines the named virtual Patch output, receiver lifecycle and destination-tagged delivery.
-
-The [local production router contract](local-router.md) defines the shared runtime, registered MIDI bindings and serial route control for the MIDI and CLI-only product path.
-
-The [WebSocket MIDI contract](websocket-midi.md) covers the verified loopback profile and the opt-in authenticated cross-host profile. The [Linux ALSA MIDI adapter](linux-midi-adapter.md) binds native sequencer ports to that router for the separate Linux↔Linux RTP-MIDI gate. Windows RTP-MIDI acceptance is deferred.
-
-The [browser MIDI contract](browser-midi.md) defines the canonical landing page and the shared in-page Web MIDI and WebSocket adapter. [Optional instrument peers](instrument-peers.md) use those MIDI bindings or native OS ports and generate audio locally.
+- The [local production router](local-router.md) defines the shared runtime, registered MIDI bindings and serial route control. The [browser MIDI contract](browser-midi.md) covers the canonical web home, startup routes, and shared Web MIDI and WebSocket adapter.
+- The [WebSocket MIDI contract](websocket-midi.md) covers verified loopback and two-host native-client WSS. Desktop browser mTLS acceptance remains pending. The [Linux ALSA MIDI adapter](linux-midi-adapter.md) covers the separate Linux↔Linux RTP-MIDI receipt and cleanup evidence. Windows RTP-MIDI acceptance is deferred.
+- [Optional instrument peers](instrument-peers.md) covers the verified FluidSynth and browser FM paths. Each produces audio locally.
+- [Patchbay, inventory and Diagnostics](patchbay.md), [Patch controls](patchbay-controls.md) and the [Web Monitor destination](web-monitor-proposal.md) cover the verified native and connected Patch fixtures, shared color and the destination-tagged Monitor profile.
+- The [one-pad Route demo](#one-pad-apc-route-toggle) and [native four-case proof](#linux-x86_64-route-and-transpose-proof) retain independent contracts below.
 
 ## Session/control
 
@@ -24,7 +20,7 @@ The [browser MIDI contract](browser-midi.md) defines the canonical landing page 
 
 - Accept platform endpoint updates and normalized MIDI events. Keep logical binding, port or cable, channel where applicable, and connection lifetime distinct. Close a disconnected connection to further delivery. Reevaluate desired bindings on endpoint changes. Ambiguity leaves the corresponding routes pending until explicitly resolved.
 - Route from a source through a bounded processor chain to each selected destination. Carry event origin across transformations. Preserve per-stream order, including SysEx fragment order and realtime messages. Keep USB framing in adapters. Reject configuration changes that create a feedback cycle visible inside the graph.
-- Track each accepted note occurrence by ingress connection, channel and key, matching repeated presses to releases in arrival order. The graph keeps the bounded set of actual output obligations for each occurrence. For overlapping obligations on the same output, channel and key, the draft policy emits one Note On and releases the note when the last obligation ends. A release, stop, route edit or source disconnect retires only the obligations owned by the affected traffic. Sustain held by several contributors on one output channel follows the same last-contributor release rule.
+- Track each accepted note occurrence by ingress connection, channel and key, matching repeated presses to releases in arrival order. The graph keeps the bounded set of actual output obligations for each occurrence. For overlapping obligations on the same output, channel and key, emit one Note On and release the note when the last obligation ends. A release, stop, route edit or source disconnect retires only the obligations owned by the affected traffic. For profiles with sustain, held sustain from several contributors on one output channel follows the same last-contributor release rule.
 - Admit a new note only when the graph can account for its output and retain capacity for cleanup. Order cleanup with accepted output or cancel unsent note starts before releasing their obligations. A rejected press must still be accounted for if its release could match an earlier press. If accounting cannot continue reliably, quiesce the affected ingress, clean up its obligations and report the fault. Resume at a known input boundary, such as a fresh connection after disconnect.
 - If delivery of required cleanup becomes unavailable, block new performance traffic on the affected output and report the delivery fault. Retain bounded recovery obligations for that binding and reconcile them before reactivation on a verified reconnect. A replacement or ambiguous device requires explicit binding, and stale performance traffic is discarded.
 - Keep SysEx in bounded fragments. Each destination has one active SysEx stream at a time, with realtime MIDI permitted during that stream. When a stream cannot continue within its budget, abort it explicitly at the affected destination, including terminating an already-emitted partial stream if reachable. Report the failure and free the stream slot.
@@ -33,7 +29,7 @@ The [browser MIDI contract](browser-midi.md) defines the canonical landing page 
 
 - Accept a normalized event and instance configuration. Return a bounded ordered set of results, including an empty result for a filtered event. Each processor declares its supported event kinds, expansion limit and bounded state requirements before activation. The graph also enforces total expansion across the chain and fan-out.
 - Preserve event origin and expose which input occurrence generated each output note. A processor owns only its instance state. The graph keeps delivery and release accounting even when a processor is reset, removed or reconfigured.
-- For the proposed transpose slice, shift each input key by the configured semitone offset and emit at most one corresponding note. Suppress a note whose resulting key is out of range. The graph resolves its eventual release from the original occurrence, including an occurrence that produced no output.
+- The native transpose proof shifts each input key by the configured semitone offset and emits at most one corresponding note. It suppresses a note whose resulting key is out of range. The graph resolves its eventual release from the original occurrence, including an occurrence that produced no output.
 
 ## Musical time
 
@@ -57,7 +53,7 @@ Keep stable track and pattern identifiers independent of pad position when Seque
 
 ## Local browser demo connection
 
-The connected demo serves the staged Web APC page and its connection adapter from the same local origin. Computer connections owns the host, browser adapter and WebSocket at `/demo/midi`. Use one keybed connection and one fresh fixture instance per accepted socket. The local host accepts another player after the previous fixture has finished cleanup. Application Assembly supplies the connected fixture runner and wires the production graph, session and transpose to the same simulator used by the native proof. The runner starts with `+12` applied through Session/control and empty destination capture. The native four-case command runs independently.
+The one-pad Route demo serves the Web APC page and its connection adapter from the same local origin. Computer connections owns the demo host, browser adapter and WebSocket at `/demo/midi`. Use one keybed connection and one fresh fixture instance per accepted socket. The local host accepts another player after the previous fixture has finished cleanup. Application Assembly supplies the connected fixture runner and wires the production graph, session and transpose to the same simulator used by the native proof. The runner starts with `+12` applied through Session/control and empty destination capture. The native four-case command runs independently. The [production router transport](local-router.md#loopback-transport) has its own wire and runtime.
 
 ### Browser framing
 

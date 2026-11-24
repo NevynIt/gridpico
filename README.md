@@ -1,10 +1,10 @@
 # gridpico
 
-**A portable MIDI workstation kernel: routing and transformations now, a preserved path to sequencing later. No synthesis or audio engine.**
+**A portable MIDI workstation for routing and transforming existing instruments, with sequencing planned for later. The production kernel and Pico firmware remain MIDI-only; optional instruments run as independent peers.**
 
-Gridpico connects existing instruments through interchangeable controllers and platform backends. RP2040 is the compact hardware deployment; Linux x86, Linux ARM (including Raspberry Pi Zero) and Windows run the same musical application through their own services.
+Gridpico connects existing instruments through interchangeable controllers and platform backends. Linux x86_64 and Raspberry Pi arm64 paths have verified evidence. Windows, broader Linux ARM coverage and the RP2040 USB/CDC hardware path remain open.
 
-This repository starts with design documents, diagrams and development tooling. It does **not** contain product firmware, a working simulator or an implementation roadmap.
+The repository includes the production MIDI router, Web APC and Diagnostics tools, CLI, offline browser assets and separate instrument peers. See the [roadmap](ROADMAP.md) for verified scope and remaining gates.
 
 ## Start here
 
@@ -12,35 +12,35 @@ This repository starts with design documents, diagrams and development tooling. 
 | --- | --- | --- |
 | [Product brief](PRODUCT_BRIEF.md) | Strategist | Product intent, scope and business case |
 | [Architecture](ARCHITECTURE.md) | Architect | Modules, connections, portability and future sequencer boundary |
-| [Agent coordination](AGENT_TEAM_COORDINATION.md) | Human authority; Strategist records approved changes | Initial team, responsibilities, communication and session operations |
-| [Container and first-run setup](docs/SETUP.md) | Application Assembly when created | Development environment, shared credentials and planning-team startup |
-| [Diagrams](docs/diagrams/README.md) | Respective document owners | Visual module/team maps and editable Mermaid sources |
+| [Roadmap](ROADMAP.md) | Project Manager | Current delivery, evidence and pending work |
+| [Agent coordination](AGENT_TEAM_COORDINATION.md) and [agent policy](AGENTS.md) | Human authority; Strategist records approved changes | Team boundaries, ownership and operating policy |
+| [Container and first-run setup](docs/SETUP.md) | Documentation | Development environment and startup guidance |
+| [At a glance](docs/AT_A_GLANCE.md) and [other documentation](docs/) | Documentation | User-facing overview, setup, validation and hardware references |
+| [Diagrams](docs/diagrams/README.md) | Documentation, with Architect and Session Manager review | Visual architecture/team maps and editable Mermaid sources |
 
-**`ROADMAP.md` is deliberately absent.** Project Manager creates it after discussing the product and architecture with Strategist and Architect.
+## Documentation owners
 
-## Initial team
+| Paths | Owner |
+| --- | --- |
+| `README.md`, `docs/**` | Documentation |
+| `PRODUCT_BRIEF.md`, approved policy in `AGENTS.md` and `AGENT_TEAM_COORDINATION.md` | Strategist |
+| `ARCHITECTURE.md`, `api/**` | Architect |
+| `ROADMAP.md`, `.team/MODEL_PLAN.md` | Project Manager |
+| `.team/APPROVED_AGENTS.md`, `.team/roles/**` | Session Manager, reflecting approved decisions |
+| `connections/README.md` | Computer Connections |
+| `web/apc/README.md` | Web APC |
+| `frontends/cli/README.md` | CLI Frontend |
+| `instruments/fluidsynth/README.md` | Application Assembly |
 
-The human starts **Session Manager**, which creates **Strategist, Architect and Project Manager**. No other agent is created until the human approves expansion and Project Manager requests it. The proposed full team has 23 seats, created progressively rather than all at once.
+`LICENSE` and repository configuration/data have their own purposes and are outside the documentation owner map.
+
+## Team operations
+
+Session Manager operates the approved persistent sessions. Additional seats require human approval through Strategist and a Project Manager request, except for the approved Research workflow.
 
 Session Manager keeps the approved list and original Codex session IDs and performs requested create/start/pause/resume operations. It is not an enforcer or supervisor. Resumption uses the exact original session, with no checkpoint/reconstruction workflow.
 
-```mermaid
-flowchart TB
-  human["Human"] -->|"Starts first"| sm["Session Manager"]
-  sm -.->|"Bootstrap: creates"| st["Strategist<br/>PRODUCT_BRIEF.md"]
-  sm -.->|"Bootstrap: creates"| ar["Architect<br/>ARCHITECTURE.md"]
-  sm -.->|"Bootstrap: creates"| pm["Project Manager<br/>ROADMAP.md — later"]
-  human <-->|"Discussion / approval"| st
-  st <--> ar
-  st <--> pm
-  ar <--> pm
-  pm -->|"Requested lifecycle operations"| sm
-  pm -->|"Assignments after approval"| later["Later module owners + independent support<br/>19 proposed seats; created progressively"]
-```
-
-[Open the complete team and architecture diagrams](docs/diagrams/README.md).
-
-In the complete team diagram, grouped frames contain multiple agents; each numbered card is one agent. Lead badges are extra duties, not extra seats. The [coordination agreement](AGENT_TEAM_COORDINATION.md) governs operational details and the initial bootstrap exception.
+See the [complete team and architecture diagrams](docs/diagrams/README.md). Grouped frames contain multiple agents; each numbered card is one agent. Lead badges are extra duties, not extra seats. The [coordination agreement](AGENT_TEAM_COORDINATION.md) governs startup and operating details.
 
 ## Development container
 
@@ -73,9 +73,9 @@ With the checkout's Compose `dev` service already running, run this from the Doc
 
 The launcher opens [http://127.0.0.1:8767/](http://127.0.0.1:8767/) when a desktop opener is available and always prints the link. The home links to Web APC, Diagnostics, and the FM Instrument. The launcher builds the portable production router and installs the locked browser host dependencies in `dev`. Press Ctrl+C to stop the host and loopback relay. The legacy one-pad demo is still available through `./scripts/web-apc.sh` on port 8765.
 
-Open Web APC to play the keybed. Open Diagnostics to see the MIDI Log and enable Monitor audio. Each destination receives new notes as soon as its port connects.
+Open Web APC to play the keybed. Open Diagnostics separately for the MIDI Log and Monitor. Each managed route becomes active when the Web APC keybed and that route’s receiving port are connected. Enable Monitor audio with a user gesture. The launcher also links to the separate FM Instrument. See the [connection startup guide](connections/README.md#local-router).
 
-To stage the offline home and tools on the build host, configure with `cmake -S . -B build/web-ui` and run `cmake --build build/web-ui --target gridpico_offline_assets`. Open `build/web-ui/GRIDPICO/HOME.HTM` directly. The tools include the shared browser MIDI code, and Diagnostics can still use Web Serial. `VERSION.TXT` records SHA-256 checksums for each staged page.
+To stage the offline home and tools on the build host, configure with `cmake -S . -B build/web-ui` and run `cmake --build build/web-ui --target gridpico_offline_assets`. Open `build/web-ui/GRIDPICO/HOME.HTM` directly. Its relative links open `INDEX.HTM`, `DIAG.HTM`, and `FM.HTM`. The manifest checksums all four HTML files. The three tool pages inline the shared MIDI provider. Diagnostics can use Web Serial when available. A mounted Pico drive and real CDC are still pending.
 
 ## Get the source
 
@@ -88,6 +88,6 @@ Use a separate checkout and the same Docker daemon as rpico-bridge. The containe
 
 ## Scope and provenance
 
-APC is the preferred interface, not the identity of the kernel. Its web simulator exercises the production APC frontend; CLI and future piano controls use the same musical commands. RP2040 includes a read-only USB drive for static HTML/documentation. Desktop deployments do not emulate a USB disk or CDC when they do not need them.
+APC is the preferred interface, not the identity of the kernel. Its Web APC controller exercises the production APC frontend; CLI and future piano controls use the same musical commands. The RP2040 target design includes a read-only USB drive for static HTML/documentation, but Gridpico's mounted-drive, USB and CDC paths remain pending hardware validation. Desktop deployments do not emulate a USB disk or CDC when they do not need them.
 
 Earlier projects are design references and experiments only. No product code is imported. The development-tooling attribution is in [Sources](docs/SOURCES.md) and the corresponding [notice](third_party/notices/rpico-bridge-MIT.txt). The repository uses the [MIT license](LICENSE) selected when the human created it.

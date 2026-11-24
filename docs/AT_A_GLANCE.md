@@ -1,86 +1,69 @@
 # Gridpico at a glance
 
-Gridpico routes and transforms MIDI between existing instruments. Dashed links mark mounted-drive and physical CDC paths that remain pending. See the [planned hardware topology](HARDWARE.md).
+Gridpico routes and transforms MIDI through one production graph. This map shows the current Web APC controller and Diagnostics paths, plus the independent native proof. The proof and Route/Patch fixtures use separate runtime instances of shared Session/Graph code. Dashed edges mark target hardware paths still pending. See the [owner-supplied hardware topology](HARDWARE.md).
 
 ```mermaid
 flowchart LR
-  subgraph browser[Chromium browser surfaces]
-    keys[Keybed / panel controls]
-    route[Route view<br/>original Capture + local audio]
-    patch[Patch view<br/>destination-tagged Capture]
-    inventory[Patch inventory]
-    leds[Received APC feedback]
-    monitor[Web Monitor<br/>current port / generation + channel filter]
-    audio[Chromium audio signal]
-    diagnostics[Offline Diagnostics]
-    mock[Mock serial adapter]
+  subgraph browser[Browser tools]
+    keybed[Web APC Keybed TX 1]
+    panel[Web APC Panel TX 2 / LED RX 3]
+    diag[Diagnostics<br/>Monitor RX 5 · MIDI Log RX 6<br/>LED Sequence TX 4]
+    fm[FM Instrument<br/>local browser audio]
+    webMidi[Browser Web MIDI adapter]
+    offline[Offline HOME / INDEX / DIAG / FM]
   end
 
-  staged[Host-staged HTML files]
-
-  subgraph app[Web APC application]
-    transport[Route / Patch transports]
-    routeRunner[Route fixture<br/>25-key fast-play]
-    patchRunner[Default Patch fixture<br/>25 keys × up to 3 outputs]
+  subgraph host[Production host]
+    connections[Computer Connections<br/>WebSocket MIDI]
     apc[Production APC frontend]
+    cli[Production CLI frontend]
+    session[Session / control]
+    midiRouter[MIDI graph]
   end
 
-  subgraph kernel[Production kernel]
-    session[Session/control]
-    midiRouter[MIDI graph<br/>separate Route / Patch configurations]
-  end
-
-  subgraph cliCheck[Independent native CLI check]
-    nativeCli[Native CLI harness]
-    cli[Production CLI]
-  end
-
+  native[Independent x86_64 native proof]
+  fixtures[Separate Web APC Route / Patch fixtures]
+  package[Offline asset staging]
   drive[Mounted GRIDPICO]
-  cdc[Physical CDC]
+  cdc[Physical Pico CDC]
+  speaker[Physical speaker]
+  osMidi[Selected OS MIDI ports]
 
-  keys --> transport
-  route --> transport
-  patch --> transport
-  transport -->|keybed / panel input| routeRunner
-  transport -->|keybed / panel input| patchRunner
-  routeRunner -->|panel input| apc
-  patchRunner -->|panel input| apc
-  apc -->|typed route / color commands| session
-  session -->|route state / runtime colors| apc
-  session --> midiRouter
-  routeRunner -->|note input| midiRouter
-  midiRouter -->|accepted Route delivery| routeRunner
-  patchRunner -->|note input| midiRouter
-  midiRouter -->|accepted destination deliveries| patchRunner
-  session -->|Patch inventory snapshot| patchRunner
-  apc -->|Route LED feedback| routeRunner
-  apc -->|Patch LED feedback| patchRunner
-  routeRunner -->|state-derived LEDs / original feed| transport
-  patchRunner -->|state-derived LEDs / inventory| transport
-  patchRunner -->|destination-tagged events / attachment state| transport
-  transport --> leds
-  transport -->|Patch snapshot| inventory
-  transport -->|original Route feed| route
-  route -->|same feed| audio
-  transport -->|destination + generation-tagged events| patch
-  transport -->|Monitor attachment + events| monitor
-  monitor -->|own attachment + included channel| audio
-  nativeCli --> cli
-  cli --> session
-  session -->|runtime colors| cli
-  staged -->|source comparison| diagnostics
-  diagnostics --> mock
-  drive -. pending mounted-page access .-> diagnostics
-  diagnostics -. pending real serial .-> cdc
-  cdc -. pending CLI link .-> cli
+  keybed -->|Keybed TX| connections
+  panel -->|Panel TX| connections
+  connections -->|Panel commands| apc
+  apc -->|State-derived LED feedback| connections
+  connections -->|LED RX| panel
+  connections -->|Keybed MIDI| midiRouter
+  diag -->|LED Sequence TX / Raw route| connections
+  connections -->|Raw MIDI| midiRouter
+  midiRouter -->|APC LED RX| connections
+  midiRouter -->|Accepted events| connections
+  connections -->|Monitor + Log receive| diag
+  connections -->|FM receive| fm
+  keybed -->|Keybed TX| webMidi
+  webMidi <-->|Panel TX / LED RX| panel
+  webMidi <-->|LED Sequence TX / Monitor + Log RX| diag
+  webMidi <--> osMidi
+  webMidi -->|Selected MIDI input| fm
+  diag -->|Local serial CLI bytes| cli
+  cli -->|Typed calls| session
+  session <--> midiRouter
+  native -->|Own Session instance| session
+  native -->|Own simulated graph instance| midiRouter
+  fixtures -->|Separate runner instances| midiRouter
+  package -->|Static files| offline
+  drive -. pending mounted-page access .-> diag
+  diag -. pending real serial .-> cdc
+  fm -. physical output not verified .-> speaker
 ```
 
-Route keeps its original accepted-event feed for Capture and local audio. Default Patch Capture lists accepted destinations. Web Monitor plays only its current attachment and included channel. Chromium audio signal measurements do not establish physical speaker output.
+The default `./scripts/web-ui.sh` profile tries Keybed TX 1, Panel TX 2 and APC LED RX 3 once. Diagnostics separately tries Monitor RX 5 and MIDI Log RX 6 once. Each managed route becomes active when the Web APC keybed and that route’s receiving port are connected. To send LEDs, bind LED Sequence TX 4 and explicitly enable the Raw route. Browser Web MIDI connects directly to a selected OS port and can work without the Node host. Monitor audio needs a user gesture.
 
 ## Maturity and evidence
 
-| Status | Scope and evidence |
+| Status | Evidence |
 | --- | --- |
-| **Verified · fast play** | Published Route gate `7d8889a` and Patch gate `299ec25`. The two-output profile now runs via `--two-branch`, with 25 keys, untagged Capture and silent browser audio. Default Patch with Monitor supports 25 keys × up to 3 outputs. See [gate evidence](../ROADMAP.md#web-apc-rapid-play-regression-and-next-monitor-update) and [connections startup](../connections/README.md). |
-| **Verified · Web Monitor** | Independent Chromium measured a 523 Hz held Monitor tone continuing after instrument Note Off. The selector defaults to All channels and offers MIDI 1–16. Patch Capture shows accepted events from all destinations. Stale-generation Note Offs leave current voices sounding. With 25 notes held across three active destinations, the runner drained 75 releases on connection loss. This confirms browser audio signal, not physical speaker output. See [Monitor evidence](../ROADMAP.md#web-apc-rapid-play-regression-and-next-monitor-update). |
-| **Verified offline · target pending** | APC↔CLI runtime colors and offline Diagnostics with mocked serial are verified. Host-staged `INDEX.HTM` and `DIAG.HTM` matched their sources byte for byte. Mounted `GRIDPICO` and physical CDC remain pending. Projects, sequencing, OS MIDI and portable Windows/Linux ARM/RP2040 coverage remain planned. See [offline evidence](../ROADMAP.md#next-approved-product-work-after-web-apc-protocol-and-timed-leds). |
+| **Verified · Linux and Chromium** | The x86_64 native route/transpose proof configures Session and injects simulated notes into the graph. The published Web APC Route/Patch gates, canonical launcher, Diagnostics CLI help and LED replay, Linux ALSA Web MIDI, FM and offline browser tools have independent evidence. See [native proof](../ROADMAP.md#independent-native-proof), [startup acceptance](../ROADMAP.md#approved-follow-up--controller-and-diagnostics-startup), [Web APC gates](../ROADMAP.md#web-apc-rapid-play-regression-and-next-monitor-update), and [instrument / offline evidence](../ROADMAP.md#approved-tonight-delivery). |
+| **Verified · Linux hosts and instruments** | Native two-host WSS and bounded Linux RTP delivery with scoped cleanup passed; RTP repeatability and loss recovery remain open. Pi-local arm64 routing, stock FluidSynth WAV capture and standalone browser FM were verified. Chromium Monitor tone evidence is a browser signal only. See [host evidence](../ROADMAP.md#4-verify-rtp-midi-and-productize-cross-host-websocket-midi), [Pi and instrument evidence](../ROADMAP.md#approved-tonight-delivery), and [Monitor evidence](../ROADMAP.md#web-apc-rapid-play-regression-and-next-monitor-update). |
+| **Pending · targets and portability** | Windows/WSL, desktop-browser remote mTLS, reliable RTP timing/rebind, physical speaker output, mounted `GRIDPICO`, Pico USB/CDC, and hardware MIDI remain unverified. Projects, sequencing, broader OS MIDI targets and portability remain planned. See [next work and hardware evidence](../ROADMAP.md#next-approved-product-work-after-web-apc-protocol-and-timed-leds) and [bench topology](HARDWARE.md). |

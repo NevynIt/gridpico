@@ -1,8 +1,10 @@
 # Linux ALSA MIDI adapter scope
 
-**Owner** Architect. **Status** Integration ABI for the ongoing Linux↔Linux RTP-MIDI gate. [C11 declarations](linux_midi.h) · [Local router](local-router.md).
+**Owner** Architect. **Status** Native ALSA adapter implemented and verified locally. Linux↔Linux RTP-MIDI exact receipt and scoped cleanup verified on selected sessions. [C11 declarations](linux_midi.h) · [Local router](local-router.md).
 
 Linux HAL supplies one ALSA sequencer adapter. Assembly owns its lifetime, selected endpoint bindings and serialized calls into the production router. The production CLI retains inventory, route selection and committed status. `rtpmidid` provides the standard RTP-MIDI sessions as an installed OS peer. The adapter deals only with ALSA ports and MIDI bytes. [ALSA sequencer](https://www.alsa-project.org/alsa-doc/alsa-lib/seq.html) · [rtpmidid](https://github.com/davidmoreno/rtpmidid)
+
+The `3e82eda` bench used production x86-64 and arm64 Pi routers with real ALSA and stock `rtpmidid` 26.01. It recorded exact Pi-side receipts, one scoped held-note release before Pending on orderly detach, fresh-generation rebind and one scoped release at peer expiry after abrupt daemon loss. Other attempts timed out or lacked remote receipts. The `699bac5` repeat attempts yielded no new RTP receipt. Repeatability, controlled transmitted Note Off loss, latency and Web MIDI through an OS-presented RTP port remain open. [Linux RTP bench](../ROADMAP.md#4-verify-rtp-midi-and-productize-cross-host-websocket-midi) · [Repeat attempt](../ROADMAP.md#approved-tonight-delivery)
 
 Windows RTP-MIDI is an approved product path through native OS-presented MIDI ports, with acceptance deferred to its nominated target. The [WebSocket MIDI profile](websocket-midi.md) has its own wire and acceptance gate. [Windows RTP-MIDI endpoints](https://microsoft.github.io/MIDI/sdk-reference/Transports/Rtp/)
 

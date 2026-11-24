@@ -1,6 +1,6 @@
 # Production Patch controls and Diagnostics
 
-**Owner** Architect. [Public C11 declarations](patchbay_controls.h) · [Stage-one fixture](patchbay.md#stage-one-native-patch-fixture).
+**Owner** Architect. **Status** Verified connected Patch and shared control profiles. This document retains the stage-one bounds for comparison. The independent production web tools use the [local router](local-router.md). [Public C11 declarations](patchbay_controls.h) · [Stage-one fixture](patchbay.md#stage-one-native-patch-fixture).
 
 ## Production Patch surface
 
@@ -16,7 +16,7 @@ The [Web Monitor destination contract](web-monitor-proposal.md) extends this pat
 
 Keep the one-pad `/demo/midi` runner and wire contract in place. The Patch runner uses `/patch/midi` and the existing note and `apc-surface` object shapes. In the Patch connection, `{"type":"patch-refresh"}` requests another full live snapshot. The host maps it to `surface-ready`, which also performs the initial refresh. The runner keeps the same LF command framing for `surface`, `on` and `off`. The host sends browser `ready` before initial LEDs. A host can request a refreshed snapshot after an in-process simulated port change. Port lifecycle events are supplied by the simulation or platform adapter through the typed update, with no browser command for changing device identity or connection state.
 
-Keep at most one request in flight and 16 queued per connection, one local fixture per socket, and a maximum of 256 UTF-8 bytes per browser frame. An ordinary response can contain at most four accepted note rows, then 40 surface rows, then its terminator. A refresh carries the inventory block defined below. Use `ok` on success. A valid command rejected by the core ends with `err INVALID`, `err CAPACITY` or `err UNAVAILABLE`. The Patch host forwards the records in order and reports that rejection as `{"type":"error","code":"UNAVAILABLE"}` using the returned code. This keeps the Patch connection open while the authoritative LED snapshot remains visible. Malformed framing, unexpected runner termination or transport overflow use the existing close-and-cleanup behavior. Drain runner output while disconnect cleanup completes.
+The original connected Patch profile used at most one request in flight, 16 queued and four accepted note rows per response. The [verified two-branch fast-play profile](#interactive-patch-fast-play-proposal) and [default Monitor profile](web-monitor-proposal.md#profile-limits-and-storage) set their own queue and response limits. Keep one local fixture per socket, a maximum of 256 UTF-8 bytes per browser frame, and at most 40 surface rows per page. A refresh carries the inventory block defined below. Use `ok` on success. A valid command rejected by the core ends with `err INVALID`, `err CAPACITY` or `err UNAVAILABLE`. The Patch host forwards the records in order and reports that rejection as `{"type":"error","code":"UNAVAILABLE"}` using the returned code. An ordinary rejection keeps the connection open while the authoritative LED snapshot remains visible. Malformed framing, unexpected runner termination or transport overflow use the existing close-and-cleanup behavior. Drain runner output while disconnect cleanup completes.
 
 A failed authoritative read during `surface-ready` returns only `err CODE`. Stage inventory and LEDs before writing either. After a valid mapped gesture, send accepted destination rows first. If the command failed, still send a full page when the authoritative post-command read succeeds, then the command's `err CODE`. If that read also fails, retain any accepted destination rows and terminate with the error. When only the post-command read fails, use its error code. Publish complete pages only.
 
@@ -37,7 +37,7 @@ Use the existing Patch startup and `patch-refresh`. For each successful `surface
 
 The block carries the snapshot revision as a decimal string, then device and port records in stable snapshot order. States are `connected`, `disconnected` or `ambiguous`. Runner eligibility is `0` or `1`. Slot is `0` for unassigned, otherwise the one-based row for an input or the one-based column for an output. Encode the name's UTF-8 bytes without its trailing NUL as two uppercase hex digits per byte. The maximum 31-byte name becomes 62 digits. An empty name uses `-` on the runner line and an empty `nameHex` in JSON. Decode and display labels as text.
 
-There are at most nine inventory frames including the boundaries, ahead of at most 40 LEDs for a refresh. Every frame fits the existing 256 UTF-8 byte limit. Validate counts, known device references and unique IDs within each record kind before replacing the displayed inventory. Discard partial blocks and clear the connection's inventory on disconnect. An explicit refresh after simulated port changes presents new connection state without moving the assigned slots. Verify the reserved panel and LED feedback ports remain visible and unassigned.
+The two-branch profile uses at most nine inventory frames including the boundaries. The default Monitor profile allows up to 11. Inventory precedes up to 40 LEDs for a refresh. Every frame fits the existing 256 UTF-8 byte limit. Validate counts, known device references and unique IDs within each record kind before replacing the displayed inventory. Discard partial blocks and clear the connection's inventory on disconnect. An explicit refresh after simulated port changes presents new connection state without moving the assigned slots. Verify the reserved panel and LED feedback ports remain visible and unassigned.
 
 ### Native simulation access
 
@@ -45,9 +45,9 @@ Assembly may provide a separate native test entry point with an in-process fixtu
 
 ## Interactive Patch fast-play proposal
 
-The verified Route-view release is the prerequisite for this connected Patch implementation. Assembly selects the opt-in `gridpico_patch_graph_init_browser` profile for `/patch/midi` and uses its module-owned occurrence and release constants. The stage-one native Patch fixture retains two input occurrences and four release credits through `gridpico_patch_graph_init`. The native transpose proof and Route-view profiles remain independent regressions. Reuse the same Graph, Session, fixture and production APC boundaries.
+The two-branch fast-play gate was verified and published at `299ec25` after the separate Route-view gate. Assembly selects the opt-in `gridpico_patch_graph_init_browser` profile for the `--two-branch` host mode and uses its module-owned occurrence and release constants. The stage-one native Patch fixture retains two input occurrences and four release credits through `gridpico_patch_graph_init`. The native transpose proof and Route-view profiles remain independent regressions. Reuse the same Graph, Session, fixture and production APC boundaries.
 
-| App resource | Proposed bound and purpose |
+| App resource | Two-branch bound and purpose |
 | --- | --- |
 | Input and fan-out | 25 input occurrences, including retired or suppressed holds, cover the physical controls. Two branches are enabled independently. Reserve up to 50 release credits, one for each potential accepted destination note. |
 | Runner response | Stage at most 50 accepted notes per dispatch, then at most one page marker and 40 LED rows. A single branch disable can emit 25 releases. Ingress cleanup across both branches can emit 50. Keep the retained history at 16 and stage accepted rows independently of eviction. |

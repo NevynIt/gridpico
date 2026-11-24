@@ -1,6 +1,6 @@
 # Patchbay, inventory and Diagnostics
 
-**Owner** Architect. **Status** Stage-one contract and separate follow-on boundaries. The [architecture](../ARCHITECTURE.md) defines the module boundaries. The [one-pad demo](README.md#one-pad-apc-route-toggle) remains the baseline regression.
+**Owner** Architect. **Status** Native Patch, shared APC/CLI colors and simulated Diagnostics verified. Mounted-drive and real Pico CDC checks remain pending. The [architecture](../ARCHITECTURE.md) defines the module boundaries. The [one-pad demo](README.md#one-pad-apc-route-toggle) remains an independent baseline regression. [Patch and Diagnostics evidence](../ROADMAP.md#next-approved-product-work-after-web-apc-protocol-and-timed-leds)
 
 ## Shared state and commands
 
@@ -61,7 +61,7 @@ APC displays an unset or black preference as dark. For another CLI RGB value out
 
 ## Serial CLI and standalone Diagnostics
 
-Start with `inventory`, `color get <device-id>` and `color set <device-id> #RRGGBB`. The inventory response includes device/port names, connection state and shared row/column assignments. Use the identifiers printed by inventory to address devices. The CLI frontend owns command text, human-readable output and translation to typed Session commands. The shared state remains authoritative for both frontends.
+The initial Patch CLI commands are `inventory`, `color get <device-id>` and `color set <device-id> #RRGGBB`. The inventory response includes device/port names, connection state and shared row/column assignments. Use the identifiers printed by inventory to address devices. The CLI frontend owns command text, human-readable output and translation to typed Session commands. The shared state remains authoritative for both frontends. The [production router profile](local-router.md#serial-cli-route-control) also exposes typed route control through CLI text.
 
 Computer connections owns the serial byte stream and the standalone Diagnostics Web Serial client. Diagnostics displays the same CLI terminal transcript and connection status. Both an ordinary serial terminal and Diagnostics use the same command service. Keep request lines and output bounded and serialize command processing. The CLI library may edit and tokenize terminal input. Diagnostics can submit complete command lines and display their replies. Initial Diagnostics uses terminal text and its scrollback for logs.
 

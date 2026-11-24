@@ -1,6 +1,6 @@
 # Web Monitor destination contract
 
-**Owner** Architect. **Status** Implementation contract. The independently verified two-branch Patch prerequisite was published at `299ec25`. See the [connected Patch contract](patchbay-controls.md#separate-connected-patch-path) and [roadmap](../ROADMAP.md#next-approved-product-work-after-web-apc-protocol-and-timed-leds).
+**Owner** Architect. **Status** Named Monitor destination independently verified and published at `71c27b4`, following the two-branch Patch gate at `299ec25`. This contract covers the connected `/patch/midi` fixture. The [production Diagnostics Monitor](browser-midi.md#production-startup-and-page-roles) uses a separate directional MIDI binding. [Connected Patch contract](patchbay-controls.md#separate-connected-patch-path) · [Monitor evidence](../ROADMAP.md#web-apc-rapid-play-regression-and-next-monitor-update)
 
 ## Local listening controls
 

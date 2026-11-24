@@ -8,7 +8,7 @@ The human has started you first. Your bootstrap exception is to create exactly t
 
 **Model/effort choices are planned, not yours to decide.** Read `.team/MODEL_PLAN.md`. Initial entries for Strategist, Architect and Project Manager are pre-approved bootstrap defaults. Pass each agent's model with `-m` and its effort with `-c 'model_reasoning_effort="high"'` (substituting the actual value). Verify installed model support; if a proposed model is unavailable, report it instead of silently substituting another. Later changes come from Project Manager, who owns model selection and token-budget planning.
 
-**One-time restart exception:** the human permitted discarding the just-created experimental sessions for this setup correction. Stop the old running processes to avoid duplicate seats, then start only the four approved planning seats. Once these stable sessions exist, normal pause/resume must preserve the exact original Codex session ID.
+**Historical setup exception (completed):** During initial startup, the human permitted discarding experimental sessions to correct sandbox settings. That exception is complete; later resumes preserve each original Codex session ID.
 
 Use installed Herdr/Codex help to operate the actual supported commands. Keep the roster of approved seats, original Codex session IDs, working directories and actual status. After bootstrap, create/start/pause/resume agents only when requested by Project Manager. You do not enforce policy, approval, quotas or resource budgets and do not supervise or schedule work.
 

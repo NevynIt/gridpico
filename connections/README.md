@@ -1,4 +1,9 @@
-# Connected Web APC
+# Gridpico computer connections
+
+For the production web tools, start the [local router](#local-router).
+The one-pad and Patch views below are separate demo profiles.
+
+## One-pad Web APC demo
 
 From the repository root, with CMake, a C compiler, Node.js 18 or later and npm:
 
@@ -19,7 +24,7 @@ player owns the fixture at a time. After a disconnect, click
 with a fresh key press and enable Monitor audio again if needed. Stop the
 host with Ctrl+C.
 
-## Smoke check
+### Smoke check
 
 1. Wait for **Connected** and check that the bottom-left **Route** pad is green.
    Hold **Q** (key 60, channel 1) and check **Captured MIDI output** for
@@ -113,30 +118,46 @@ browser audio on the `/demo/midi` connection.
 
 Run `./scripts/web-ui.sh` from the repository root. Open the
 [Gridpico home](http://127.0.0.1:8767/) and choose **Web APC**,
-**Diagnostics**, or **FM Instrument** when available. Diagnostics connects
-to the local CLI and MIDI independently. The offline `HOME.HTM` opens
-the packaged tools. Offline Diagnostics uses Web Serial for its transcript.
+**Diagnostics**, or **FM Instrument** when available. The launcher uses the
+running Docker Compose `dev` service and Python 3 on the host or WSL. Run
+`./scripts/web-ui.sh --help` for launcher usage.
 
-To start the host directly:
+The launcher selects the `--web-ui` profile in the host and router. Before
+readiness, the router enables managed Keybed → Monitor (`1 → 5`) and
+Keybed → MIDI Log (`1 → 6`). Each route starts Pending until its endpoints
+connect. Raw starts Off. The loopback pages try their starter bindings once:
+
+| Tool | Starter bindings |
+| --- | --- |
+| Web APC | Keybed TX `1`, Panel TX `2`, LED RX `3` |
+| Diagnostics | Monitor RX `5`, MIDI Log RX `6` |
+
+Open Diagnostics in a separate tab from Web APC and choose **Enable audio**
+in Monitor. The keybed can send as soon as its own binding connects. Each
+receiver starts with the next fresh note after it connects. MIDI Log shows
+what its own binding receives. Diagnostics LED Sequence TX `4` and FM use
+manual connections.
+
+To start the manual profile directly:
 
 ```sh
-cmake -S . -B build/local-router
+cmake -S . -B build/local-router -DGRIDPICO_ENABLE_ALSA=OFF
 cmake --build build/local-router --target gridpico_local_router
 npm --prefix connections ci --ignore-scripts
 node connections/local-host.js build/local-router/gridpico_local_router
 ```
 
-An optional port argument overrides 8767.
+An optional port argument overrides 8767. The direct command starts with
+those routes Off and leaves binding selection to the operator. To select the
+starter profile directly, pass `--web-ui` before the runner path.
+[Production startup contract](../api/local-router.md#production-web-ui-startup)
 
-With `./scripts/web-ui.sh`, Web APC attempts Keybed TX on port 1, Panel TX
-on 2 and LED RX on 3 once when it opens. Diagnostics attempts Monitor RX on
-5 and MIDI Log RX on 6. To hear the keybed, open Diagnostics and choose
-**Enable audio**. Each receiver starts with the next note after it connects.
-The MIDI Log records the bytes received by its own binding.
-
-The direct host command above uses manual selection. Use the CLI's
-`inventory` command to identify the configured MIDI bindings. For the
-default router, enable the independent keybed routes with:
+In Diagnostics, choose **Connect local CLI** and send `help` to see the
+attached CLI's available commands and short syntax. Use `inventory` to find
+the directional port IDs. The production CLI supports
+`route SRC DST managed|raw [on|off]`. Omit `on` or `off` to read the current
+state. In the manual profile, bind the relevant ports and enable the default
+keybed routes with:
 
 ```text
 route 1 5 managed on
@@ -159,22 +180,50 @@ as three-byte binary frames at `/midi/<port-id>` and serial CLI bytes at
 
 Served pages default to **WebSocket**. Select the directional numeric port
 from CLI inventory or the router operator. Choose **Web MIDI** to use an
-OS MIDI port. Enable Web MIDI in the page, select the named system output
-for sending or input for receiving, then connect. Refresh the list after
-adding or replacing a port. A lost port needs a fresh selection. The
-offline pages use Web MIDI where the browser grants access.
+OS MIDI port. Grant access from the page, select a named system output for
+sending or input for receiving, then connect. Refresh the list after adding
+or replacing a port. A lost port needs a fresh selection. Chrome with real
+ALSA ports verified this browser selection and device-loss behavior.
 
-Use **MIDI server origin** and **Open server** to open the same tool at a
-different origin. Use HTTP or WS for `127.0.0.1`, or the configured HTTPS or
-WSS origin for a remote server. Enter only the scheme, host and port.
-The browser applies the remote server's TLS and client-certificate rules.
-Use Back to return to the previous page.
+The OS manages RTP-MIDI sessions. Select an RTP port in Web MIDI if the OS
+exposes it and the browser lists it. The Linux two-host RTP bench verified
+receipt, rebind and scoped release. Session repeatability, in-session Note Off
+loss recovery and browser playback over an OS-exposed RTP port remain open.
+[RTP bench results](../ROADMAP.md#4-verify-rtp-midi-and-productize-cross-host-websocket-midi)
+
+Web APC, Diagnostics and FM share the **MIDI server origin** field.
+**Open server** navigates to the same tool at the selected origin
+(`/apc/`, `/diagnostics/` or `/fm/`). Enter the scheme, host and optional port,
+with an optional trailing slash. HTTP and WS are accepted on `127.0.0.1`;
+use the configured HTTPS or WSS origin for a remote server. The field
+converts WS to HTTP and WSS to HTTPS for navigation. The tool opens its
+WebSocket at that page's origin. The browser applies the destination's TLS
+and client-certificate rules. Use Back to return to the previous page.
+[Server selection and status](../api/browser-midi.md#server-selection-and-status)
+
+### Offline tools
+
+Build the checksummed `GRIDPICO` asset bundle:
+
+```sh
+cmake -S . -B build/web-ui -DGRIDPICO_ENABLE_ALSA=OFF
+cmake --build build/web-ui --target gridpico_offline_assets
+```
+
+Open `build/web-ui/GRIDPICO/HOME.HTM`. Its relative links open `INDEX.HTM`
+(Web APC), `DIAG.HTM` (Diagnostics) and `FM.HTM` (FM Instrument).
+`VERSION.TXT` lists their SHA-256 checksums and the home checksum. The tools
+include the same shared MIDI adapter and use Web MIDI where the browser
+grants access. Diagnostics opens Web Serial separately for its transcript.
+Staged direct files were exercised offline. Physical Pico CDC and mounted
+drive acceptance remain open.
 
 ### Timed RGB pads
 
 In Diagnostics, select the MIDI output. For WebSocket, connect the APC LED
 receiver, enter the shown `route SRC DST raw on` command and wait for the
-CLI to report Active. For Web MIDI, choose a system output connected to
+CLI to report Active. Keep Diagnostics visible during the run.
+For Web MIDI, choose a system output connected to
 the APC LED input. **Step** queues one row at your pace. **Replay** starts
 from row 1 and queues each row once with these minimum waits.
 
@@ -230,7 +279,8 @@ node connections/local-host.js --wss-config /path/to/wss.json build/local-router
 Clients trust the server chain and connect using the certificate name
 in the configured origin. Each client presents a leaf certificate signed
 by the configured client CA with an enrolled SHA-256 fingerprint. Open
-`/apc/` or `/diagnostics/` on that HTTPS origin. A native client can use a
+`/apc/`, `/diagnostics/` or `/fm/` when available on that HTTPS origin.
+Select bindings explicitly. A native client can use a
 standard WebSocket library with the same origin, enrolled certificate and
 binary MIDI frames at `/midi/<port-id>`.
 
@@ -241,9 +291,11 @@ Route configuration and CLI inventory remain at
 HTTPS/WSS serves MIDI only. The standalone Diagnostics file keeps its
 direct-file Web Serial connection.
 
-Both listeners use the same bindings and runtime. Restart the host to
-apply changes to credentials or publication. Isolated TLS checks cover
-the standard WebSocket client path. Desktop Chromium certificate
-selection and the two-host browser and native client checks are part of
-deployment acceptance.
+Both listeners share one runtime and binding table. Restart the host to
+apply changes to credentials or publication. Native clients on the
+development host verified mutual TLS against a Pi listener, exact managed
+and Raw MIDI receipt, the 40-pad restore, scoped release, and fresh
+binding without replay. Desktop Chromium client-certificate selection
+and browser MIDI receipt through the authenticated remote listener remain
+pending. [Two-host evidence](../ROADMAP.md#approved-tonight-delivery)
 [Cross-host admission and routing contract](../api/websocket-midi.md)

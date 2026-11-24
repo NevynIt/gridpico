@@ -1,8 +1,9 @@
 # Gridpico Web APC
 
-Run `./scripts/web-ui.sh` from the repository root and choose **Web APC** on
-Gridpico home. In the packed offline tools, open `HOME.HTM` and choose
-**Web APC** for system MIDI.
+Run `./scripts/web-ui.sh` from the repository root on the host or in WSL
+with the Compose dev service running. Choose **Web APC** on Gridpico home.
+In the offline package, open `HOME.HTM` and choose **Web APC** in a browser
+that supports Web MIDI. [Launcher and local router setup](../../connections/README.md#local-router)
 
 For the separate legacy preview, open [index.html](index.html) directly or
 serve it from the repository root and open [the preview](http://127.0.0.1:8000/).
@@ -21,14 +22,14 @@ release held controls. Panel buttons and Sustain show their local pressed state.
 The pad matrix and MIDI mapping follow the
 [Akai Communications Protocol v1.1 diagram in miniMIDI](https://raw.githubusercontent.com/NevynIt/miniMIDI/main/ref/Keyboards/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1%20%281%29.pdf).
 The printed labels follow the [Akai User Guide v1.2](https://cdn.inmusicbrands.com/akai/apc-key-25-mkii/APC%20Key%2025%20mk2%20-%20User%20Guide%20-%20v1.2.pdf).
-Gridpico Route is annotated separately below the controller face. The octave
-buttons adjust the keybed locally. The display uses 1-based MIDI channels.
+The legacy Route view annotates its Route pad below the controller face.
+The display uses 1-based MIDI channels.
 The initial note range 48–72 and fixed press velocity 96 are simulator defaults.
 
 ## Listen in the legacy Route view
 
-Open the [connected Web APC application](../../connections/README.md), select
-**Monitor**, and choose **Enable audio**. With the default +12 Route active,
+Start the [legacy one-pad Route host](../../connections/README.md),
+select **Monitor**, and choose **Enable audio**. With the default +12 Route active,
 hold **Q** to hear destination note 72 (C5, about 523.25 Hz). Release **Q** or
 press Escape to end the note. The **Capture** tab continues to record routed
 destination events while you view Monitor, including when audio is off.
@@ -47,7 +48,7 @@ tails. At capacity it reclaims a releasing voice before a sounding voice.
 Audio settings are local to the open page. The presets work offline, and
 the standalone preview opens silent with an empty capture.
 
-## Local integration
+## Legacy Route adapter
 
 The standalone page opens disconnected. In the connected Route view, the
 Computer connections adapter calls `window.gridpicoApc.connect(sendKeybed)` after the
@@ -74,7 +75,7 @@ clears the prior capture, starts with the default Route, and has
 audio off until explicitly enabled. Held keys from the old connection are
 released locally and do not play on the fresh connection.
 
-In connected Web APC, the bottom-left **Route** pad toggles routing
+In the legacy Route view, the bottom-left **Route** pad toggles routing
 from the simulated APC keybed (input 1), through +12 semitones, to simulated
 MIDI capture (output 2). The route status starts at **Disconnected**, shows
 **Waiting for feedback** on attach, and changes to **Active** or **Off** as
@@ -115,9 +116,9 @@ The separate color panel displays the selected device and its received APC
 palette preview. While the color layer is open, the grid shows the last route
 page. Release Shift for fresh route feedback.
 
-Patch Capture shows all accepted note records with their destination port name,
-ID and generation. To hear Patch through the browser, enable the route to the
-**Monitor** destination and choose **Enable audio**. The browser plays only
+Patch Capture shows the latest 100 accepted note records with their destination
+port name, ID and generation. To hear Patch through the browser, enable the
+route to the **Monitor** destination and choose **Enable audio**. The browser plays only
 deliveries for its attached Web Monitor receiver. Instrument releases and
 stale-generation releases leave current Monitor voices alone. Receiver detach
 clears its voices. Reattach waits for fresh deliveries and leaves the local
@@ -127,11 +128,13 @@ audio off and clears voices. Route view retains its original capture feed.
 
 ## Local router
 
-The production `/apc/` page shows the selected transport, server and
-connection state of each controller role. The canonical loopback launcher
-attempts each of these default connections once. For a manual connection,
-read the port IDs with `inventory` in Diagnostics. Browser TX binds a router
-input and browser RX binds a router output.
+The production `/apc/` page handles keybed and panel input and displays
+received LED feedback. Sustain and knob detents stay local to the surface.
+The page shows the transport, server and connection state of each role.
+The canonical loopback launcher selects WebSocket and tries each default
+port once. If a port is busy or unavailable, check `inventory` in the local
+Diagnostics CLI. Use **Retry** or choose another configured port for that
+role. Browser TX binds a router input and browser RX binds a router output.
 
 | Web APC control | Default router port |
 | --- | --- |
@@ -139,13 +142,25 @@ input and browser RX binds a router output.
 | Panel TX | `2` Panel |
 | LED RX | `3` LED feedback |
 
-For sound and MIDI receipts, open **Diagnostics**. Its Monitor plays when
-you select **Enable audio**. The canonical launcher sets up the starter routes
-to Monitor and MIDI Log.
+Open **Diagnostics** from Web APC to keep the controller connected in its
+own tab. Diagnostics owns Monitor, MIDI Log, and LED replay. The canonical
+launcher sets up the pitch-preserving routes from Keybed to Monitor (`1 → 5`)
+and MIDI Log (`1 → 6`). Diagnostics attempts both receiver connections on
+startup. Choose **Enable audio** in Diagnostics, then return to Web APC and
+play a fresh note once the receivers are connected.
 
-Use **Open server** to load the controller at another Gridpico origin. For
-system MIDI, choose **Web MIDI**, click **Allow Web MIDI**, then choose the
-system outputs for Keybed and Panel TX and the system input for LED RX.
+Enter a **MIDI server origin** and choose **Open server** to load `/apc/` there.
+Use HTTP or WS for `127.0.0.1` and the configured HTTPS or WSS origin for a
+remote server. Enter the scheme, host and port, with an optional trailing
+slash. Remote access requires a trusted server certificate and an enrolled
+client certificate.
+[Server choices and admission](../../api/browser-midi.md#server-selection-and-status)
+
+To use system MIDI, select **Web MIDI** and click **Allow Web MIDI**. Grant
+browser access, then choose a system output for each TX role and a system
+input for LED RX. Click **Connect** for each selected port. Use **Refresh MIDI
+ports** after changing devices. The offline package starts in Web MIDI when
+the browser supports it and requests permission from the same button.
 
 Keybed notes and panel button pairs use separate TX links. Rebinding sends
 releases on the old available link. A lost link clears its held controls.
@@ -153,11 +168,16 @@ Changing LED RX clears its display until fresh feedback arrives. Other
 bindings stay active when one link changes. Connect again explicitly
 after a loss.
 
-With LED RX connected, use Diagnostics to run a solid/off or Timed RGB LED
-sequence over the compatible Raw route, `route 4 3 raw on` for the default
-IDs. Web APC shows the actual received feedback and the restored production
-page after Raw ownership ends.
-[Local production router contract](../../api/local-router.md)
+For a WebSocket LED check, connect Web APC LED RX and the Diagnostics LED
+Sequence TX, run `route 4 3 raw on` in the local Diagnostics CLI for the
+default IDs, and wait for Active. Send solid/off or run **Timed RGB pads**
+in Diagnostics. Web APC renders the received frames and the restored
+production page after the Raw lease ends. [Diagnostics replay setup](../../connections/README.md#timed-rgb-pads)
+
+The startup workflow passed in Linux Chromium with the production router
+and a Compose stand-in. Real Linux ALSA ports verified Web MIDI send, receive,
+and device loss. Windows/WSL launcher and remote desktop browser mTLS
+verification remain open. [Startup acceptance](../../ROADMAP.md#approved-follow-up--controller-and-diagnostics-startup)
 
 ## Legacy Protocol Lab
 
