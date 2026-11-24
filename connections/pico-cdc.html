@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pico maintenance · Gridpico</title>
+  <style>
+    :root { color-scheme: dark; font: 1rem/1.5 system-ui, sans-serif; background: #121617; color: #eef1ef; }
+    main { max-width: 58rem; padding: clamp(1rem, 4vw, 2.5rem); margin: auto; }
+    h1 { margin: 0 0 .8rem; }
+    .controls { display: flex; flex-wrap: wrap; gap: .65rem; align-items: center; }
+    .identity { margin: .35rem 0; }
+    button, input { font: inherit; color: inherit; border: 1px solid #66726e; border-radius: .35rem;
+      min-height: 2.65rem; background: #242b2a; padding: .35rem .75rem; }
+    button:enabled { cursor: pointer; }
+    button:disabled { opacity: .55; }
+    input { flex: 1 1 12rem; min-width: 0; font-family: ui-monospace, monospace; }
+    :focus-visible { outline: 2px solid #8fe0b6; outline-offset: 3px; }
+    pre { min-height: 12rem; height: 36vh; overflow: auto; border: 1px solid #56615e; border-radius: .35rem;
+      padding: .8rem; background: #0b0f10; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #status[data-error], #input-error { color: #ffad9e; }
+    #transcript-owner { color: #b8c8c1; }
+    label { display: block; margin-bottom: .4rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Pico maintenance</h1>
+    <p class="identity"><span id="identity-state">Configured Pico:</span> <strong id="target">PICO_TARGET_LABEL</strong></p>
+    <p class="identity">Transport: authenticated WSS CDC</p>
+    <p>This console sends commands directly to the Pico. The Pi router CLI is a separate connection.</p>
+    <div class="controls">
+      <button type="button" id="connect">Connect</button>
+      <button type="button" id="disconnect" disabled>Disconnect</button>
+      <p id="status" role="status">Pico console disconnected.</p>
+    </div>
+    <h2 id="transcript-title">Pico serial transcript</h2>
+    <p id="transcript-owner"></p>
+    <pre id="transcript" aria-labelledby="transcript-title" aria-describedby="transcript-owner" tabindex="0"></pre>
+    <form id="terminal" autocomplete="off">
+      <label for="command">Pico command</label>
+      <div class="controls">
+        <input id="command" type="text" autocapitalize="off" spellcheck="false" disabled>
+        <button id="send" type="submit" disabled>Send</button>
+        <button id="clear" type="button">Clear transcript</button>
+      </div>
+      <p id="input-error" role="alert"></p>
+    </form>
+  </main>
+  <script>
+    "use strict";
+    const byId = id => document.getElementById(id);
+    const connect = byId("connect");
+    const disconnect = byId("disconnect");
+    const command = byId("command");
+    const send = byId("send");
+    const transcript = byId("transcript");
+    const transcriptOwner = byId("transcript-owner");
+    const identity = byId("identity-state");
+    const target = byId("target").textContent;
+    const status = byId("status");
+    const inputError = byId("input-error");
+    const encoder = new TextEncoder();
+    let active;
+
+    function markStatus(message, error = false) {
+      status.textContent = message;
+      status.toggleAttribute("data-error", error);
+    }
+
+    function controls() {
+      const attached = active?.ready && active.socket.readyState === WebSocket.OPEN;
+      command.disabled = send.disabled = !attached;
+      connect.disabled = Boolean(active);
+      disconnect.disabled = !active;
+      identity.textContent = attached ? "Connected Pico:" : "Configured Pico:";
+    }
+
+    function append(text) {
+      if (!text) return;
+      const follow = transcript.scrollHeight - transcript.clientHeight - transcript.scrollTop < 8;
+      transcript.textContent = (transcript.textContent + text).slice(-16384);
+      if (follow) transcript.scrollTop = transcript.scrollHeight;
+    }
+
+    function retire(session, message, error = false) {
+      if (active !== session) return;
+      active = undefined;
+      clearTimeout(session.timer);
+      session.socket.close();
+      if (session.ready) {
+        append(session.decoder.decode());
+        transcriptOwner.textContent = "Transcript from the previous attachment.";
+      }
+      markStatus(message, error);
+      connect.textContent = error ? "Retry" : "Connect";
+      controls();
+    }
+
+    connect.addEventListener("click", () => {
+      if (active) return;
+      const endpoint = new URL("/cdc", location.origin);
+      endpoint.protocol = "wss:";
+      let socket;
+      try { socket = new WebSocket(endpoint); }
+      catch {
+        markStatus(`Couldn’t attach to ${target}. Check the connection and choose Retry.`, true);
+        connect.textContent = "Retry";
+        return;
+      }
+      socket.binaryType = "arraybuffer";
+      const session = { socket, ready: false, decoder: new TextDecoder("utf-8", { ignoreBOM: true }) };
+      active = session;
+      session.timer = setTimeout(() => {
+        retire(session, `Couldn’t attach to ${target}. The connection timed out.`, true);
+      }, 6500);
+      markStatus("Attaching to the configured Pico…");
+      controls();
+      socket.addEventListener("open", () => {
+        if (active !== session) return;
+        clearTimeout(session.timer);
+        session.ready = true;
+        transcript.textContent = "";
+        transcriptOwner.textContent = "Live transcript from this Pico attachment.";
+        markStatus("Pico console connected.");
+        controls();
+      });
+      socket.addEventListener("message", ({ data }) => {
+        if (active !== session || !session.ready) return;
+        if (!(data instanceof ArrayBuffer) || !data.byteLength || data.byteLength > 256) {
+          retire(session, "The Pico console sent an invalid frame. Choose Retry.", true);
+          return;
+        }
+        append(session.decoder.decode(data, { stream: true }));
+      });
+      const lost = () => retire(session, session.ready ?
+        "Pico console disconnected. Choose Retry to attach again." :
+        `Couldn’t attach to ${target}. Check the connection and choose Retry.`, true);
+      socket.addEventListener("error", lost);
+      socket.addEventListener("close", lost);
+    });
+
+    disconnect.addEventListener("click", () => {
+      if (active) retire(active, "Pico console disconnected.");
+    });
+    byId("terminal").addEventListener("submit", event => {
+      event.preventDefault();
+      const session = active;
+      if (!session?.ready || session.socket.readyState !== WebSocket.OPEN) return;
+      const line = command.value;
+      inputError.textContent = "";
+      if (!line) return;
+      if (!/^[\t\x20-\x7e]{1,63}$/.test(line)) {
+        inputError.textContent = "Enter one ASCII command of up to 63 bytes.";
+        return;
+      }
+      const data = encoder.encode(line + "\n");
+      if (session.socket.bufferedAmount + data.byteLength > 8192) {
+        retire(session, "Unable to send the command. Choose Retry.", true);
+        return;
+      }
+      try {
+        session.socket.send(data);
+        command.value = "";
+      } catch {
+        retire(session, "Unable to send the command. Choose Retry.", true);
+      }
+    });
+    byId("clear").addEventListener("click", () => { transcript.textContent = ""; });
+    window.addEventListener("pagehide", () => {
+      if (active) retire(active, "Pico console disconnected.");
+    });
+  </script>
+</body>
+</html>

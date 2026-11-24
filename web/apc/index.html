@@ -65,6 +65,8 @@
   }
   #local-provider-controls { display: flex; align-items: center; gap: .35rem; }
   #local-provider-controls[hidden] { display: none; }
+  #laptop-keybed-bridge { margin-top: .75rem; overflow-wrap: anywhere; }
+  #laptop-keybed-bridge .lab-actions { align-items: center; }
   #local-midi-server { margin-top: .55rem; font-size: .875rem; }
   #local-midi-server label { display: inline-block; margin-bottom: .25rem; }
   #local-midi-server .midi-server-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
@@ -402,6 +404,20 @@
     <p class="patch-status" id="local-midi-transport-status" role="status"></p>
     <p class="patch-status" id="local-midi-access-status" role="status" hidden></p>
     <p class="patch-status" id="local-port-guide">Use the port IDs from Diagnostics inventory. Bind each direction separately.</p>
+    <section class="local-binding" id="laptop-keybed-bridge" aria-labelledby="laptop-bridge-title" hidden>
+      <h3 id="laptop-bridge-title">Laptop keybed bridge</h3>
+      <label for="laptop-bridge-input">From · local MIDI input</label>
+      <div class="lab-actions">
+        <select id="laptop-bridge-input"></select>
+        <button type="button" id="laptop-bridge-access">Allow Web MIDI</button>
+      </div>
+      <p class="patch-status" id="laptop-bridge-target"></p>
+      <div class="lab-actions">
+        <button type="button" id="laptop-bridge-start" disabled>Start bridge</button>
+        <button type="button" id="laptop-bridge-stop" disabled>Stop bridge</button>
+      </div>
+      <p class="patch-status" id="laptop-bridge-status" role="status">Choose a local MIDI input to forward notes.</p>
+    </section>
     <div class="local-bindings" id="local-bindings"></div>
   </section>
 
@@ -1982,6 +1998,177 @@ function updatePatchMonitor(active, frame) {
   renderPatchMonitorStatus(active.monitor);
 }
 
+function mountLaptopBridge(adapter, surfaceOwnsKeybed, updateSurface) {
+  const keybed = adapter.capabilities?.roles.keybed;
+  if (location.protocol !== "https:" || adapter.target?.origin !== location.origin ||
+      keybed?.direction !== "send" || !adapter.midiProviders.includes("websocket")) return null;
+
+  const section = document.querySelector("#laptop-keybed-bridge");
+  const status = section.querySelector("#laptop-bridge-status");
+  const input = section.querySelector("#laptop-bridge-input");
+  const access = section.querySelector("#laptop-bridge-access");
+  const start = section.querySelector("#laptop-bridge-start");
+  const stop = section.querySelector("#laptop-bridge-stop");
+  const supported = adapter.midiProviders.includes("web-midi");
+  const maxHeld = 25;
+  let active;
+  let accessing = false;
+
+  section.hidden = false;
+  section.querySelector("#laptop-bridge-target").textContent =
+    `To · WSS Keybed · port ${keybed.port} · ${location.origin}`;
+
+  function show(message, error = false) {
+    status.textContent = message;
+    status.toggleAttribute("data-error", error);
+  }
+
+  function showControls() {
+    access.disabled = !supported || accessing || Boolean(active);
+    start.disabled = !input.value || accessing || Boolean(active) || document.hidden;
+    stop.disabled = !active;
+  }
+
+  function refreshInputs(prompt) {
+    const selected = input.value;
+    const ports = adapter.listMidiPorts("receive");
+    input.replaceChildren(new Option(ports.length ? "Choose a MIDI input" : prompt, ""));
+    for (const { id, name } of ports) input.add(new Option(name, id));
+    input.value = ports.some(port => port.id === selected) ? selected : "";
+    showControls();
+  }
+
+  function send(current, bytes) {
+    try {
+      return current.output.handle.send(bytes);
+    } catch {
+      return false;
+    }
+  }
+
+  function retire(message, { failed = false, outputLost = false } = {}) {
+    const current = active;
+    if (!current) return;
+    active = undefined;
+    let unconfirmed = outputLost && current.output.ready;
+    if (current.output.ready && !outputLost) {
+      for (const key of current.held) {
+        const off = Uint8Array.of(0x80 + (key >> 7), key & 0x7f, 0);
+        if (!send(current, off)) unconfirmed = true;
+      }
+    }
+    current.input.handle?.close();
+    current.output.handle?.close();
+    show(unconfirmed ? `Disconnected · release unconfirmed. ${message}` : message, failed || unconfirmed);
+    start.textContent = failed || unconfirmed ? "Retry bridge" : "Start bridge";
+    updateSurface(false);
+    showControls();
+  }
+
+  function forward(current, bytes) {
+    if (active !== current || !current.input.ready || !current.output.ready || document.hidden ||
+        !(bytes instanceof Uint8Array) || bytes.length !== 3 || bytes[1] > 127 || bytes[2] > 127) return;
+    const [status, note, velocity] = bytes;
+    const kind = status & 0xf0;
+    if (kind !== 0x80 && kind !== 0x90) return;
+    const on = kind === 0x90 && velocity > 0;
+    const key = (status & 0x0f) * 128 + note;
+    const first = on ? -1 : current.held.indexOf(key);
+    if (!on && first === -1) return;
+    if (on && current.held.length === maxHeld) {
+      retire("Bridge stopped at the 25 held-note limit.", { failed: true });
+      return;
+    }
+    const midi = !on && kind === 0x90 ? Uint8Array.of(status - 0x10, note, 0) : bytes;
+    if (!send(current, midi)) {
+      retire("Bridge stopped because a MIDI message could not be sent.", { failed: true });
+      return;
+    }
+    if (on) current.held.push(key);
+    else current.held.splice(first, 1);
+  }
+
+  function onState(current, side, state, reason) {
+    if (active !== current) return;
+    if (state === "connected") {
+      current[side].ready = true;
+      if (side === "output") updateSurface(true);
+      if (current.input.ready && current.output.ready) show(`Forwarding notes · ${current.name}`);
+    } else if (state === "disconnected") {
+      const lostInput = side === "input";
+      const message = !lostInput && !current.output.ready ? "The WSS Keybed input is unavailable."
+        : reason || (lostInput ? "The local MIDI input closed." : "The WSS Keybed connection closed.");
+      retire(message, { failed: true, outputLost: !lostInput });
+      if (lostInput) refreshInputs("No local MIDI inputs available");
+    }
+  }
+
+  refreshInputs(supported ? "Allow Web MIDI to list inputs" : "Web MIDI is unavailable");
+  if (!supported) {
+    show("Web MIDI is unavailable in this browser or context.", true);
+    return null;
+  }
+  access.addEventListener("click", async () => {
+    accessing = true;
+    showControls();
+    try {
+      await adapter.requestMidiAccess();
+      access.textContent = "Refresh MIDI inputs";
+      refreshInputs("No local MIDI inputs available");
+      if (!active) show("Choose a local MIDI input to forward notes.");
+    } catch (error) {
+      if (!active) show(error.message, true);
+    } finally {
+      accessing = false;
+      showControls();
+    }
+  });
+  input.addEventListener("change", () => {
+    if (active) retire("Bridge stopped when the local input changed.");
+    else show("Start the bridge to forward notes from this input.");
+    showControls();
+  });
+  start.addEventListener("click", () => {
+    if (start.disabled) return;
+    if (surfaceOwnsKeybed()) {
+      show("Disconnect the surface’s Keybed TX below, then start the bridge.", true);
+      return;
+    }
+    if (adapter.target?.origin !== location.origin) return;
+    const current = { name: input.selectedOptions[0].textContent, held: [],
+      input: { ready: false }, output: { ready: false } };
+    active = current;
+    show("Opening the local MIDI input and WSS Keybed…");
+    start.textContent = "Start bridge";
+    updateSurface(true);
+    showControls();
+    try {
+      current.input.handle = adapter.openMidi(input.value, {
+        provider: "web-midi", direction: "receive",
+        onData: bytes => forward(current, bytes),
+        onState: (state, reason) => onState(current, "input", state, reason),
+      });
+      current.output.handle = adapter.openMidi(keybed.port, {
+        provider: "websocket", direction: "send", role: "keybed",
+        onState: (state, reason) => onState(current, "output", state, reason),
+      });
+    } catch (error) {
+      retire(error.message, { failed: true });
+    }
+  });
+  stop.addEventListener("click", () => retire("Bridge stopped."));
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) retire("Bridge stopped when the page was hidden.");
+    showControls();
+  });
+  window.addEventListener("gridpico-target-changing", () => retire("Bridge stopped when the router changed."));
+  window.addEventListener("pagehide", () => retire("Bridge stopped when leaving the page."));
+  return {
+    get active() { return Boolean(active); },
+    get outputReady() { return Boolean(active?.output.ready); },
+  };
+}
+
 // Each role owns an independent binding through the selected browser MIDI provider.
 function mountLocalMidi(adapter) {
   document.querySelector("#local-port-view").hidden = false;
@@ -2009,6 +2196,7 @@ function mountLocalMidi(adapter) {
   const activeRouter = document.querySelector("#local-midi-active-router");
   const transportStatus = document.querySelector("#local-midi-transport-status");
   let accessGranted = false;
+  let bridge;
   adapter.mountServerSelection?.(document.querySelector("#local-midi-server"), "/apc/", { inPlace: true });
   if (adapter.capabilityStatus === "unavailable") {
     const error = document.querySelector("#local-capability-error");
@@ -2038,14 +2226,15 @@ function mountLocalMidi(adapter) {
     const current = [...bindings.values()];
     const activeCount = current.filter(binding => binding.state === "connected").length;
     const opening = current.some(binding => binding.state === "connecting");
-    const activity = activeCount ? `${activeCount} of ${definitions.length} roles connected` : "No roles connected";
+    const scope = bridge?.active ? "surface roles" : "roles";
+    const activity = activeCount ? `${activeCount} of ${definitions.length} ${scope} connected` : `No ${scope} connected`;
     transportStatus.textContent = `${activity}${opening ? " · Connecting…" : ""}`;
     transportStatus.toggleAttribute("data-connected", activeCount > 0);
     const origin = routerOrigin();
     activeRouter.hidden = !origin;
     const sockets = current.filter(binding => binding.provider === "websocket");
-    const label = sockets.some(binding => binding.state === "connected") ? "Connected router"
-      : sockets.length ? "Connecting to router" : "Selected router";
+    const label = bridge?.outputReady || sockets.some(binding => binding.state === "connected") ? "Connected router"
+      : sockets.length || bridge?.active ? "Connecting to router" : "Selected router";
     activeRouter.textContent = origin ? `${label} · ${origin}` : "";
   }
 
@@ -2122,6 +2311,7 @@ function mountLocalMidi(adapter) {
   }
 
   function bind(role) {
+    if (role === "keybed" && bridge?.active) return;
     const { direction, field, ports, provider } = choices.get(role);
     const selectedProvider = provider.value;
     const webMidi = selectedProvider === "web-midi";
@@ -2172,13 +2362,17 @@ function mountLocalMidi(adapter) {
     }
   }
 
-  function showPorts({ provider, label, field, ports, submit, direction }) {
+  function showPorts({ role, provider, label, field, ports, submit, direction }) {
     const webMidi = provider.value === "web-midi";
-    field.hidden = field.disabled = webMidi;
-    ports.hidden = ports.disabled = !webMidi;
+    const bridging = role === "keybed" && bridge?.active;
+    provider.disabled = Boolean(bridging || remoteTarget());
+    field.hidden = webMidi;
+    field.disabled = Boolean(webMidi || bridging);
+    ports.hidden = !webMidi;
+    ports.disabled = Boolean(!webMidi || bridging);
     label.htmlFor = webMidi ? ports.id : field.id;
     if (!webMidi) {
-      submit.disabled = field.readOnly && !field.value;
+      submit.disabled = Boolean(bridging || (field.readOnly && !field.value));
       return;
     }
     const selected = ports.value;
@@ -2189,7 +2383,7 @@ function mountLocalMidi(adapter) {
     ports.replaceChildren(new Option(prompt, ""));
     for (const { id, name } of available) ports.add(new Option(name, id));
     ports.value = available.some(port => port.id === selected) ? selected : "";
-    submit.disabled = !ports.value;
+    submit.disabled = Boolean(bridging || !ports.value);
   }
 
   function showAccess() {
@@ -2234,8 +2428,8 @@ function mountLocalMidi(adapter) {
     status.id = `local-${role}-status`;
     field.setAttribute("aria-describedby", status.id);
     ports.setAttribute("aria-describedby", status.id);
-    ports.addEventListener("change", () => { submit.disabled = !ports.value; });
-    const choice = { name, status, disconnect, direction, field, ports, submit, label, provider };
+    ports.addEventListener("change", () => { submit.disabled = !ports.value || ports.disabled; });
+    const choice = { role, name, status, disconnect, direction, field, ports, submit, label, provider };
     choices.set(role, choice);
     form.append(label, providerLabel, actions, status);
     form.addEventListener("submit", event => {
@@ -2277,7 +2471,6 @@ function mountLocalMidi(adapter) {
     for (const [role, choice] of choices) {
       const { provider, field, direction } = choice;
       provider.replaceChildren(...providers.map(id => new Option(id === "websocket" ? socketName : "Web MIDI", id)));
-      provider.disabled = remote;
       const offered = capabilities?.roles[role];
       const published = offered?.direction === direction;
       field.setCustomValidity("");
@@ -2316,6 +2509,10 @@ function mountLocalMidi(adapter) {
     }
   });
   presentTarget();
+  bridge = mountLaptopBridge(adapter, () => bindings.has("keybed"), active => {
+    showPorts(choices.get("keybed"));
+    setBindingStatus("keybed", "disconnected", active ? "In use by Laptop keybed bridge." : "Disconnected");
+  });
   if (servedLocalPage) {
     window.addEventListener("gridpico-target-changing", () => {
       releaseAll();

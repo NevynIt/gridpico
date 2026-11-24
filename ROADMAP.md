@@ -199,7 +199,8 @@ The Pico is connected. Project Manager coordinates delivery and confirms indepen
 1. **No-touch BOOTSEL entry and bridge return · Independently verified.** Pi → Pico CDC entered the RP2040 B2 ROM on the same physical USB path. Two full 2 MiB flash reads matched at SHA-256 `f40534f41983bbe7b916bdee32f0c8f19fb40f5eb03c83c8aca8db2a2f4d95e3`, and independent review reverified the retained strict SFTP copy. The original rpico-bridge returned with the physical APC and MicroFreak online. Flash restore remains untested, and a full flash write awaits an independently verified fallback. Gridpico firmware and routing acceptance remain pending.
    **RAM-only Pico probes · Independently verified.** The native-only probe emitted its CDC banner, exercised DTR, entered the same BOOTSEL ROM and left the full flash image unchanged. In a separate probe, actual watchdog starvation after arming returned the original bridge unaided. An independent pre-arm fallback and a flash write remain pending.
 2. **Physical hub routing · Pending.** Verify real APC → MicroFreak MIDI through the Gridpico Pico USB hub, including observed Note On and Note Off at the destination.
-3. **Remote and local control · Pending.** Verify remote CDC over its separate authenticated WSS path and direct local USB access using Web Serial for CDC and Web MIDI for MIDI. Record evidence for each path independently.
+   An independent hardware diagnostic observed the stock PIO timer running and root hub `0bda:5411` descriptors. Gridpico did not mount the downstream APC or MicroFreak. The original bridge returned with its flash unchanged and both devices online. Power and wiring were unchanged.
+3. **Remote CDC · Independently verified on the original bridge.** Stock Chrome sent exact `help` and `devices` commands to the physical Pico CDC through a temporary, optional same-origin Pi mutual-TLS WSS service over a strict SSH forward, with role restrictions enforced. Direct dev access on port 19445 timed out. Production deployment, physical hub MIDI routing, and direct USB Web Serial and Web MIDI on the operator’s laptop remain open.
 
 ### Approved performance and browser test outcomes
 
@@ -208,7 +209,7 @@ Physical path acceptance follows the recovery gate and remains pending Project M
 - Route MIDI from the physical APC through the Pico to a web synth over WSS.
 - Route Web APC MIDI over WSS through the Pico to the physical MicroFreak.
 - Verify that the physical and virtual APC share Gridpico state and show corresponding LED feedback.
-- Verify the alternate setup with a physical APC attached to the laptop, using native Web MIDI bridged over WSS through the Pico to the MicroFreak.
+- **Laptop Web MIDI bridge · Independently verified on the host.** Stock Chrome bridged two actual ALSA inputs over WSS to the managed Monitor route. The physical setup with a laptop-attached APC and a WSS route through the Pico to the MicroFreak remains pending.
 - **MIDI File playback · Independently verified on an isolated host.** The browser tool passed exact note sequence and timing over stock mutual-TLS WSS, whole-file rejection of invalid input, and scoped note cleanup. Playback through the Pico to the MicroFreak remains pending.
 
 Record the laptop-attached APC, observed LED feedback and acoustic output against the tested target and setup. Circuit sequencing remains deferred.

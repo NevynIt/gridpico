@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pico · Gridpico</title>
+  <style>
+    :root { color-scheme: dark; font: 1rem/1.5 system-ui, sans-serif; background: #121617; color: #eef1ef; }
+    main { max-width: 48rem; padding: clamp(1rem, 4vw, 3rem); margin: auto; }
+    ul { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 1rem; list-style: none; padding: 0; }
+    a { display: block; padding: .9rem; border: 1px solid #66726e; border-radius: .35rem; color: inherit; background: #242b2a; }
+    a:focus-visible { outline: 2px solid #8fe0b6; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Gridpico Pico</h1>
+    <p>Musical tools for the Pico at <strong>192.168.0.223:19445</strong>.</p>
+    <nav aria-label="Pico musical tools">
+      <ul>
+        <li><a href="/apc/">Web APC</a></li>
+        <li><a href="/fm/">FM Instrument</a></li>
+        <li><a href="/midi-file/">MIDI File</a></li>
+      </ul>
+    </nav>
+  </main>
+</body>
+</html>

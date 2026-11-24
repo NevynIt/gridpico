@@ -118,7 +118,7 @@ browser audio on the `/demo/midi` connection.
 
 Run `./scripts/web-ui.sh` from the repository root. Open the
 [Gridpico home](http://127.0.0.1:8767/) and choose **Web APC**,
-**Diagnostics**, **Routing**, or **FM Instrument** when available. The launcher uses the
+**Diagnostics**, **Routing**, or an installed optional tool. The launcher uses the
 running Docker Compose `dev` service and Python 3 on the host or WSL. Run
 `./scripts/web-ui.sh --help` for launcher usage.
 
@@ -146,6 +146,10 @@ The Home download at `/web-ui.zip` contains the same static tools and
 `/ui-capabilities.json` is separate from the download. It reports which roles
 and actions the current listener publishes. A MIDI binding still needs a
 successful connection, and Routing still reads the actual CLI.
+
+When installed, **MIDI File** opens at `/midi-file/`. Its browser sends
+through the existing authenticated WSS Keybed input when that role is
+published. Release the Keybed binding in Web APC before connecting MIDI File.
 
 For a prepared runner, build the browser release once with
 `python3 connections/build-web-ui.py` from the release checkout. Ship the
@@ -413,3 +417,26 @@ binding without replay. Desktop Chromium client-certificate selection
 and browser MIDI receipt through the authenticated remote listener remain
 pending. [Two-host evidence](../ROADMAP.md#approved-tonight-delivery)
 [Cross-host admission and routing contract](../api/websocket-midi.md)
+## Separate Pico service
+
+The Pico relay is an independent, opt-in process on the nominated isolated
+`https://192.168.0.223:19445` origin. Build the browser bundle and launch it
+with the private service config and the two HAL helpers:
+
+```sh
+python3 connections/build-web-ui.py
+node connections/pico-host.js /absolute/private/pico-service.json /absolute/hal/pico_cdc.py /absolute/hal/pico_midi.py
+```
+
+Use a dedicated enrolled maintenance certificate for `/pico-cdc/`. The
+console reports the configured Pico identity, then enables commands after
+the selected helper verifies and opens CDC. It carries opaque serial
+bytes and has one attachment. Enrolled MIDI clients use the separate Pico
+Home and slots 1, 2, 3 and 5. Both roles validate the server chain,
+client enrollment, Host and WebSocket Origin.
+
+The MIDI helper owns release cleanup for bytes it accepted on its
+verified cable. If that cleanup cannot be confirmed, the service blocks
+that send slot pending native recovery. Verify native recovery before
+restarting after a service failure while the device is still attached.
+[Pico service contract](../api/pico-target.md#dedicated-pico-wss-service)
