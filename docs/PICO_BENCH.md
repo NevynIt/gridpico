@@ -1,23 +1,29 @@
 # Pico bench operator note
 
-This is a repeatable, RAM-only bench procedure, not permission to deploy or write flash. Keep the [Pico target contract](../api/pico-target.md) and [bench wiring](HARDWARE.md) as the technical sources of truth. Final selected-route/WSS evidence is recorded in [the roadmap](../ROADMAP.md#approved-physical-pico-and-cdc-delivery).
+This note preserves the historical RAM-only recipe and records the current owner-approved persistent image. Keep the [Pico target contract](../api/pico-target.md) and [bench wiring](HARDWARE.md) as the technical sources of truth. Final selected-route/WSS evidence is recorded in [the roadmap](../ROADMAP.md#approved-physical-pico-and-cdc-delivery).
+
+## Current flashed image
+
+The independently audited normal Gridpico RP2040 Router is installed on the bench Pico: published source [`a3a6112`](https://github.com/NevynIt/gridpico/commit/a3a6112b121c879e3f48b06610bb884c08c7957b), USB `1209:0001`, `bcdDevice 0104`, CDC ready. Two full 2 MiB readbacks matched the independently reconstructed image, including its preserved tail; full-flash SHA-256 `88a12a212fb69104f55a75755e20ca15372bc351d4fcbffeac6765e1e263d048`. The final audit also confirmed autonomous enumeration twice, cooperative BOOTSEL return to ROM, and a no-write reboot back to the app. The Pi router remained unchanged.
+
+The separate same-board startup-fault trial returned from the exact fault app to ROM without host CDC intervention in 4.203 seconds. Its full-flash digest was `5743ab69b561532f7ae0aa6793f6bfe77b3693899d2be450965ffb659c3a8f17`; the selected-trial composite digest was `5a0fef1d12cddbb66572fc758cb424b6e424336dd23838d37cc2df45a04f7c6a`. This bounded watchdog result is the owner-accepted pre-arm recovery basis for this image. Residual: there is no separate external MCU reset path, and this trial does not guarantee recovery from every hardware or flash failure. Permanent firmware is now approved for this exact audited image and scope; do not generalize that approval to another build or unattended RAM run.
 
 ## Separate the Pi and Pico paths
 
 The ordinary Pi router is `http://192.168.0.223:18768/`. Its CLI and `/serial` stay on `127.0.0.1:18767`, reached only through the approved strict SSH forward using the `gridpico-rpi0` alias. This is the Pi’s existing service, not Pico firmware.
 
-The Pico-specific HTTPS/WSS bench listener was temporary at `https://192.168.0.223:19445`, reached only through the strict CONNECT/SSH path to `gridpico-rpi0`. Its `/pico-cdc/` console connected to WSS `/cdc`. It bound only to `wlan0`, required exact Host/Origin, matching IP SAN and mTLS, and kept MIDI and CDC Maintenance grants on separate leaf allowlists. Stock Chrome passed the selected RAM test over this path. The listener and Pico RAM image have both been retired, and operator mTLS enrollment remains pending. Direct development-host TCP and operator-laptop reachability are not established. Do not expose Pi `/serial` on LAN or treat this temporary listener as a deployment. Browser-local Web Serial is a separate path.
+The direct private-LAN Pico console is live at `http://192.168.0.223:18768/pico-cdc/`. Chromium passed Connect, TRACE, Send, and Disconnect/Reconnect against the permanently flashed firmware. The console uses the overlay from source `0fece4a` (archive SHA-256 `5f5b884bc5226b3f635359732d7dcbef58e2d7816a64fdf837149136820e727b`). The earlier temporary HTTPS/WSS listener at `https://192.168.0.223:19445` has been retired. Its mTLS enrollment and the original-bridge SSH status helper are superseded for the currently flashed Gridpico firmware. Browser-local Web Serial remains separate. The ordinary Pi `/serial` CLI stays on loopback and is not exposed on LAN.
 
-### Read-only bridge fallback
+### Historical original-bridge status helper
 
-Use the already trusted Pi SSH login for a bounded status snapshot. The helper sends only `devices` and `rules`, then closes the original bridge CDC. Run it only when no other maintenance peer owns that CDC:
+This read-only helper was verified against the original RPICO bridge, before the Gridpico firmware was installed. It is not the CLI for the currently flashed Gridpico router and must not be run against it. Its historical invocation was:
 
 ```sh
 ssh -o StrictHostKeyChecking=yes pi@192.168.0.223 \
   '~/.local/state/gridpico-bridge-status/7ea0716/status'
 ```
 
-The helper is owner-only, versioned from source `7ea0716`, and does not use WSS, certificates, boot commands, or route changes. It takes about four seconds, sends only the two read-only queries and closes CDC. Testing and HAL independently verified it. The observed saved rules show Default All and the APC Key 25 mk2 on cable 1, any channel, excluded. This read-only view is separate from the Pi router URL above. Operator mTLS enrollment and laptop access remain pending.
+The owner-only helper at source `7ea0716` sent only `devices` and `rules`, took about four seconds, and closed CDC. Testing and HAL independently verified that historical behavior. Its captured rules showed Default All and APC Key 25 mk2 on cable 1, any channel, excluded.
 
 ## Rebuild and verify the RAM artifact
 
@@ -64,11 +70,11 @@ The target is `no_flash`. Verify ELF/UF2 SRAM ranges and digests before any run.
 
 The final independent audit passed for the exact ELF above, built from published source `5b63765`. Stock Chrome over the temporary SSH/mTLS WSS path saw Green on startup and rebind with zero MIDI TX until a user action. It then sent one exact C4 note pair and two Pad 00 Off/Active cycles. Browser receive/paint and PIO USB endpoint acknowledgements matched. The RAM image and listener were retired. The original bridge returned and its full flash matched. The human’s separate sighting of the bottom-left green pad was not time-correlated. These checks do not establish acoustic response, a physical APC key press, or a visible physical LED.
 
-The approved test used only an ELF RAM load. After a separately approved bench window, two independent full 2 MiB bridge reads match, the separate backup has been verified, and exact board/ROM identity and ELF digest are rechecked, select ROM and run `picotool info -a --bus "$bus" --address "$address" --vid 0x2e8a --pid 0x0003`. Re-select the device after every USB detach using its fresh ROM bus/address. Only then may the approved artifact be run with `picotool load --verify --execute "$elf" -t elf --bus "$bus" --address "$address" --vid 0x2e8a --pid 0x0003`. Require the tool to report a RAM load and RAM verification. Never substitute UF2 or a flash target. Confirm actual ROM entry and return to the original bridge, then verify the full 2 MiB backup again with read-only `picotool verify "$backup" -t bin -o 0x10000000 --bus "$bus" --address "$address" --vid 0x2e8a --pid 0x0003`.
+Separately, stock Chrome passed an exact C4 acknowledgement with the final-flash firmware in the temporary SSH/WSS fixture. This was a distinct fixture check and did not change the live Pi LAN console deployment.
 
-The final exact run completed this return and the full original flash match. It was short and attended. A new approved short SRAM test is a different scope from leaving the RAM image running unattended. Only the unattended run additionally requires an independently recoverable operator connection. Permanent flash remains blocked until an independent pre-arm reset is proven. No RAM image or temporary WSS listener is currently left running.
+The approved historical test used only an ELF RAM load. After a separately approved bench window, two independent full 2 MiB bridge reads match, the separate backup has been verified, and exact board/ROM identity and ELF digest are rechecked, select ROM and run `picotool info -a --bus "$bus" --address "$address" --vid 0x2e8a --pid 0x0003`. Re-select the device after every USB detach using its fresh ROM bus/address. Only then may the approved artifact be run with `picotool load --verify --execute "$elf" -t elf --bus "$bus" --address "$address" --vid 0x2e8a --pid 0x0003`. Require the tool to report a RAM load and RAM verification. Never substitute UF2 or a flash target. Confirm actual ROM entry and return to the original bridge, then verify the full 2 MiB backup again with read-only `picotool verify "$backup" -t bin -o 0x10000000 --bus "$bus" --address "$address" --vid 0x2e8a --pid 0x0003`.
 
-Never write permanent firmware until an independent reset/recovery path has been proven for a failure before watchdog arming. The current watchdog evidence covers post-arm starvation only. The direct Pi USB connection has no verified independent MCU reset. Do not use a UF2/flash load for this bench recipe.
+The final historical SRAM run completed bridge return and full original-flash matching. A new approved short SRAM test is distinct from leaving a RAM image running unattended; only the unattended run additionally requires an independently recoverable operator connection. Do not use the RAM-only commands above to reproduce or replace the current persistent image.
 
 ## Keep endpoint evidence scoped
 

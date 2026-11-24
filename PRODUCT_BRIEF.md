@@ -35,13 +35,13 @@ Diagnostics is the separate page for the serial CLI, MIDI Log, Monitor, and rout
 
 On RP2040, USB-hosted devices connect through a hub. Native USB offers multiple MIDI ports, CDC and a read-only `GRIDPICO` drive carrying the self-contained browser interface and documentation. The user has already demonstrated the HTML-drive approach in a separate prototype.
 
-The first physical routing check sends MIDI from the real APC through the Pico's USB host hub and Gridpico router to the MicroFreak. The Pi can configure and observe the Pico while the Pico handles the MIDI route. Gridpico firmware on this bench retains a CDC command to enter BOOTSEL so the connected Pi can reflash it without a button press.
+The first physical routing check sends MIDI from the real APC through the Pico's USB host hub and Gridpico router to the MicroFreak. The Pi can configure and observe the Pico while the Pico handles the MIDI route. Gridpico firmware on this bench retains a CDC command to enter BOOTSEL and starts a recovery watchdog early. If USB and CDC startup fail, the watchdog recovery enters BOOTSEL so the connected Pi can reflash the Pico.
 
 The physical and web APC surfaces use the same router state and show feedback from that state. A physical APC connected to the Pico can play a browser instrument through the Pi's WSS MIDI connection. Web APC can play the MicroFreak through the Pi and Pico. With the physical APC attached to the laptop instead, a browser MIDI connection can forward its input from local Web MIDI over WSS to the same Pico route.
 
 The Web APC and Diagnostics pages must work offline when opened directly from the mounted read-only drive. Diagnostics must be able to connect to the Pico's serial CLI from that page on supported browsers.
 
-Browser users can select local USB MIDI through Web MIDI and local USB CDC through Web Serial on supported setups. A separate authenticated WSS connection can relay the Pico's CDC byte stream through the Pi when the Pico is attached there. The interface identifies the selected connection and the device receiving commands.
+Browser users can select local USB MIDI through Web MIDI and local USB CDC through Web Serial on supported setups. When the Pico is attached to the Pi, an opt-in WebSocket endpoint on the trusted LAN relays its CDC byte stream without requiring certificates. Authenticated WSS remains an option for a future deployment. The interface identifies the selected connection and the device receiving commands.
 
 The desktop targets are Linux x86, Linux ARM (including Raspberry Pi Zero), and Windows. They use the same musical application with platform-specific backends. The [roadmap](ROADMAP.md) records the verification status for each target.
 
