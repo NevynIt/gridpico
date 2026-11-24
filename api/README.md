@@ -9,6 +9,8 @@ These are behavioral contracts for the module boundaries in [Architecture](../AR
 - The [WebSocket MIDI contract](websocket-midi.md) covers verified loopback and two-host native-client WSS. Desktop browser mTLS acceptance remains pending. The [Linux ALSA MIDI adapter](linux-midi-adapter.md) covers the separate Linux↔Linux RTP-MIDI receipt and cleanup evidence. Windows RTP-MIDI acceptance is deferred.
 - [Optional instrument peers](instrument-peers.md) covers the verified FluidSynth and browser FM paths. Each produces audio locally.
 - [Pi LAN router and recorder](pi-recorder.md) specifies the opt-in boot service, private WLAN controller and finalized WAV workflow. Target verification is pending.
+- [Physical Pico routing and maintenance](pico-target.md) specifies the recovery gate, native cable roles and dedicated authenticated Pico relay.
+- [Browser MIDI File playback](midi-file.md) specifies bounded local SMF playback into a verified managed WSS input.
 - [Patchbay, inventory and Diagnostics](patchbay.md), [Patch controls](patchbay-controls.md) and the [Web Monitor destination](web-monitor-proposal.md) cover the verified native and connected Patch fixtures, shared color and the destination-tagged Monitor profile.
 - The [one-pad Route demo](#one-pad-apc-route-toggle) and [native four-case proof](#linux-x86_64-route-and-transpose-proof) retain independent contracts below.
 

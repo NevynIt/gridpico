@@ -14,6 +14,7 @@ Use the browser to identify equipment, configure named routes and diagnose a sig
 | Prepare destinations | Routing → named source row → destination cells | Read back each enabled branch, then play and release one note. [Matrix workflow](#edit-a-route-between-named-ports) |
 | Perform away from the computer | Physical APC → Patch viewport and keybed | A prepared hardware destination receives the performance. [Performance](#prepare-and-play-a-set) |
 | Trace a silent note or capture a take | Diagnostics for MIDI and LED checks, Recordings for the Pi take | Observe actual receipt or download the finalized WAV. [Troubleshooting and recording](#follow-a-note-and-record-a-take) |
+| Play a local MIDI file into a remote route | Home → MIDI File | Choose the published WSS MIDI input and start playback. [File playback](#play-a-local-midi-file) |
 | Build a pattern later | APC Sequence mode or a dedicated Circuit-style simulator | Both surfaces show the same MIDI pattern and transport. [Deferred sequencing](#deferred-sequencing-on-two-surfaces) |
 
 ### Browser structure and appearance
@@ -33,6 +34,14 @@ For the intended computer-free set, leave the powered router, physical controlle
 If the player hears silence, first confirm the connected router and branch in Routing. On a supported endpoint select MIDI Log’s receiving port in Diagnostics, play a fresh note and release it. Look for both received events and the expected transformed pitch. Then enable Monitor audio explicitly on its own bound input and check channel, mute and volume. A log receipt isolates delivery to Log; listening checks a separate receiving branch. For panel feedback trouble use the one-action LED workflow below.
 
 For a Pi take, open **Recordings** on the recording router’s own origin. Choose **Start**, wait for **recording**, play fresh notes, release them and choose **Stop**. Wait for finalization before downloading the latest completed WAV. On failure identify the failed take and retain access to the previous completed file. This capture uses a separate receiving synth on the Pi; other instruments and browser Monitor own their own audio. Closing a browser tool releases its own inputs and voices. [Pi recorder lifecycle](api/pi-recorder.md#optional-recording)
+
+### Play a local MIDI file
+
+From Home open **MIDI File** (`/midi-file/`), choose a file on the laptop, then select the verified **Keybed** send role on the authenticated same-origin WSS router (port 1 on the first Pico profile). The file stays on the laptop. If another tool holds that exclusive input and occupancy is confirmed, explain how to release it there and offer **Retry**. Beside **Play** and **Stop**, show the filename, connected WSS router address, published MIDI input name and port ID, elapsed / total time and playback status. Before enabling Play, check the whole file and the selected target. Accept note-only SMF format 0 or 1 with supported tempo and metadata. For an unsupported event, identify its type and track/location. Explain file-limit or note-pairing failures before sending any MIDI. File or target selection alone sends no notes.
+
+On Stop, connection loss, or replacement of the file or target, cancel scheduled playback. Also stop if the page is hidden, sending fails or playback falls more than 20 ms behind. Show the reason and require a fresh **Play**. Maintain a bounded record of notes owned by this playback and release them on the original binding while it is reachable. If the binding is lost, show **Disconnected · release unconfirmed**. A replacement binding starts idle and receives only a fresh Play. Playback status describes sending; downstream MIDI receipt requires observation at the destination.
+
+The WSS MIDI input receives musical events. Pi router CLI, Pico CDC over direct Web Serial, and authenticated WSS Pico CDC are command paths. Direct USB Web MIDI is a separate local device selection. **Physical-laptop gate:** confirm the actual browser, device or router identity, selected port and downstream note/release on the nominated setup; record any access or disconnect limitation.
 
 ### Deferred sequencing on two surfaces
 

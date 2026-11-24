@@ -35,13 +35,21 @@ Diagnostics is the separate page for the serial CLI, MIDI Log, Monitor, and rout
 
 On RP2040, USB-hosted devices connect through a hub. Native USB offers multiple MIDI ports, CDC and a read-only `GRIDPICO` drive carrying the self-contained browser interface and documentation. The user has already demonstrated the HTML-drive approach in a separate prototype.
 
+The first physical routing check sends MIDI from the real APC through the Pico's USB host hub and Gridpico router to the MicroFreak. The Pi can configure and observe the Pico while the Pico handles the MIDI route. Gridpico firmware on this bench retains a CDC command to enter BOOTSEL so the connected Pi can reflash it without a button press.
+
+The physical and web APC surfaces use the same router state and show feedback from that state. A physical APC connected to the Pico can play a browser instrument through the Pi's WSS MIDI connection. Web APC can play the MicroFreak through the Pi and Pico. With the physical APC attached to the laptop instead, a browser MIDI connection can forward its input from local Web MIDI over WSS to the same Pico route.
+
 The Web APC and Diagnostics pages must work offline when opened directly from the mounted read-only drive. Diagnostics must be able to connect to the Pico's serial CLI from that page on supported browsers.
+
+Browser users can select local USB MIDI through Web MIDI and local USB CDC through Web Serial on supported setups. A separate authenticated WSS connection can relay the Pico's CDC byte stream through the Pi when the Pico is attached there. The interface identifies the selected connection and the device receiving commands.
 
 The desktop targets are Linux x86, Linux ARM (including Raspberry Pi Zero), and Windows. They use the same musical application with platform-specific backends. The [roadmap](ROADMAP.md) records the verification status for each target.
 
 Gridpico supports two network MIDI transports. RTP-MIDI is a product path for native Linux and Windows routers and compatible MIDI applications. WebSocket MIDI is a product path for the Web APC, Diagnostics, Monitor, and other compatible browser or native clients. Both connect to the production routing system through selectable MIDI ports. Separately running components exchange MIDI or the serial CLI byte stream.
 
 A web landing page links to Web APC, Diagnostics, Routing, and instrument tools. The parameterized `scripts/web-ui.sh` is the single launcher. Local and Pi hosts serve the same browser assets at the same release. The interface changes the features it offers according to the selected endpoint's capabilities. Users can switch between reachable Gridpico instances by changing the server address in the interface. The Pico's read-only drive carries the landing page and self-contained offline tools. Each MIDI tool independently selects its ports through the shared browser connection layer, using local Web MIDI or the chosen WS/WSS router. Web MIDI can select RTP-MIDI ports exposed by the operating system. A WSS router's operator chooses which directional ports to publish.
+
+A dedicated MIDI File tool plays a file selected on the laptop into a chosen WSS MIDI input. It gives users a repeatable source for testing remote routes and releases notes when playback stops.
 
 Optional instruments are separate MIDI destinations and generate audio at the receiving end. A FluidSynth wrapper plays routed MIDI on a Linux host, and a lightweight browser FM instrument plays it through Web Audio offline. Gridpico links to a separately distributed and credited Web Synth fork as an optional instrument. The fork retains the upstream FM interface and licensing and adds a receive-only WSS MIDI input.
 

@@ -8,9 +8,9 @@
 
 ## Product horizon
 
-- **Now · Make Gridpico easy to operate from the browser.** Launch, run a visible LED test in Diagnostics, edit named routes in Routing, and switch between the laptop and Pi with a server address. Keep Pi recording available during the work. [Current UI delivery](#approved-ui-usability-delivery) · [Pi router and recording](#persistent-pi-router-and-recording)
-- **Next · Play one shared sequencer pattern.** Scope one MIDI track and one 16-step pattern after the current UI delivery. The original Circuit Tracks-style browser frontend and eventual APC adapter use the same Gridpico sequencer. Existing web instruments or external MIDI destinations provide sound. Design is under review. Implementation remains deferred. [Product brief](PRODUCT_BRIEF.md) · [Operator journeys](USE_CASES.md)
-- **Later · Connect and validate physical Gridpico.** Verify Pico USB MIDI, mounted tools and CDC, add supported physical controller and instrument workflows, and qualify native network MIDI across more targets, including Windows RTP. Keep evidence specific to each device and platform. [Hardware work](#hardware-work-when-access-returns) · [Transport delivery](#approved-delivery-midi-and-serial-cli-across-gridpico-hosts)
+- **Now · Validate the connected Pico.** First prove repeatable, no-touch Pi → Pico CDC-to-BOOTSEL recovery with the current rpico-bridge firmware. Then verify APC → MicroFreak MIDI routing through the Pico USB hub and the approved remote and local controls. [Physical Pico acceptance](#approved-physical-pico-and-cdc-delivery) · [Pi router and recording](#persistent-pi-router-and-recording)
+- **Next · Scope one shared sequencer pattern.** The separate design remains one MIDI track and one 16-step pattern for a Circuit Tracks-style browser frontend and eventual APC adapter using the same Gridpico sequencer. Existing web instruments or external MIDI destinations provide sound. Implementation remains deferred. [Product brief](PRODUCT_BRIEF.md) · [Operator journeys](USE_CASES.md)
+- **Later · Broaden hardware and transport validation.** Qualify the mounted Pico tools, additional physical setups and more native network MIDI targets, including Windows RTP. Keep evidence specific to each device and platform. [Hardware work](#hardware-work-when-access-returns) · [Transport delivery](#approved-delivery-midi-and-serial-cli-across-gridpico-hosts)
 
 ## Approved delivery: MIDI and serial CLI across Gridpico hosts
 
@@ -191,6 +191,27 @@ Independent testing in stock Chrome verified a same-document switch from the loc
 Independent testing in Chrome on the dev host verified a same-document local → live Pi → local switch on release `40161d9`, byte parity for all 11 published assets, the manifest and ZIP, an exact 40-row LED refresh, and actual Pi receipt of Note On and Note Off. The recorder returned to idle with its existing WAV unchanged, and the operator’s laptop remains a separate comparison.
 
 UI Designer reviews the workflow and visual hierarchy before implementation and advises on uncertain UI choices. Route unresolved product trade-offs through Strategist. Visual references guide layout, defaults and interaction. Testing independently checks visible results, readability, hierarchy and honest states at representative desktop and narrow widths. Exact asset bytes have their own check. The operator's actual laptop is a separate regression check when available. Keep the 30% weekly floor and leave the sequencer frontend deferred.
+
+## Approved physical Pico and CDC delivery
+
+The Pico is connected. Project Manager coordinates delivery and confirms independent evidence for each gate. The weekly allowance floor is 30%.
+
+1. **No-touch BOOTSEL entry and bridge return · Independently verified.** Pi → Pico CDC entered the RP2040 B2 ROM on the same physical USB path. Two full 2 MiB flash reads matched at SHA-256 `f40534f41983bbe7b916bdee32f0c8f19fb40f5eb03c83c8aca8db2a2f4d95e3`, and independent review reverified the retained strict SFTP copy. The original rpico-bridge returned with the physical APC and MicroFreak online. Flash restore remains untested, and a full flash write awaits an independently verified fallback. Gridpico firmware and routing acceptance remain pending.
+   **RAM-only Pico probes · Independently verified.** The native-only probe emitted its CDC banner, exercised DTR, entered the same BOOTSEL ROM and left the full flash image unchanged. In a separate probe, actual watchdog starvation after arming returned the original bridge unaided. An independent pre-arm fallback and a flash write remain pending.
+2. **Physical hub routing · Pending.** Verify real APC → MicroFreak MIDI through the Gridpico Pico USB hub, including observed Note On and Note Off at the destination.
+3. **Remote and local control · Pending.** Verify remote CDC over its separate authenticated WSS path and direct local USB access using Web Serial for CDC and Web MIDI for MIDI. Record evidence for each path independently.
+
+### Approved performance and browser test outcomes
+
+Physical path acceptance follows the recovery gate and remains pending Project Manager confirmation. [Browser UI delivery](#approved-ui-usability-delivery)
+
+- Route MIDI from the physical APC through the Pico to a web synth over WSS.
+- Route Web APC MIDI over WSS through the Pico to the physical MicroFreak.
+- Verify that the physical and virtual APC share Gridpico state and show corresponding LED feedback.
+- Verify the alternate setup with a physical APC attached to the laptop, using native Web MIDI bridged over WSS through the Pico to the MicroFreak.
+- **MIDI File playback · Independently verified on an isolated host.** The browser tool passed exact note sequence and timing over stock mutual-TLS WSS, whole-file rejection of invalid input, and scoped note cleanup. Playback through the Pico to the MicroFreak remains pending.
+
+Record the laptop-attached APC, observed LED feedback and acoustic output against the tested target and setup. Circuit sequencing remains deferred.
 
 ## Demo sequence for 23 November at 09:00 CET (08:00 UTC)
 

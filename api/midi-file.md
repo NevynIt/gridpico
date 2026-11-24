@@ -1,0 +1,22 @@
+# Browser MIDI File playback
+
+**Owner** Architect. **Status** Initial note-only playback contract. Target verification is pending. [Browser adapter](browser-midi.md#shared-in-page-adapter) · [Standard MIDI Files](https://midi.org/standard-midi-files)
+
+Serve the separate Home-linked `/midi-file/` page on the nominated authenticated WSS tool origin. The user chooses a local file and a published verified managed-send role. The first picker offers **Keybed** with its actual logical ID when the current descriptor publishes that role. The Pico relay uses ID `1`. The page neither uploads the file nor guesses a destination ID. Play opens a fresh exclusive existing `/midi/<id>` binding with one three-byte binary message per frame. A Web APC or laptop bridge that already owns the same input keeps its binding. Offer explicit Retry after the binding is free. Recorder and serial authority are independent.
+
+## Accepted file and schedule
+
+- Preflight the complete file before any MIDI is sent. Require `MThd` with its six-byte payload, SMF format `0` with one `MTrk`, or format `1` with 1–16 `MTrk` chunks. Require PPQ `1–32767`. Reject SMPTE time division. Check declared chunk bounds, accumulate each track's delta times with checked arithmetic, and accept at most four bytes per variable-length quantity. Running status is track-local and applies only after a channel status. Clear it after a meta event. Require `FF 2F 00` at the end of each track and consume the declared file exactly.
+- Accept only `8n` Note Off and `9n` Note On channel events with seven-bit data. Preserve explicit Note Off velocity. Normalize Note On with velocity zero to Note Off with velocity zero. Use `FF 51 03` tempo events in track zero, with a nonzero microsecond value. Use `500000` microseconds per quarter note before its first tempo event. Ignore only `FF 01` through `FF 07` text, `FF 58` time signature with four bytes and `FF 59` key signature with two bytes after structural validation. Other metadata, including port and channel prefixes, and unsupported channel, system or SysEx events reject the file before playback. Show the first rejected event or structure and its file location.
+- Merge by tick, then track index, then file order. Compute event deadlines as elapsed integer microseconds with exact PPQ/tempo accumulation and a carried fractional remainder. At a tempo change, compute the current tick using the preceding tempo and apply the new value to later ticks. The last tempo in track-zero file order wins for a tick. Reject overlap on the same channel and key, unmatched Note Off and any note still held at the end of the merged sequence.
+- Admit up to 1 MiB of input, 8,192 parsed events including metadata, 300 seconds through the last End of Track, 16 MIDI events in any 10 ms half-open window and 16 simultaneously held notes. These are first-profile limits. A valid file with no notes has nothing to play.
+
+## Playback and cleanup
+
+Use absolute monotonic foreground deadlines after the binding is ready. Apply the same rolling 16-in-10-ms limit to ordinary actual submissions across scheduler wakes. Wait for the next send slot only while the earliest due event stays within 20 ms of its deadline. Avoid catch-up bursts. Abort on more than 20 ms lateness, a hidden page, transport loss or an unaccepted submission. Record scheduled timing and observed remote receipt separately.
+
+On Stop or abort, cancel future work immediately. If the binding can send, submit one zero-velocity Note Off for each note the page still owns, then close its binding. The receiving router or Pico relay applies its existing exact-source cleanup for any remaining debt. Preserve other sources. Normal completion also closes the playback binding. Do not replay or resume after reconnect. A fresh explicit Play opens a new run. This player keeps no idle binding or device, route or sequencer state.
+
+## Acceptance
+
+Verify merged format `0` and `1` events, a tempo change, same-tick ordering, exact Note Off velocities, velocity-zero normalization, and each parser and admission failure before send. Compare deterministic scheduled deadlines with actual receipt from an independent MIDI receiver. Exercise Stop while held, late timer, hidden page, failed submission, disconnect and occupied input with another source still connected. Verify fresh explicit Play and no upload of file bytes. Keep the off-target parser and browser tests separate from Pico instrument evidence.

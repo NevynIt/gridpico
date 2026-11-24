@@ -169,6 +169,8 @@ The operator selects available ports and routes explicitly. A local adapter's ac
 
 ### RP2040 computer connection
 
+The first physical firmware gate uses CDC and two native MIDI cable pairs. The planned wider composite allocation below has a separate resource and hardware gate. The Pico routes the physical APC keybed to the MicroFreak on its PIO USB host bus. The optional authenticated Pi relay carries native MIDI and separately authorized CDC bytes, while the Pico owns the musical graph, controller semantics and LED feedback. Recovery and exact device identity precede deployment. [Pico target and relay](api/pico-target.md)
+
 Native USB provides one composite device with:
 
 | Function | Purpose |

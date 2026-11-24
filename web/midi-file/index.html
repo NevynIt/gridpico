@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gridpico · MIDI File</title>
+<script defer src="/local-transport.js"></script>
+<style>
+  :root { color-scheme: dark; font: 1rem/1.5 system-ui, sans-serif; background: #121617; color: #eef1ef; }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  main { max-width: 39rem; margin: auto; padding: clamp(1rem, 5vw, 3rem); }
+  a { color: #a3efbd; }
+  h1 { font-size: clamp(2rem, 6vw, 3rem); line-height: 1.1; margin: .4rem 0; }
+  h2 { font-size: 1.1rem; margin: 0 0 .6rem; }
+  p { margin: .5rem 0; color: #bacac2; overflow-wrap: anywhere; }
+  section { margin-top: 1rem; padding: 1rem; border: 1px solid #56665e; border-radius: .55rem; background: #1e2926; }
+  label { display: block; margin-top: .65rem; }
+  button, input, select {
+    font: inherit; color: inherit; background: #293932; border: 1px solid #7e9588;
+    padding: .38rem .65rem; border-radius: .32rem; max-width: 100%;
+  }
+  input, select { width: 100%; }
+  button { cursor: pointer; }
+  button:disabled { opacity: .55; cursor: default; }
+  #play:not(:disabled) { background: #b7eac6; color: #11271b; }
+  :focus-visible { outline: 2px solid #a3efbd; outline-offset: 2px; }
+  .actions, .midi-server-actions { display: flex; flex-wrap: wrap; gap: .45rem; align-items: center; margin-top: .6rem; }
+  .midi-server-actions input { flex: 1 1 14rem; min-width: 0; }
+  #position { font-variant-numeric: tabular-nums; }
+  [data-error] { color: #ffb9ab; }
+</style>
+</head>
+<body>
+<main>
+  <a id="home" href="/" hidden>Gridpico home</a>
+  <h1>MIDI File</h1>
+  <p>Play notes from a local .mid or .midi file through an authenticated MIDI router. The file stays in your browser.</p>
+  <section aria-labelledby="file-title">
+    <h2 id="file-title">File</h2>
+    <label for="file">Local MIDI file</label>
+    <input type="file" id="file" accept=".mid,.midi,audio/midi,audio/x-midi" aria-describedby="file-status">
+    <p id="file-status" role="status">Choose a note-only SMF 0 or 1 file with PPQ timing.</p>
+  </section>
+  <section aria-labelledby="connection-title">
+    <h2 id="connection-title">WSS MIDI input</h2>
+    <div id="midi-server"></div>
+    <p id="connection-status" role="status">Looking for a published input…</p>
+    <div id="binding-choice" hidden>
+      <label for="port">Published router input</label>
+      <select id="port" required aria-describedby="binding-help"></select>
+      <p id="binding-help">This input is exclusive. If it is busy, release it in Web APC or the laptop bridge and retry.</p>
+    </div>
+  </section>
+  <section aria-labelledby="playback-title">
+    <h2 id="playback-title">Playback</h2>
+    <p id="playback-source" hidden></p>
+    <div class="actions">
+      <button id="play" type="button" disabled>Play</button>
+      <button id="stop" type="button" disabled>Stop</button>
+      <span id="position" aria-label="Elapsed and total time">0:00.0 / —</span>
+    </div>
+    <p id="playback-status" role="status">Choose a file and connect to play.</p>
+  </section>
+</main>
+<script>
+"use strict";
+
+const maxFileBytes = 1024 * 1024;
+const maxEventCount = 8192;
+const maxDurationUs = 300_000_000;
+const sendWindowUs = 10_000;
+const maxWindowEvents = 16;
+const maxHeldNotes = 16;
+
+function hex(byte) {
+  return byte.toString(16).toUpperCase().padStart(2, "0");
+}
+
+function parseMidi(buffer) {
+  if (buffer.byteLength > maxFileBytes) throw new Error("File exceeds 1 MiB.");
+  const bytes = new Uint8Array(buffer);
+  const view = new DataView(buffer);
+  const events = [];
+  let offset = 0;
+
+  function readHeader(tag, length) {
+    if (offset + length > bytes.length) throw new Error(`Truncated ${tag} at byte ${offset}.`);
+    const actual = String.fromCharCode(...bytes.subarray(offset, offset + 4));
+    if (actual !== tag) throw new Error(`Expected ${tag} at byte ${offset}.`);
+    const size = view.getUint32(offset + 4);
+    offset += length;
+    return size;
+  }
+
+  if (readHeader("MThd", 8) !== 6) throw new Error("MThd must declare exactly 6 bytes.");
+  if (offset + 6 > bytes.length) throw new Error("Truncated MThd fields at byte 8.");
+  const format = view.getUint16(offset);
+  const trackCount = view.getUint16(offset + 2);
+  const ppq = view.getUint16(offset + 4);
+  offset += 6;
+  if (format > 1) throw new Error(`Unsupported MIDI file format ${format}. Use SMF 0 or 1.`);
+  if (!trackCount || trackCount > 16 || (format === 0 && trackCount !== 1)) {
+    throw new Error(`Invalid track count ${trackCount} for SMF ${format}.`);
+  }
+  if (ppq & 0x8000) throw new Error("SMPTE timing in MThd is unsupported. Use PPQ.");
+  if (!ppq) throw new Error("MThd has a zero PPQ time division.");
+
+  for (let track = 0; track < trackCount; track++) {
+    const length = readHeader("MTrk", 8);
+    const end = offset + length;
+    const trackName = `Track ${track + 1}`;
+    if (end > bytes.length) throw new Error(`${trackName} exceeds the file at byte ${offset}.`);
+    let tick = 0;
+    let running = 0;
+    let ended = false;
+    let index = 0;
+    let where;
+
+    function fail(problem) {
+      throw new Error(`${where}: ${problem}.`);
+    }
+
+    function readByte() {
+      if (offset >= end) fail("Event exceeds MTrk");
+      return bytes[offset++];
+    }
+
+    function readVlq() {
+      let value = 0;
+      for (let digit = 0; digit < 4; digit++) {
+        const byte = readByte();
+        value = value * 128 + (byte & 0x7f);
+        if (!(byte & 0x80)) return value;
+      }
+      fail("VLQ exceeds four bytes");
+    }
+
+    while (offset < end) {
+      where = `${trackName}, event ${index + 1}, byte ${offset}`;
+      tick += readVlq();
+      where += `, tick ${tick}`;
+      if (events.length === maxEventCount) fail("File exceeds 8192 events");
+      const marker = readByte();
+      const event = { tick, track, index: index++, where };
+      if (marker === 0xff) {
+        running = 0;
+        const type = readByte();
+        const size = readVlq();
+        if (size > end - offset) fail(`Meta FF ${hex(type)} exceeds MTrk`);
+        if (type === 0x2f) {
+          if (size !== 0) fail("End of Track (FF 2F) must have length 0");
+          if (offset !== end) fail("End of Track (FF 2F) must be the last track event");
+          ended = true;
+        } else if (type === 0x51) {
+          if (track !== 0) fail("Set Tempo (FF 51) is only supported in track 1");
+          if (size !== 3) fail("Set Tempo (FF 51) must have length 3");
+          event.tempo = bytes[offset] * 65536 + bytes[offset + 1] * 256 + bytes[offset + 2];
+          if (!event.tempo) fail("Set Tempo (FF 51) cannot be zero");
+        } else if (type === 0x58 || type === 0x59) {
+          if (size !== (type === 0x58 ? 4 : 2)) fail(`Invalid length for meta FF ${hex(type)}`);
+        } else if (type < 1 || type > 7) {
+          fail(`Unsupported meta event FF ${hex(type)}`);
+        }
+        offset += size;
+      } else {
+        if (marker >= 0xf0) {
+          const kind = marker === 0xf0 || marker === 0xf7 ? "SysEx" : "system";
+          fail(`Unsupported ${kind} event ${hex(marker)}`);
+        }
+        const status = marker >= 0x80 ? marker : running;
+        if (!status) fail("Data byte without channel running status");
+        const kind = status & 0xf0;
+        if (kind !== 0x80 && kind !== 0x90) {
+          const name = ["Polyphonic pressure", "Control Change", "Program Change", "Channel Pressure", "Pitch Bend"][kind / 16 - 10];
+          fail(`Unsupported ${name} (${hex(status)})`);
+        }
+        running = status;
+        const note = marker >= 0x80 ? readByte() : marker;
+        const velocity = readByte();
+        if (note > 127 || velocity > 127) fail(`Invalid data byte for note event ${hex(status)}`);
+        const channel = status & 0x0f;
+        event.on = kind === 0x90 && velocity !== 0;
+        event.key = channel * 128 + note;
+        event.midi = Uint8Array.of((event.on ? 0x90 : 0x80) + channel, note, velocity);
+      }
+      events.push(event);
+    }
+    if (!ended) throw new Error(`${trackName} is missing End of Track (FF 2F) at byte ${end}.`);
+  }
+  if (offset !== bytes.length) throw new Error(`Unexpected data after the last track at byte ${offset}.`);
+
+  events.sort((a, b) => a.tick - b.tick || a.track - b.track || a.index - b.index);
+  const holds = new Map();
+  const notes = [];
+  const noteTimes = [];
+  const division = BigInt(ppq);
+  const window = BigInt(sendWindowUs) * division;
+  const maxDuration = BigInt(maxDurationUs) * division;
+  let windowStart = 0;
+  let lastTick = 0;
+  let tempo = 500_000n;
+  let elapsed = 0n;
+  for (const event of events) {
+    const fail = message => { throw new Error(`${event.where}: ${message}.`); };
+    elapsed += BigInt(event.tick - lastTick) * tempo;
+    lastTick = event.tick;
+    if (elapsed > maxDuration) fail("File duration exceeds 300 seconds");
+    if (event.tempo !== undefined) tempo = BigInt(event.tempo);
+    if (!event.midi) continue;
+    while (windowStart < noteTimes.length && elapsed - noteTimes[windowStart] >= window) windowStart++;
+    if (noteTimes.length - windowStart === maxWindowEvents) fail("More than 16 MIDI events within 10 ms");
+    noteTimes.push(elapsed);
+    const pitch = `channel ${(event.key >> 7) + 1}, note ${event.key & 0x7f}`;
+    if (event.on) {
+      if (holds.has(event.key)) fail(`Overlapping Note On for ${pitch}`);
+      if (holds.size === maxHeldNotes) fail("More than 16 notes held at once");
+      holds.set(event.key, event.where);
+    } else if (!holds.delete(event.key)) {
+      fail(`Note Off has no matching Note On for ${pitch}`);
+    }
+    notes.push({ atUs: Number(elapsed / division), midi: event.midi, key: event.key, on: event.on });
+  }
+  if (holds.size) {
+    const [key, start] = holds.entries().next().value;
+    throw new Error(`${start}: channel ${(key >> 7) + 1}, note ${key & 0x7f} is still held at End of Track.`);
+  }
+  if (!notes.length) throw new Error("The file contains no playable notes.");
+  return { notes, durationUs: Number(elapsed / division) };
+}
+
+const byId = id => document.getElementById(id);
+const fileInput = byId("file");
+const fileStatus = byId("file-status");
+const portChoice = byId("binding-choice");
+const portField = byId("port");
+const connectionStatus = byId("connection-status");
+const play = byId("play");
+const stop = byId("stop");
+const position = byId("position");
+const playbackSource = byId("playback-source");
+const playbackStatus = byId("playback-status");
+const lateLimitUs = 20_000;
+let adapter;
+let published;
+let binding;
+let song;
+let run;
+let selection = 0;
+
+function status(element, text, error = false) {
+  element.textContent = text;
+  element.toggleAttribute("data-error", error);
+}
+
+function timeText(us) {
+  const tenths = Math.floor(us / 100_000);
+  const minutes = Math.floor(tenths / 600);
+  return `${minutes}:${String(Math.floor(tenths / 10) % 60).padStart(2, "0")}.${tenths % 10}`;
+}
+
+function showPosition(us = 0) {
+  position.textContent = `${timeText(us)} / ${song ? timeText(song.durationUs) : "—"}`;
+}
+
+function updateControls() {
+  const selected = published && portField.value === String(published.port);
+  play.disabled = !song || !selected || Boolean(binding) || document.hidden;
+  stop.disabled = !binding;
+  playbackSource.hidden = !song || !selected;
+  playbackSource.textContent = playbackSource.hidden ? "" : `${song.name} · Keybed (port ${published.port}) · ${location.origin}`;
+}
+
+function send(active, bytes) {
+  try {
+    return active.handle.send(bytes);
+  } catch {
+    return false;
+  }
+}
+
+function elapsedUs(current) {
+  return (performance.now() - current.started) * 1000;
+}
+
+function retire(message, { lost = false, reason = "" } = {}) {
+  const active = binding;
+  const current = run;
+  let unconfirmed = lost && Boolean(active?.ready);
+  binding = undefined;
+  run = undefined;
+  if (current) {
+    clearTimeout(current.timer);
+    showPosition(Math.min(elapsedUs(current), current.song.durationUs));
+    if (!lost && active?.ready) {
+      for (const key of current.notesHeld) {
+        const off = Uint8Array.of(0x80 + (key >> 7), key & 0x7f, 0);
+        if (!send(active, off)) unconfirmed = true;
+      }
+    }
+  }
+  status(playbackStatus, message, Boolean(reason) || unconfirmed);
+  active?.handle?.close();
+  play.textContent = reason || unconfirmed ? "Retry Play" : "Play";
+  const endpoint = active ? ` · Keybed (port ${active.port}) · ${location.origin}` : "";
+  const result = unconfirmed ? "Disconnected · release unconfirmed" : "Disconnected";
+  status(connectionStatus, `${result}${endpoint}${reason ? `. ${reason}` : ""}`, Boolean(reason) || unconfirmed);
+  updateControls();
+}
+
+function pump(current) {
+  if (run !== current) return;
+  if (document.hidden) {
+    retire("Playback stopped when the page was hidden.");
+    return;
+  }
+  const { notes, durationUs } = current.song;
+  const submissions = current.submissions;
+  let elapsed = elapsedUs(current);
+  let capacityAt = 0;
+  while (current.index < notes.length && notes[current.index].atUs <= elapsed) {
+    const event = notes[current.index];
+    if (elapsed - event.atUs > lateLimitUs) {
+      retire("Playback stopped because the browser missed the MIDI timing deadline.", {
+        reason: "MIDI timing deadline missed.",
+      });
+      return;
+    }
+    while (submissions.length && elapsed - submissions[0] >= sendWindowUs) submissions.shift();
+    if (submissions.length === maxWindowEvents) {
+      capacityAt = submissions[0] + sendWindowUs;
+      break;
+    }
+    if (!send(current.binding, event.midi)) {
+      retire("Playback stopped because a MIDI message could not be sent.", { reason: "Could not enqueue MIDI." });
+      return;
+    }
+    elapsed = elapsedUs(current);
+    submissions.push(elapsed);
+    current.index++;
+    if (event.on) current.notesHeld.add(event.key);
+    else current.notesHeld.delete(event.key);
+  }
+  showPosition(Math.min(elapsed, durationUs));
+  if (current.index === notes.length && elapsed >= durationUs) {
+    retire("Finished sending MIDI.");
+    return;
+  }
+  const next = Math.max(capacityAt, notes[current.index]?.atUs ?? durationUs);
+  const wait = Math.max(0, Math.ceil((next - elapsedUs(current)) / 1000));
+  current.timer = setTimeout(() => pump(current), Math.min(wait, 100));
+}
+
+fileInput.addEventListener("change", async () => {
+  if (binding) retire("Playback stopped when the file changed.");
+  const verify = ++selection;
+  const file = fileInput.files[0];
+  song = undefined;
+  play.textContent = "Play";
+  showPosition();
+  updateControls();
+  if (!file) {
+    status(fileStatus, "Choose a note-only SMF 0 or 1 file with PPQ timing.");
+    return;
+  }
+  status(fileStatus, `Checking ${file.name}…`);
+  try {
+    if (file.size > maxFileBytes) throw new Error("File exceeds 1 MiB.");
+    const parsed = parseMidi(await file.arrayBuffer());
+    if (verify !== selection) return;
+    song = { ...parsed, name: file.name };
+    status(fileStatus, `${file.name} · ${parsed.notes.length} note messages`);
+    status(playbackStatus, portField.value ? "Ready to play." : "Choose the published router input to play.");
+    showPosition();
+    updateControls();
+  } catch (error) {
+    if (verify !== selection) return;
+    status(fileStatus, `${file.name} · ${error.message}`, true);
+    status(playbackStatus, "Choose a supported file to play.");
+  }
+});
+
+play.addEventListener("click", () => {
+  if (play.disabled) return;
+  const active = { song, port: published.port, ready: false, handle: null };
+  binding = active;
+  const label = `Keybed (port ${active.port}) · ${location.origin}`;
+  status(connectionStatus, `Connecting · ${label}`);
+  status(playbackStatus, "Opening the published input…");
+  play.textContent = "Play";
+  showPosition();
+  updateControls();
+  try {
+    active.handle = adapter.openMidi(active.port, {
+      provider: "websocket", role: "keybed", direction: "send",
+      onState(state, reason) {
+        if (binding !== active) return;
+        if (state === "connected") {
+          active.ready = true;
+          status(connectionStatus, `Connected · ${label}`);
+          run = { song: active.song, binding: active, started: performance.now(),
+            index: 0, notesHeld: new Set(), submissions: [], timer: 0 };
+          status(playbackStatus, "Sending MIDI…");
+          updateControls();
+          pump(run);
+        } else if (state === "disconnected") {
+          retire(active.ready ? "Playback stopped because the input disconnected." : "Could not open the published input.", {
+            lost: true,
+            reason: reason || (active.ready ? "The input connection closed." : "The input may be busy or unavailable."),
+          });
+        }
+      },
+    });
+  } catch (error) {
+    retire("Could not open the published input.", { reason: error.message });
+  }
+});
+
+portField.addEventListener("change", () => {
+  if (binding) retire("Playback stopped when the input changed.");
+  else if (song) status(playbackStatus, portField.value ? "Ready to play." : "Choose the published router input to play.");
+  updateControls();
+});
+stop.addEventListener("click", () => retire("Stopped."));
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden && binding) retire("Playback stopped when the page was hidden.");
+  updateControls();
+});
+window.addEventListener("pagehide", () => {
+  if (binding) retire("Playback stopped when leaving the page.");
+});
+
+window.addEventListener("DOMContentLoaded", async () => {
+  adapter = window.gridpicoLocal;
+  await adapter?.ready;
+  byId("home").hidden = location.protocol !== "http:";
+  adapter?.mountServerSelection(byId("midi-server"), "/midi-file/");
+  if (location.protocol !== "https:") {
+    status(connectionStatus, "Open your authenticated HTTPS MIDI router, then choose the file there.");
+    return;
+  }
+  const keybed = adapter?.capabilities?.roles.keybed;
+  if (keybed?.direction !== "send" || !adapter.midiProviders.includes("websocket")) {
+    status(connectionStatus, "This router has no verified WSS Keybed input. Check the router’s published MIDI inputs.", true);
+    return;
+  }
+  published = keybed;
+  portField.replaceChildren(new Option("Choose an input", ""), new Option(`Keybed · port ${keybed.port}`, String(keybed.port)));
+  portChoice.hidden = false;
+  status(connectionStatus, `WSS router · ${location.origin} · Disconnected`);
+  updateControls();
+}, { once: true });
+</script>
+</body>
+</html>

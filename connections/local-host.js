@@ -70,7 +70,7 @@ try {
   process.exit(1);
 }
 const recordings = recorder && createRecordingsHttp(recorder, matchesHeader, bundle?.assets.get("/recordings/")[1]);
-const wssPages = new Set(["/apc/", "/diagnostics/", "/fm/", "/local-transport.js",
+const wssPages = new Set(["/apc/", "/diagnostics/", "/fm/", "/midi-file/", "/local-transport.js",
   "/local-diagnostics.js", "/local-routing.js", "/local-led-test.js"]);
 const recordingsLink = '<li><a href="/recordings/"><strong>Recordings</strong><span>Record a take and download the WAV.</span></a></li>';
 function legacyAssets() {
@@ -80,12 +80,17 @@ function legacyAssets() {
     ["/apc/", html(read("../web/apc/index.html"))],
     ["/diagnostics/", html(read("diagnostics/index.html"))],
   ]);
-  if (existsSync(path.join(__dirname, "../web/fm/index.html"))) common.set("/fm/", html(read("../web/fm/index.html")));
+  for (const tool of ["fm", "midi-file"]) {
+    const source = `../web/${tool}/index.html`;
+    if (existsSync(path.join(__dirname, source))) common.set(`/${tool}/`, html(read(source)));
+  }
   for (const url of ["/local-transport.js", "/local-diagnostics.js", "/local-routing.js", "/local-led-test.js"]) {
     common.set(url, ["text/javascript; charset=utf-8", read(url.slice(1))]);
   }
   const sourceHome = read("home.html").replace(/^.*<script defer .*<\/script>\n/gm, "")
-    .replace(/^.*data-bundle-(?:only|download).*\n/gm, "");
+    .replace(/^.*data-bundle-(?:only|download).*\n/gm, line =>
+      common.has("/midi-file/") && line.includes('data-optional-tool="midi-file"') ?
+        line.replace(" data-bundle-only", "").replace(" hidden>", ">") : "");
   const hostedHome = sourceHome.replace('href="/diagnostics/#routing"', 'href="/routing/"');
   const localHome = common.has("/fm/") ? hostedHome : hostedHome.replace(/^ *<li data-optional-tool="fm">.*<\/li>\n/m, "");
   const local = new Map(common);

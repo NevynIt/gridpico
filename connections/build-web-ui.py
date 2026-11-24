@@ -19,8 +19,10 @@ sources = {
     "local-routing.js": "connections/local-routing.js",
     "local-led-test.js": "connections/local-led-test.js",
 }
-if (root / "web/fm/index.html").is_file():
-    sources["fm/index.html"] = "web/fm/index.html"
+for tool in ("fm", "midi-file"):
+    source = f"web/{tool}/index.html"
+    if (root / source).is_file():
+        sources[f"{tool}/index.html"] = source
 
 assets = {name: (root / sources[name]).read_bytes() for name in sorted(sources)}
 manifest = "".join(f"{hashlib.sha256(data).hexdigest()}  {name}\n" for name, data in assets.items()).encode("ascii")

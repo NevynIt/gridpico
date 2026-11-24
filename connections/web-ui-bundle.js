@@ -11,7 +11,9 @@ const pages = new Map([
   ["/routing/", "routing/index.html"],
   ["/recordings/", "recordings/index.html"],
   ["/fm/", "fm/index.html"],
+  ["/midi-file/", "midi-file/index.html"],
 ]);
+const optionalPages = new Set(["/fm/", "/midi-file/"]);
 const scripts = ["local-transport", "local-home", "local-diagnostics", "local-routing", "local-led-test"];
 const allowed = new Map([...pages, ...scripts.map(name => [`/${name}.js`, `${name}.js`])]);
 const digest = bytes => createHash("sha256").update(bytes).digest("hex");
@@ -29,7 +31,7 @@ function loadWebUiBundle() {
 
   const assets = new Map();
   for (const [url, file] of allowed) {
-    if (url === "/fm/" && !entries.has(file)) continue;
+    if (optionalPages.has(url) && !entries.has(file)) continue;
     const content = read(file);
     if (entries.get(file) !== digest(content)) throw new Error(`Browser bundle mismatch: ${file}`);
     entries.delete(file);

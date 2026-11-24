@@ -427,7 +427,7 @@
   }
 
   function mountServerSelection(container, tool, { inPlace = false } = {}) {
-    if (!["/apc/", "/diagnostics/", "/fm/"].includes(tool)) throw new TypeError("Choose a Gridpico tool.");
+    if (!["/apc/", "/diagnostics/", "/fm/", "/midi-file/"].includes(tool)) throw new TypeError("Choose a Gridpico tool.");
     const offerSwitch = inPlace && tool === "/apc/" && documentOrigin === switchSource;
     const form = document.createElement("form");
     const label = document.createElement("label");
