@@ -24,6 +24,7 @@ let uiDescriptor = false;
 let wssConfig;
 let profile;
 let lanConfig;
+let lanPicoCdcConfig;
 let recorderConfig;
 let invalidOptions = false;
 while (args[0]?.startsWith("--")) {
@@ -36,6 +37,8 @@ while (args[0]?.startsWith("--")) {
     profile = args.shift();
   } else if (flag === "--trusted-lan-config" && lanConfig === undefined && args[0] && !args[0].startsWith("--")) {
     lanConfig = args.shift();
+  } else if (flag === "--trusted-lan-pico-cdc-config" && lanPicoCdcConfig === undefined && args[0] && !args[0].startsWith("--")) {
+    lanPicoCdcConfig = args.shift();
   } else if (flag === "--recorder-config" && recorderConfig === undefined && args[0] && !args[0].startsWith("--")) {
     recorderConfig = args.shift();
   } else {
@@ -46,7 +49,7 @@ while (args[0]?.startsWith("--")) {
 const [runnerArg, portArg = "8767"] = args;
 const port = Number(portArg);
 if (invalidOptions || !runnerArg || !/^\d+$/.test(portArg) || port > 65535 || args.length > 2) {
-  console.error("Usage: node connections/local-host.js [--web-ui] [--ui-descriptor] [--profile <file>] [--wss-config <file>] [--trusted-lan-config <file>] [--recorder-config <file>] <local-router> [port]");
+  console.error("Usage: node connections/local-host.js [--web-ui] [--ui-descriptor] [--profile <file>] [--wss-config <file>] [--trusted-lan-config <file>] [--trusted-lan-pico-cdc-config <file>] [--recorder-config <file>] <local-router> [port]");
   process.exit(1);
 }
 const runnerPath = path.resolve(runnerArg);
@@ -68,6 +71,16 @@ try {
 } catch (error) {
   console.error(`Invalid browser bundle, recorder or trusted LAN setup: ${error.message}`);
   process.exit(1);
+}
+let lanPicoCdc;
+if (lanPicoCdcConfig !== undefined) {
+  try {
+    if (!lan) throw new Error("A trusted LAN listener is required");
+    const { createLanPicoCdc } = require("./lan-pico-cdc");
+    lanPicoCdc = createLanPicoCdc(lanPicoCdcConfig, lan, matchesHeader);
+  } catch (error) {
+    console.error(`Trusted LAN Pico CDC disabled: ${error.message}`);
+  }
 }
 const recordings = recorder && createRecordingsHttp(recorder, matchesHeader, bundle?.assets.get("/recordings/")[1]);
 const wssPages = new Set(["/apc/", "/diagnostics/", "/fm/", "/midi-file/", "/local-transport.js",
@@ -191,6 +204,10 @@ function serve(request, response, listener) {
     matchesHeader(request, "origin", listener.uiOrigin);
   if (listener?.trustedLan && !sameOrigin && !alternate) {
     response.writeHead(403).end();
+    return;
+  }
+  if (listener?.trustedLan && lanPicoCdc && request.url === "/pico-cdc/") {
+    lanPicoCdc.serve(request, response);
     return;
   }
   const capability = capabilityPath && (alternate ? alternateCapabilities : capabilityBodies.get(listener));
@@ -477,6 +494,10 @@ function acceptUpgrade(request, raw, head, listener) {
     reject(raw, "403 Forbidden");
     return;
   }
+  if (listener?.trustedLan && lanPicoCdc && !shuttingDown && request.url === "/cdc") {
+    lanPicoCdc.upgrade(request, raw, head, websockets);
+    return;
+  }
 
   const match = /^\/midi\/([1-9][0-9]*)$/.exec(request.url);
   const port = match ? Number(match[1]) : undefined;
@@ -541,6 +562,7 @@ async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   clearInterval(lanWatch);
+  lanPicoCdc?.close();
   await recorder?.shutdown();
   server.close();
   server.closeAllConnections();

@@ -455,3 +455,12 @@ verified cable. If that cleanup cannot be confirmed, the service blocks
 that send slot pending native recovery. Verify native recovery before
 restarting after a service failure while the device is still attached.
 [Pico service contract](../api/pico-target.md#dedicated-pico-wss-service)
+
+For an explicitly enabled private-LAN Pico console, pass
+`--trusted-lan-pico-cdc-config /absolute/private/lan-pico-cdc.json` to
+`connections/local-host.js` with its existing trusted-LAN options. Give that
+file absolute `target` and `cdcHelper` paths. The selector must identify a
+specific Pico in `usb-serial` mode. Open
+`http://192.168.0.223:18768/pico-cdc/` directly. Any admitted client on the
+private subnet can claim the single console attachment and issue the
+Pico's serial commands.

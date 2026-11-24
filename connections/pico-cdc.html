@@ -61,6 +61,7 @@
     const status = byId("status");
     const inputError = byId("input-error");
     const encoder = new TextEncoder();
+    const plainLan = location.protocol === "http:";
     let active;
 
     function markStatus(message, error = false) {
@@ -93,14 +94,14 @@
         transcriptOwner.textContent = "Transcript from the previous attachment.";
       }
       markStatus(message, error);
-      connect.textContent = error ? "Retry" : "Connect";
+      connect.textContent = error ? (plainLan && session.ready ? "Reconnect" : "Retry") : "Connect";
       controls();
     }
 
     connect.addEventListener("click", () => {
       if (active) return;
       const endpoint = new URL("/cdc", location.origin);
-      endpoint.protocol = "wss:";
+      endpoint.protocol = plainLan ? "ws:" : "wss:";
       let socket;
       try { socket = new WebSocket(endpoint); }
       catch {
@@ -134,7 +135,7 @@
         append(session.decoder.decode(data, { stream: true }));
       });
       const lost = () => retire(session, session.ready ?
-        "Pico console disconnected. Choose Retry to attach again." :
+        `Pico console disconnected. Choose ${plainLan ? "Reconnect" : "Retry"} to attach again.` :
         `Couldn’t attach to ${target}. Check the connection and choose Retry.`, true);
       socket.addEventListener("error", lost);
       socket.addEventListener("close", lost);
