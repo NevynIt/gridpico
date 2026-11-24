@@ -3,12 +3,15 @@
 
   const protocol = window.location.protocol;
   const hasSocketMidi = protocol === "http:" || protocol === "https:";
-  const startupPorts = protocol === "http:" && window.location.hostname === "127.0.0.1" &&
-    document.currentScript?.dataset.gridpicoProfile === "web-ui"
-    ? Object.freeze({ keybed: 1, panel: 2, led: 3, sequence: 4, monitor: 5, log: 6 })
-    : undefined;
+  const profiles = document.currentScript?.dataset;
+  const loopback = protocol === "http:" && window.location.hostname === "127.0.0.1";
+  const trustedLan = protocol === "http:" && window.location.host === "192.168.0.223:18768" &&
+    profiles?.gridpicoConnection === "trusted-lan";
+  const startupPorts = trustedLan ? Object.freeze({ keybed: 1, panel: 2, led: 3 }) :
+    loopback && profiles?.gridpicoProfile === "web-ui" ?
+      Object.freeze({ keybed: 1, panel: 2, led: 3, sequence: 4, monitor: 5, log: 6 }) : undefined;
   const midi = window.navigator;
-  const hasWebMidi = typeof midi?.requestMIDIAccess === "function";
+  const hasWebMidi = !trustedLan && typeof midi?.requestMIDIAccess === "function";
   const midiProviders = Object.freeze([
     ...(hasSocketMidi ? ["websocket"] : []),
     ...(hasWebMidi ? ["web-midi"] : []),
@@ -211,10 +214,10 @@
     }
     if (!url.hostname || url.port === "0") throw new Error("Enter a valid server address and port.");
     if (url.protocol === "ws:" || url.protocol === "http:") {
-      if (!/^127\.0\.0\.1(?::\d+)?$/.test(match[2])) {
+      url.protocol = "http:";
+      if (!/^127\.0\.0\.1(?::\d+)?$/.test(match[2]) && !(trustedLan && url.origin === window.location.origin)) {
         throw new Error("Plain HTTP or WS is available only on 127.0.0.1. Use HTTPS or WSS for a remote server.");
       }
-      url.protocol = "http:";
     } else {
       url.protocol = "https:";
     }
@@ -262,6 +265,7 @@
 
   const transport = {
     midiProviders,
+    trustedLan,
     startupPorts,
     requestMidiAccess,
     listMidiPorts,
@@ -289,7 +293,7 @@
       return handle;
     },
   };
-  if (protocol === "http:") {
+  if (loopback) {
     transport.openSerial = (options) => openBytes("/serial", options, (length) => length <= 256, 8192);
   }
   window.gridpicoLocal = Object.freeze(transport);

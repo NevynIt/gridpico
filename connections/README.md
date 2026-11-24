@@ -290,6 +290,34 @@ peer loss, or the router's 30-second lease expiry also ends that run.
 Connect a fresh Diagnostics TX binding before starting again. WebSocket
 runs also need a fresh Raw on command.
 
+### Pi trusted LAN and recordings
+
+The Pi boot service can opt in to the trusted WLAN listener and recorder:
+
+```sh
+node connections/local-host.js --profile app/profiles/pi.conf \
+  --trusted-lan-config /path/to/trusted-lan.json \
+  --recorder-config /path/to/recorder.json \
+  /path/to/gridpico_local_router 18767
+```
+
+The trusted LAN file selects `wlan0`, address `192.168.0.223`, port
+`18768` and CIDR `192.168.0.0/24`. The address and subnet must already be
+active at startup. Open [the Pi home](http://192.168.0.223:18768/) and use
+**Web APC** and **Recordings** in separate tabs. This private LAN uses
+plaintext HTTP and WebSocket with no per-user account. Devices admitted by
+the listener share the first-claim APC MIDI roles, the single recorder, and
+its latest download. Use the authorized SSH forward on literal loopback
+`127.0.0.1:18767` for the Pi CLI. The laptop app still defaults to `8767`.
+
+The recorder configuration takes absolute `soundfont`, `alsaSender` and
+`spool` paths. Use an owner-only spool directory and the Pi recorder MIDI
+helper. Start a take, wait for Recording, and play the APC keybed. A take
+lasts up to 60 seconds. Stop finalizes its release tail before the download
+appears. A failed take preserves the latest valid WAV. After a restart,
+refresh Recordings to get the current download link.
+[Pi service and recorder contract](../api/pi-recorder.md)
+
 ### Opt-in HTTPS/WSS MIDI
 
 On the selected deployment, create a JSON configuration outside the

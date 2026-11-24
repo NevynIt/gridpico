@@ -70,6 +70,9 @@ if(GRIDPICO_ENABLE_ALSA)
     )
     target_compile_definitions(gridpico_linux_router PRIVATE GRIDPICO_LOCAL_ROUTER_RUNNER_ONLY)
     target_link_libraries(gridpico_linux_router PRIVATE gridpico_local_runtime ALSA::ALSA)
+
+    add_executable(gridpico_recorder_midi platform/linux/recorder_midi.c)
+    target_link_libraries(gridpico_recorder_midi PRIVATE ALSA::ALSA)
 endif()
 
 set(gridpico_asset_dir "${CMAKE_CURRENT_BINARY_DIR}/GRIDPICO")
@@ -99,7 +102,7 @@ set(fixture_targets
     gridpico_local_router
 )
 if(GRIDPICO_ENABLE_ALSA)
-    list(APPEND fixture_targets gridpico_linux_router)
+    list(APPEND fixture_targets gridpico_linux_router gridpico_recorder_midi)
 endif()
 set_target_properties(${fixture_targets}
     PROPERTIES

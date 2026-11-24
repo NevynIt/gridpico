@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Recordings · Gridpico</title>
+  <style>
+    :root { color-scheme: dark; font: 1rem/1.55 system-ui, sans-serif; background: #121617; color: #eef1ef; }
+    main { max-width: 38rem; margin: 2rem auto; padding: 0 1.25rem; }
+    nav, .actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+    a, button { color: inherit; }
+    button { font: inherit; padding: .45rem .8rem; border: 1px solid #66726e;
+      border-radius: .4rem; background: #242b2a; }
+    button:enabled { cursor: pointer; }
+    button:disabled { opacity: .5; }
+    :focus-visible { outline: 2px solid #8fe0b6; outline-offset: 3px; }
+  </style>
+</head>
+<body>
+<main>
+  <nav aria-label="Gridpico tools"><a href="/">Home</a><a href="/apc/" target="_blank" rel="noopener">Open Web APC in another tab</a></nav>
+  <h1>Recordings</h1>
+  <p>Start a take, then play the Web APC keybed. A take lasts up to 60 seconds.
+    Stop to finalize the WAV. People with access to this router share the recorder and its latest download.</p>
+  <div class="actions">
+    <button type="button" id="start" disabled>Start</button>
+    <button type="button" id="stop" disabled>Stop</button>
+    <a id="download" hidden>Download latest WAV</a>
+  </div>
+  <p id="status" role="status">Reading recorder status…</p>
+  <p id="error" role="alert"></p>
+</main>
+<script>
+(() => {
+  const start = document.querySelector("#start");
+  const stop = document.querySelector("#stop");
+  const download = document.querySelector("#download");
+  const status = document.querySelector("#status");
+  const error = document.querySelector("#error");
+  let current;
+  let busy = false;
+  let refreshTimer;
+  let generation = 0;
+
+  function render() {
+    const labels = { idle: "Ready to record.", starting: "Starting the recorder…",
+      recording: "Recording.", stopping: "Finalizing the recording…", failed: "The take failed." };
+    status.textContent = current ? labels[current.state] : "Recorder status unavailable.";
+    start.disabled = busy || !current?.actionToken || current.activeId !== null;
+    stop.disabled = busy || !current?.actionToken || !["starting", "recording"].includes(current.state);
+    download.hidden = !current?.completedId;
+    if (current?.completedId) download.href = `/recordings/${current.completedId}.wav`;
+    else download.removeAttribute("href");
+  }
+
+  async function refresh() {
+    const currentGeneration = ++generation;
+    try {
+      const response = await fetch("/recordings/status", { cache: "no-store", signal: AbortSignal.timeout(5000) });
+      if (!response.ok) throw new Error();
+      const received = await response.json();
+      if (currentGeneration === generation) current = received;
+    } catch {
+      if (currentGeneration === generation) current = undefined;
+    } finally {
+      if (currentGeneration === generation) {
+        render();
+        if (!busy) refreshTimer = setTimeout(refresh, 1000);
+      }
+    }
+  }
+
+  async function act(endpoint) {
+    if (busy || !current?.actionToken) return;
+    clearTimeout(refreshTimer);
+    generation++;
+    const token = current.actionToken;
+    busy = true;
+    error.textContent = "";
+    render();
+    try {
+      const response = await fetch(endpoint, { method: "POST", signal: AbortSignal.timeout(5000),
+        headers: { "X-Gridpico-Record-Action": token } });
+      if (!response.ok) {
+        error.textContent = response.status === 409 ? "The recorder changed. Check its status before trying again." :
+          "The recorder could not accept the request.";
+      }
+    } catch {
+      error.textContent = "The request outcome is unknown. Check recorder status.";
+    } finally {
+      busy = false;
+      await refresh();
+    }
+  }
+
+  start.addEventListener("click", () => { void act("/recordings/start"); });
+  stop.addEventListener("click", () => { if (current?.activeId) void act(`/recordings/${current.activeId}/stop`); });
+  window.addEventListener("pagehide", () => {
+    generation++;
+    clearTimeout(refreshTimer);
+  });
+  window.addEventListener("pageshow", event => { if (event.persisted) void refresh(); });
+  void refresh();
+})();
+</script>
+</body>
+</html>

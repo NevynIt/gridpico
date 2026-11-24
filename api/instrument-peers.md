@@ -14,6 +14,8 @@ The `699bac5` evidence records stock FluidSynth 2.4.4 with TimGM6mb 1.3-5 on the
 
 The wrapper launches and stops the installed engine and selects the local MIDI input, SoundFont and audio sink or file. It owns its configuration and lifecycle and uses the system FluidSynth package. Review the exact licensing and notices before distributing any library, SoundFont or rendered sample with the product. The production router sees the wrapper's MIDI port and applies its normal release, route and CLI contracts. Independent Pi testing of `efc4707` verified routed Note On and Off, decay and final silence, and WAV finalization on Ctrl+C. [Run the wrapper](../instruments/fluidsynth/README.md) · [FluidSynth licensing](https://www.fluidsynth.org/wiki/LicensingFAQ/)
 
+The opt-in Pi deployment uses a fresh file-driver engine for each take and exposes the completed WAV through the Pi host. [Pi recorder contract](pi-recorder.md)
+
 ## Standalone browser FM instrument
 
 Open one selected receive binding from the shared browser MIDI layer. A user enables Web Audio explicitly. Start with one built-in FM voice and ordinary Note On and Note Off. Interpret velocity-zero Note On as Note Off. Keep a bounded local voice allocation and release the matching voice on Note Off. Immediately silence or cancel remaining voices on disconnect, input change or audio disable. The FM page owns its DSP and local settings independently of Monitor.

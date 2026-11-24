@@ -333,15 +333,18 @@ int local_router_run(local_runtime *runtime, const local_router_service *service
 int main(int argc, char **argv)
 {
     bool web_ui = false;
+    bool recorder = false;
     const char *path = NULL;
     for (int i = 1; i < argc; ++i) {
         if (!web_ui && strcmp(argv[i], "--web-ui") == 0) {
             web_ui = true;
+        } else if (!recorder && strcmp(argv[i], "--recorder") == 0) {
+            recorder = true;
         } else if (path == NULL && i + 1 < argc && strcmp(argv[i], "--profile") == 0 &&
                    strncmp(argv[i + 1], "--", 2) != 0) {
             path = argv[++i];
         } else {
-            fputs("Usage: gridpico_local_router [--web-ui] [--profile FILE]\n", stderr);
+            fputs("Usage: gridpico_local_router [--web-ui] [--profile FILE] [--recorder]\n", stderr);
             return EXIT_FAILURE;
         }
     }
@@ -361,6 +364,10 @@ int main(int argc, char **argv)
     }
     if (web_ui && local_runtime_enable_web_ui_routes(&runtime) != GRIDPICO_OK) {
         fputs("Local router could not configure the Web UI starter routes\n", stderr);
+        return EXIT_FAILURE;
+    }
+    if (recorder && local_runtime_enable_recorder_route(&runtime) != GRIDPICO_OK) {
+        fputs("Recorder requires a profile with a usable managed socket route 1 to 12\n", stderr);
         return EXIT_FAILURE;
     }
     return local_router_run(&runtime, NULL);

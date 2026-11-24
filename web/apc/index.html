@@ -427,7 +427,7 @@
         </div>
         <p class="playing-help">Source rows run top to bottom. Destination columns run left to right.</p>
       </div>
-      <p class="mapping-note" id="local-face-help" hidden>Keybed sends on Port 0. Panel buttons send on Port 1. The LEDs show received Port 1 feedback. <a href="/diagnostics/" target="_blank" rel="noopener" aria-label="Diagnostics (opens in a new tab)">Diagnostics</a> opens in a separate tab for audio and MIDI messages.</p>
+      <p class="mapping-note" id="local-face-help" hidden>Keybed sends on Port 0. Panel buttons send on Port 1. The LEDs show received Port 1 feedback.<span id="local-diagnostics-help"> <a href="/diagnostics/" target="_blank" rel="noopener" aria-label="Diagnostics (opens in a new tab)">Diagnostics</a> opens in a separate tab for audio and MIDI messages.</span></p>
       <section class="patch-section patch-inventory" id="patch-color" aria-labelledby="patch-color-title" hidden>
         <div class="patch-heading">
           <h2 id="patch-color-title">Device colors</h2>
@@ -1983,11 +1983,15 @@ function mountLocalMidi(adapter) {
   document.querySelector(".capture").remove();
   const nav = document.querySelector("#local-nav");
   const home = nav.querySelector('a[href="/"]');
+  const diagnostics = nav.querySelector('a[href="/diagnostics/"]');
+  const diagnosticsHelp = document.querySelector("#local-diagnostics-help");
+  const trustedLan = adapter?.trustedLan === true;
   home.hidden = location.protocol === "https:";
+  diagnostics.hidden = diagnosticsHelp.hidden = trustedLan;
   if (fileProductPage) {
     home.href = "HOME.HTM";
-    nav.querySelector('a[href="/diagnostics/"]').href = "DIAG.HTM";
-    document.querySelector("#local-face-help a").href = "DIAG.HTM";
+    diagnostics.href = "DIAG.HTM";
+    diagnosticsHelp.querySelector("a").href = "DIAG.HTM";
   }
   nav.hidden = false;
   if (typeof adapter?.openMidi !== "function") {
@@ -2163,9 +2167,11 @@ function mountLocalMidi(adapter) {
     accessControls.hidden = accessStatus.hidden = !webMidiSelected;
   }
 
-  guide.textContent = providers.includes("websocket")
-    ? "Choose a transport for each role. Find router port IDs in Diagnostics inventory."
-    : "Choose system MIDI outputs for TX and an input for LED RX.";
+  guide.textContent = trustedLan
+    ? "This trusted-LAN server provides WebSocket MIDI for Keybed TX, Panel TX and LED RX. To use another trusted-LAN server, open its APC URL in your browser’s address bar."
+    : providers.includes("websocket")
+      ? "Choose a transport for each role. Find router port IDs in Diagnostics inventory."
+      : "Choose system MIDI outputs for TX and an input for LED RX.";
   const container = document.querySelector("#local-bindings");
   for (const [role, name, direction] of definitions) {
     const id = `local-${role}-port`;

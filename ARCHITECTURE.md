@@ -156,6 +156,8 @@ Linux uses one HAL implementation with separate target build and test settings. 
 
 Raspberry Pi Zero runs the Linux application. It is not required to emulate RP2040 USB device behavior, CDC or a mounted disk. A Windows or Linux application talks to devices through the OS and distributes/serves UI assets locally. Direct USB hosting here means using OS services, not writing a desktop USB host stack.
 
+The opt-in Pi boot profile exposes the APC controller on a single trusted private WLAN address. Its optional recorder receives MIDI on a dedicated local managed output and uses a separate stock FluidSynth process to produce a finalized WAV. The LAN browser can control that recording and download the completed file. Inventory and serial CLI stay on Pi loopback, accessible to the operator through the strict SSH path. Pi deployment, recorder and boot evidence have their own acceptance. [Pi LAN router and recorder](api/pi-recorder.md)
+
 ### Network MIDI transports
 
 Gridpico supports two product transports for production routes and selectable MIDI ports. Each has independent acceptance evidence.

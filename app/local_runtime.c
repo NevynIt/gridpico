@@ -7,6 +7,7 @@ enum {
     APC_FEEDBACK_PORT = 3,
     WEB_MONITOR_PORT = 5,
     MIDI_LOG_PORT = 6,
+    RECORDER_PORT = 12,
 };
 
 static const local_router_profile default_profile = {
@@ -54,6 +55,15 @@ static size_t port_index(const local_runtime *runtime, gridpico_port_id id)
         }
     }
     return inventory->port_count;
+}
+
+static bool managed_port(const local_runtime *runtime, size_t index,
+                         gridpico_patch_direction direction)
+{
+    const gridpico_local_registry *registry = &runtime->profile->registry;
+    return index < registry->inventory.port_count &&
+        registry->inventory.ports[index].direction == direction &&
+        registry->port_capabilities[index] == GRIDPICO_LOCAL_PORT_MANAGED;
 }
 
 static local_binding *binding(local_runtime *runtime, gridpico_port_id id)
@@ -416,6 +426,23 @@ gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime)
     return logged;
 }
 
+gridpico_result local_runtime_enable_recorder_route(local_runtime *runtime)
+{
+    const size_t source = port_index(runtime, APC_KEYBED_PORT);
+    const size_t destination = port_index(runtime, RECORDER_PORT);
+    if (!managed_port(runtime, source, GRIDPICO_PATCH_INPUT) ||
+        !managed_port(runtime, destination, GRIDPICO_PATCH_OUTPUT) ||
+        !runtime->profile->ports[source].socket || !runtime->profile->ports[destination].socket ||
+        runtime->profile->limits.midi_peer_limit < 2) {
+        return GRIDPICO_INVALID;
+    }
+    const gridpico_local_route_request request = {
+        .route = {APC_KEYBED_PORT, RECORDER_PORT, GRIDPICO_LOCAL_MANAGED},
+        .enabled = true,
+    };
+    return set_local_route(runtime, &request);
+}
+
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms)
 {
     runtime->now_ms = now_ms;
@@ -501,11 +528,8 @@ gridpico_result local_runtime_bind_managed_out(local_runtime *runtime,
                                               gridpico_connection connection,
                                               gridpico_patch_direction *direction, unsigned *limit)
 {
-    const gridpico_local_registry *registry = &runtime->profile->registry;
     const size_t index = port_index(runtime, connection.endpoint);
-    if (index == registry->inventory.port_count ||
-        registry->inventory.ports[index].direction != GRIDPICO_PATCH_OUTPUT ||
-        registry->port_capabilities[index] != GRIDPICO_LOCAL_PORT_MANAGED) {
+    if (!managed_port(runtime, index, GRIDPICO_PATCH_OUTPUT)) {
         return GRIDPICO_INVALID;
     }
     return local_runtime_bind(runtime, connection, direction, limit);

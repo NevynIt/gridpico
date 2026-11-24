@@ -45,6 +45,28 @@ def wav_path(path):
     return path
 
 
+def engine_command(engine, font, name, *, wav=None, device=None, midi_channels=None):
+    command = [
+        engine, "-f", "/dev/null", "-r", "44100", "-g", "0.65", "-m", "alsa_seq",
+        "-o", f"midi.alsa_seq.id={name}", "-o", f"midi.portname={name}",
+        "-o", "midi.autoconnect=0",
+        "-o", "synth.reverb.active=0", "-o", "synth.chorus.active=0",
+    ]
+    if midi_channels is not None:
+        command.extend(("-o", f"synth.midi-channels={midi_channels}"))
+    if wav is not None:
+        command.extend(("-a", "file", "-o", "audio.file.type=wav", "-o", "audio.file.format=s16",
+                        "-o", f"audio.file.name={wav}"))
+    else:
+        command.extend(("-a", "alsa", "-o", f"audio.alsa.device={device}"))
+    return [*command, str(font)]
+
+
+def reserve_wav(path):
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.close(fd)
+
+
 def wait_for_stop(engine, stop_requested):
     line = bytearray()
     while not stop_requested() and engine.poll() is None:
@@ -112,23 +134,13 @@ def main():
     if engine is None:
         parser.exit(1, "FluidSynth was not found on PATH. Use an installed fluidsynth executable.\n")
 
-    command = [
-        engine, "-f", "/dev/null", "-r", "44100", "-g", "0.65", "-m", "alsa_seq",
-        "-o", f"midi.alsa_seq.id={settings.midi_name}", "-o", f"midi.portname={settings.midi_name}",
-        "-o", "midi.autoconnect=0",
-        "-o", "synth.reverb.active=0", "-o", "synth.chorus.active=0",
-    ]
     if settings.wav is not None:
         try:
-            fd = os.open(settings.wav, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            os.close(fd)
+            reserve_wav(settings.wav)
         except OSError as error:
             parser.exit(1, f"Cannot create WAV {settings.wav}: {error.strerror}\n")
-        command.extend(("-a", "file", "-o", "audio.file.type=wav", "-o", "audio.file.format=s16",
-                        "-o", f"audio.file.name={settings.wav}"))
-    else:
-        command.extend(("-a", "alsa", "-o", f"audio.alsa.device={settings.alsa_device}"))
-    command.append(str(settings.soundfont))
+    command = engine_command(engine, settings.soundfont, settings.midi_name,
+                             wav=settings.wav, device=settings.alsa_device)
     try:
         return run(command)
     except OSError as error:

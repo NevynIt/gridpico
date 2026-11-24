@@ -7,6 +7,9 @@ const path = require("node:path");
 const { WebSocket, WebSocketServer } = require("ws");
 const { maxGeneration, startLocalPipe } = require("./local-pipe");
 const { createWssListener } = require("./wss-listener");
+const { createTrustedLanListener } = require("./trusted-lan-listener");
+const { createRecorder, recorderPort } = require("./recording");
+const { createRecordingsHttp } = require("./recordings-http");
 
 const address = "127.0.0.1";
 const maxSerialChunk = 256;
@@ -18,6 +21,8 @@ const args = process.argv.slice(2);
 let webUi = false;
 let wssConfig;
 let profile;
+let lanConfig;
+let recorderConfig;
 let invalidOptions = false;
 while (args[0]?.startsWith("--")) {
   const flag = args.shift();
@@ -26,6 +31,10 @@ while (args[0]?.startsWith("--")) {
     wssConfig = args.shift();
   } else if (flag === "--profile" && profile === undefined && args[0] && !args[0].startsWith("--")) {
     profile = args.shift();
+  } else if (flag === "--trusted-lan-config" && lanConfig === undefined && args[0] && !args[0].startsWith("--")) {
+    lanConfig = args.shift();
+  } else if (flag === "--recorder-config" && recorderConfig === undefined && args[0] && !args[0].startsWith("--")) {
+    recorderConfig = args.shift();
   } else {
     invalidOptions = true;
     break;
@@ -34,7 +43,7 @@ while (args[0]?.startsWith("--")) {
 const [runnerArg, portArg = "8767"] = args;
 const port = Number(portArg);
 if (invalidOptions || !runnerArg || !/^\d+$/.test(portArg) || port > 65535 || args.length > 2) {
-  console.error("Usage: node connections/local-host.js [--web-ui] [--profile <file>] [--wss-config <file>] <local-router> [port]");
+  console.error("Usage: node connections/local-host.js [--web-ui] [--profile <file>] [--wss-config <file>] [--trusted-lan-config <file>] [--recorder-config <file>] <local-router> [port]");
   process.exit(1);
 }
 const runnerPath = path.resolve(runnerArg);
@@ -71,10 +80,29 @@ if (existsSync(path.join(__dirname, fmPage))) {
   assets.set("/fm/", ["text/html; charset=utf-8", page(fmPage)]);
 }
 const homePage = readFileSync(path.join(__dirname, "home.html"), "utf8");
-const home = ["text/html; charset=utf-8", assets.has("/fm/") ? homePage :
-  homePage.replace(/^ *<li data-optional-tool="fm">.*<\/li>\n/m, "")];
+let recorder;
+let lan;
+try {
+  if (lanConfig !== undefined) lan = createTrustedLanListener(lanConfig);
+  if (recorderConfig !== undefined) recorder = createRecorder(recorderConfig);
+} catch (error) {
+  console.error(`Invalid recorder or trusted LAN setup: ${error.message}`);
+  process.exit(1);
+}
+const recordings = recorder && createRecordingsHttp(recorder, matchesHeader);
+const recordingsLink = '<li><a href="/recordings/"><strong>Recordings</strong><span>Record a take and download the WAV.</span></a></li>';
+const localHome = assets.has("/fm/") ? homePage : homePage.replace(/^ *<li data-optional-tool="fm">.*<\/li>\n/m, "");
+const home = ["text/html; charset=utf-8", recorder ? localHome.replace("</ul>", `${recordingsLink}\n</ul>`) : localHome];
+const lanAssets = lan && new Map([
+  ["/", ["text/html; charset=utf-8", homePage.replace(/<ul>[\s\S]*?<\/ul>/,
+    `<ul><li><a href="/apc/"><strong>Web APC</strong><span>Play the keybed and use the APC controls.</span></a></li>${recorder ? recordingsLink : ""}</ul>`)]],
+  ["/apc/", ["text/html; charset=utf-8", assets.get("/apc/")[1].replace(script,
+    '<script defer src="/local-transport.js" data-gridpico-connection="trusted-lan"></script>')]],
+  ["/local-transport.js", assets.get("/local-transport.js")],
+]);
 
 const server = createServer();
+let loopbackPort;
 let network;
 if (wssConfig !== undefined) {
   try {
@@ -95,7 +123,7 @@ function matchesHeader(request, name, expected) {
 
 function serve(request, response, listener) {
   const host = listener?.host ?? `${address}:${request.socket.localPort}`;
-  const asset = listener ? assets.get(request.url) :
+  const asset = listener?.trustedLan ? lanAssets.get(request.url) : listener ? assets.get(request.url) :
     request.url === "/" ? home : startupAssets.get(request.url) ?? assets.get(request.url);
   const identity = listener?.identity(request.socket);
   if (listener && (!identity || !matchesHeader(request, "host", host))) {
@@ -106,7 +134,22 @@ function serve(request, response, listener) {
     response.writeHead(request.url === "/serial" ? 404 : 403).end();
     return;
   }
-  if (request.headers.host !== host || !asset) {
+  if (request.headers.host !== host) {
+    response.writeHead(404).end();
+    return;
+  }
+  const origin = listener?.origin ?? `http://${host}`;
+  if (listener?.trustedLan && request.headers.origin !== undefined && !matchesHeader(request, "origin", origin)) {
+    response.writeHead(403).end();
+    return;
+  }
+  if (recordings && !listener && request.url.startsWith("/recordings/") && !matchesHeader(request, "host", host)) {
+    response.writeHead(403).end();
+    return;
+  }
+  if ((!listener || listener.trustedLan) &&
+      recordings?.(request, response, origin, origin, loopbackPort)) return;
+  if (!asset) {
     response.writeHead(404).end();
     return;
   }
@@ -361,6 +404,10 @@ function acceptUpgrade(request, raw, head, listener) {
     reject(raw, "404 Not Found");
     return;
   }
+  if (recorder && port === recorderPort && (listener || !recorder.claim(raw))) {
+    reject(raw, "404 Not Found");
+    return;
+  }
   const expectedDirection = synthReceive
     ? (port === synthReceive.portId ? "out" : undefined) : listener?.ports.get(port);
   if (listener && !expectedDirection) {
@@ -397,14 +444,30 @@ if (network) {
   network.server.on("upgrade", (request, raw, head) => acceptUpgrade(request, raw, head, network));
   network.server.on("error", (error) => console.error(`WSS listener error: ${error.code ?? "unknown"}`));
 }
+if (lan) {
+  lan.server.on("request", (request, response) => serve(request, response, lan));
+  lan.server.on("upgrade", (request, raw, head) => acceptUpgrade(request, raw, head, lan));
+  lan.server.on("error", error => failLan(error.code ?? "listener error"));
+}
 
-function shutdown() {
+let lanWatch;
+function failLan(message) {
+  console.error(`Trusted LAN startup or interface failed: ${message}`);
+  process.exitCode = 1;
+  void shutdown();
+}
+
+async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+  clearInterval(lanWatch);
+  await recorder?.shutdown();
   server.close();
   server.closeAllConnections();
   network?.server.close();
   network?.server.closeAllConnections();
+  lan?.server.close();
+  lan?.server.closeAllConnections();
   for (const peer of peers.values()) retire(peer, { code: 1001, reason: "Local router stopped" });
   pipe.stop(); // Runtime EOF retires inputs before outputs and drains accepted cleanup.
 }
@@ -413,8 +476,18 @@ const pipe = startLocalPipe(runnerPath, {
   onReady(peerLimit) {
     midiPeerLimit = peerLimit;
     server.listen(port, address, () => {
-      const host = `${address}:${server.address().port}`;
-      console.log(`Gridpico local router listening at http://${host}/`);
+      loopbackPort = server.address().port;
+      const host = `${address}:${loopbackPort}`;
+      const announce = () => console.log(`Gridpico local router listening at http://${host}/`);
+      if (lan && !shuttingDown) {
+        lan.server.listen(lan.port, lan.address, () => {
+          announce();
+          console.log(`Gridpico trusted LAN listening at ${lan.origin}/`);
+          lanWatch = setInterval(() => {
+            if (!lan.available()) failLan("the configured IPv4 interface is no longer active");
+          }, 5000);
+        });
+      } else announce();
       if (network && !shuttingDown) {
         network.server.listen(network.port, network.address, () => {
           console.log(`Gridpico WSS MIDI listening at ${network.origin}/apc/ and ${network.origin}/diagnostics/`);
@@ -428,7 +501,7 @@ const pipe = startLocalPipe(runnerPath, {
     process.exitCode = 1;
     shutdown();
   },
-}, [...(webUi ? ["--web-ui"] : []), ...(profile ? ["--profile", profile] : [])]);
+}, [...(webUi ? ["--web-ui"] : []), ...(profile ? ["--profile", profile] : []), ...(recorder ? ["--recorder"] : [])]);
 
 server.on("error", (error) => {
   console.error(error.message);
