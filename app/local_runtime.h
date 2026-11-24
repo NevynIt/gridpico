@@ -85,6 +85,9 @@ void local_runtime_begin(local_runtime *runtime, uint64_t now_ms);
 gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result result);
 gridpico_result local_runtime_bind(local_runtime *runtime, gridpico_connection connection,
                                   gridpico_patch_direction *direction, unsigned *limit);
+gridpico_result local_runtime_bind_managed_out(local_runtime *runtime,
+                                              gridpico_connection connection,
+                                              gridpico_patch_direction *direction, unsigned *limit);
 gridpico_result local_runtime_port(const local_runtime *runtime, gridpico_port_id id,
                                   local_port_state *out);
 gridpico_result local_runtime_reserve_adapter(local_runtime *runtime, gridpico_port_id id);

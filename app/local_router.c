@@ -135,8 +135,11 @@ static gridpico_result dispatch(local_runtime *runtime, char *line, reply *respo
         return GRIDPICO_INVALID;
     }
     const gridpico_connection connection = {(gridpico_port_id)port, generation};
-    if (count == 3 && strcmp(command, "bind") == 0) {
-        const gridpico_result result =
+    const bool managed_output_only = strcmp(command, "bind-managed-out") == 0;
+    if (count == 3 && (strcmp(command, "bind") == 0 || managed_output_only)) {
+        const gridpico_result result = managed_output_only ?
+            local_runtime_bind_managed_out(runtime, connection, &response->direction,
+                                           &response->limit) :
             local_runtime_bind(runtime, connection, &response->direction, &response->limit);
         response->bound = result == GRIDPICO_OK;
         response->connection = connection;

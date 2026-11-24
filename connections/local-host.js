@@ -97,8 +97,13 @@ function serve(request, response, listener) {
   const host = listener?.host ?? `${address}:${request.socket.localPort}`;
   const asset = listener ? assets.get(request.url) :
     request.url === "/" ? home : startupAssets.get(request.url) ?? assets.get(request.url);
-  if (listener && (!listener.authorize(request.socket) || !matchesHeader(request, "host", host))) {
+  const identity = listener?.identity(request.socket);
+  if (listener && (!identity || !matchesHeader(request, "host", host))) {
     response.writeHead(403).end();
+    return;
+  }
+  if (identity === "synth") {
+    response.writeHead(request.url === "/serial" ? 404 : 403).end();
     return;
   }
   if (request.headers.host !== host || !asset) {
@@ -290,7 +295,8 @@ function pump() {
     let line;
     let complete;
     if (!peer.bound) {
-      line = port === undefined ? `serial-bind ${generation}` : `bind ${port} ${generation}`;
+      const verb = peer.synthReceive ? "bind-managed-out" : "bind";
+      line = port === undefined ? `serial-bind ${generation}` : `${verb} ${port} ${generation}`;
       complete = (error) => {
         if (!error && port === undefined) {
           peer.bound = true;
@@ -337,9 +343,11 @@ function pump() {
 
 function acceptUpgrade(request, raw, head, listener) {
   const expectedHost = listener?.host ?? `${address}:${raw.localPort}`;
-  const expectedOrigin = listener?.origin ?? `http://${expectedHost}`;
+  const identity = listener?.identity(raw);
+  const synthReceive = identity === "synth" ? listener.synthReceive : undefined;
+  const expectedOrigin = synthReceive?.origin ?? listener?.origin ?? `http://${expectedHost}`;
   const admitted = listener
-    ? listener.authorize(raw) && matchesHeader(request, "host", expectedHost) &&
+    ? identity && matchesHeader(request, "host", expectedHost) &&
       matchesHeader(request, "origin", expectedOrigin)
     : request.headers.host === expectedHost && request.headers.origin === expectedOrigin;
   if (!admitted) {
@@ -353,7 +361,8 @@ function acceptUpgrade(request, raw, head, listener) {
     reject(raw, "404 Not Found");
     return;
   }
-  const expectedDirection = listener?.ports.get(port);
+  const expectedDirection = synthReceive
+    ? (port === synthReceive.portId ? "out" : undefined) : listener?.ports.get(port);
   if (listener && !expectedDirection) {
     reject(raw, "404 Not Found");
     return;
@@ -369,7 +378,7 @@ function acceptUpgrade(request, raw, head, listener) {
 
   raw.pause();
   const peer = {
-    key, port, generation, request, raw, head, expectedDirection,
+    key, port, generation, request, raw, head, expectedDirection, synthReceive: Boolean(synthReceive),
     bound: false, closing: false, input: [], inputBytes: 0,
     beforeUpgrade: [], outputFrames: 0, outputBytes: 0,
   };

@@ -497,6 +497,20 @@ gridpico_result local_runtime_bind(local_runtime *runtime, gridpico_connection c
     return result;
 }
 
+gridpico_result local_runtime_bind_managed_out(local_runtime *runtime,
+                                              gridpico_connection connection,
+                                              gridpico_patch_direction *direction, unsigned *limit)
+{
+    const gridpico_local_registry *registry = &runtime->profile->registry;
+    const size_t index = port_index(runtime, connection.endpoint);
+    if (index == registry->inventory.port_count ||
+        registry->inventory.ports[index].direction != GRIDPICO_PATCH_OUTPUT ||
+        registry->port_capabilities[index] != GRIDPICO_LOCAL_PORT_MANAGED) {
+        return GRIDPICO_INVALID;
+    }
+    return local_runtime_bind(runtime, connection, direction, limit);
+}
+
 gridpico_result local_runtime_bind_adapter(local_runtime *runtime, gridpico_connection connection,
                                            local_midi_adapter adapter)
 {

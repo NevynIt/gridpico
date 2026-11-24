@@ -6,6 +6,16 @@ const { isIPv4 } = require("node:net");
 const path = require("node:path");
 
 const checkout = realpathSync(path.join(__dirname, ".."));
+const fingerprintPattern = /^[0-9a-f]{64}$/;
+
+function httpsOrigin(value) {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && url.origin === value ? url : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 function loadFile(filename, label, encoding) {
   try {
@@ -43,18 +53,13 @@ function readConfig(filename) {
     throw new Error("WSS port must be an integer from 1 to 65535");
   }
 
-  let url;
-  try {
-    if (typeof origin === "string") url = new URL(origin);
-  } catch {
-    // Invalid URL is handled by the canonical origin check below.
-  }
-  if (!url || url.protocol !== "https:" || origin !== url.origin || Number(url.port || 443) !== port) {
+  const url = httpsOrigin(origin);
+  if (!url || Number(url.port || 443) !== port) {
     throw new Error("WSS requires a canonical HTTPS origin with the configured port");
   }
 
   if (!Array.isArray(allowedClientFingerprints) || allowedClientFingerprints.length === 0 ||
-      allowedClientFingerprints.some((value) => typeof value !== "string" || !/^[0-9a-f]{64}$/.test(value))) {
+      allowedClientFingerprints.some((value) => typeof value !== "string" || !fingerprintPattern.test(value))) {
     throw new Error("WSS requires lowercase SHA-256 client leaf fingerprints");
   }
   if (!Array.isArray(midiPorts) || midiPorts.length === 0) {
@@ -69,11 +74,25 @@ function readConfig(filename) {
     ports.set(binding.id, binding.direction);
   }
 
-  return { config, host: url.host, ports, fingerprints: new Set(allowedClientFingerprints) };
+  const fingerprints = new Set(allowedClientFingerprints);
+  let synthReceive;
+  if (Object.hasOwn(config, "synthReceive")) {
+    const grant = config.synthReceive;
+    if (grant && httpsOrigin(grant.origin) && grant.origin !== origin &&
+        typeof grant.clientFingerprint === "string" && fingerprintPattern.test(grant.clientFingerprint) &&
+        !fingerprints.has(grant.clientFingerprint) && Number.isInteger(grant.portId) &&
+        grant.portId > 0 && grant.portId <= 65535 && !ports.has(grant.portId)) {
+      synthReceive = { origin: grant.origin, fingerprint: grant.clientFingerprint, portId: grant.portId };
+    } else {
+      console.error("WSS synth receive disabled: use a distinct HTTPS origin, client leaf and output port.");
+    }
+  }
+
+  return { config, host: url.host, ports, fingerprints, synthReceive };
 }
 
 function createWssListener(filename) {
-  const { config, host, ports, fingerprints } = readConfig(filename);
+  const { config, host, ports, fingerprints, synthReceive } = readConfig(filename);
   const cert = loadFile(config.certificate, "Server certificate");
   const key = loadFile(config.key, "Server key");
   const ca = loadFile(config.clientCA, "Client CA");
@@ -90,10 +109,14 @@ function createWssListener(filename) {
     origin: config.origin,
     host,
     ports,
-    authorize(socket) {
-      if (!socket.authorized) return false;
+    synthReceive,
+    identity(socket) {
+      if (!socket.authorized) return;
       const fingerprint = socket.getPeerCertificate().fingerprint256;
-      return typeof fingerprint === "string" && fingerprints.has(fingerprint.replaceAll(":", "").toLowerCase());
+      if (typeof fingerprint !== "string") return;
+      const canonical = fingerprint.replaceAll(":", "").toLowerCase();
+      if (fingerprints.has(canonical)) return "tools";
+      if (canonical === synthReceive?.fingerprint) return "synth";
     },
   };
 }
