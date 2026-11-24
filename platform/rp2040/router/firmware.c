@@ -98,6 +98,12 @@ static uint8_t circuit_interface = NO_INTERFACE;
 static bool circuit_ambiguous;
 static uint32_t apc_led_generation;
 static uint32_t native_led_generation;
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+static uint32_t native_note_generation;
+static uint64_t native_note_deadline;
+static uint64_t native_led_deadline;
+static bool native_note_fault;
+#endif
 
 extern uint32_t __StackBottom, __StackTop;
 static uintptr_t stack_canary_end;
@@ -339,6 +345,10 @@ void tud_umount_cb(void)
     native_led_refresh_at = 0;
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
     native_led_generation = 0;
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    native_note_generation = 0;
+    native_note_fault = false;
+#endif
 #endif
     gridpico_pico_router_attach(&router, GRIDPICO_PICO_WEB, false);
 #ifdef GRIDPICO_RP2040_BENCH_TRACE
@@ -534,6 +544,9 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
     bool apc_led = false;
 #endif
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    uint8_t failed_interface = NO_INTERFACE;
+#endif
     if (address != 0 && endpoint != 0 && tu_edpt_dir(endpoint) == TUSB_DIR_OUT) {
         uint8_t matched = NO_INTERFACE;
         for (uint8_t i = 0; i < CFG_TUH_MIDI; ++i) {
@@ -555,6 +568,9 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
             apc_led = matched == apc_interface && apc_led_generation == router.generation[GRIDPICO_PICO_APC];
 #endif
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+            if (result != XFER_RESULT_SUCCESS || transferred != GRIDPICO_PICO_PACKET_BYTES) failed_interface = matched;
+#endif
         }
     }
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
@@ -564,6 +580,13 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
         gridpico_pico_router_led_complete(&router, GRIDPICO_PICO_APC,
                                            handled && result == XFER_RESULT_SUCCESS && transferred == 4);
     }
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    if (failed_interface != NO_INTERFACE && interfaces[failed_interface].present &&
+        interfaces[failed_interface].device_address == address) {
+        interfaces[failed_interface].faulted = true;
+        reconcile_host();
+    }
+#endif
     return handled;
 #else
     return __real_midih_xfer_cb(address, endpoint, result, transferred);
@@ -577,6 +600,14 @@ bool __real_midid_xfer_cb(uint8_t root, uint8_t endpoint, xfer_result_t result, 
 bool __wrap_midid_xfer_cb(uint8_t root, uint8_t endpoint, xfer_result_t result, uint32_t transferred)
 {
     const bool handled = __real_midid_xfer_cb(root, endpoint, result, transferred);
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    if (root == DEVICE_ROOT && endpoint == GRIDPICO_NATIVE_MIDI_IN_EP && native_note_generation != 0) {
+        if (native_note_generation == router.generation[GRIDPICO_PICO_WEB]) {
+            native_note_fault |= !handled || result != XFER_RESULT_SUCCESS || transferred != GRIDPICO_PICO_PACKET_BYTES;
+        }
+        native_note_generation = 0;
+    }
+#endif
     if (root == DEVICE_ROOT && endpoint == GRIDPICO_NATIVE_MIDI_IN_EP && native_led_generation != 0) {
         if (native_led_generation == router.generation[GRIDPICO_PICO_WEB]) {
             gridpico_pico_router_led_complete(&router, GRIDPICO_PICO_WEB,
@@ -683,6 +714,16 @@ static void service_host(void)
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
     if (gridpico_pico_router_note(&router, GRIDPICO_PICO_SYNTH) != NULL) return;
 #endif
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    const gridpico_pico_packet *panel = gridpico_pico_router_note(&router, GRIDPICO_PICO_APC);
+    if (panel != NULL) {
+        if (submit_host(apc_interface, panel)) {
+            add_trace('G', GRIDPICO_PICO_APC, panel->bytes, sizeof(panel->bytes));
+            gridpico_pico_router_note_sent(&router, GRIDPICO_PICO_APC);
+        }
+        return;
+    }
+#endif
     if (submit_host(apc_interface, gridpico_pico_router_led(&router, GRIDPICO_PICO_APC))) {
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
         apc_led_generation = router.generation[GRIDPICO_PICO_APC];
@@ -693,23 +734,44 @@ static void service_host(void)
 
 static void service_native_midi(void)
 {
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    const uint64_t now_us = time_us_64();
+    if ((native_note_generation != 0 && now_us >= native_note_deadline) ||
+        (router.keys.next_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST && native_led_generation != 0 &&
+         now_us >= native_led_deadline)) native_note_fault = true;
+    gridpico_pico_router_attach(&router, GRIDPICO_PICO_WEB, tud_mounted() && !native_note_fault);
+#else
     gridpico_pico_router_attach(&router, GRIDPICO_PICO_WEB, tud_mounted());
+#endif
     if (!router.attached[GRIDPICO_PICO_WEB]) return;
     gridpico_pico_packet packet;
     for (unsigned i = 0; i < RX_BATCH && tud_midi_packet_read(packet.bytes); ++i) {
         receive(GRIDPICO_PICO_WEB, &packet);
     }
     const gridpico_pico_packet *note = gridpico_pico_router_note(&router, GRIDPICO_PICO_WEB);
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    if (note != NULL && native_note_generation == 0 && native_led_generation == 0 &&
+        usbd_edpt_ready(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP) && tud_midi_packet_write(note->bytes)) {
+        native_note_generation = router.generation[GRIDPICO_PICO_WEB];
+        native_note_deadline = time_us_64() + TX_TIMEOUT_US;
+#else
     if (note != NULL && tud_midi_packet_write(note->bytes)) {
+#endif
         add_trace('G', GRIDPICO_PICO_WEB, note->bytes, sizeof(note->bytes));
         gridpico_pico_router_note_sent(&router, GRIDPICO_PICO_WEB);
     }
     const gridpico_pico_packet *led = gridpico_pico_router_led(&router, GRIDPICO_PICO_WEB);
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
     if (note == NULL && led != NULL && native_led_generation == 0 &&
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+        native_note_generation == 0 &&
+#endif
         usbd_edpt_ready(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP) &&
         tud_midi_packet_write(led->bytes)) {
         native_led_generation = router.generation[GRIDPICO_PICO_WEB];
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+        native_led_deadline = time_us_64() + TX_TIMEOUT_US;
+#endif
         gridpico_pico_router_led_sent(&router, GRIDPICO_PICO_WEB);
     }
 #else
@@ -816,6 +878,13 @@ int main(void)
             service_host();
         }
         service_native_midi();
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+        gridpico_pico_router_finish_mode(&router,
+            !router.attached[GRIDPICO_PICO_WEB] || (native_note_generation == 0 && native_led_generation == 0 &&
+                usbd_edpt_ready(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP)),
+            apc_interface == NO_INTERFACE || !interfaces[apc_interface].busy,
+            synth_interface == NO_INTERFACE || !interfaces[synth_interface].busy);
+#endif
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
         if (!startup_ready) {
             const bool host_running = host_ready && hcd_frame_number(HOST_ROOT) != host_frame_at_start;

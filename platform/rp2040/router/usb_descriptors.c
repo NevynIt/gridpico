@@ -25,7 +25,11 @@ bool gridpico_flash_init_usb_serial(void)
 #endif
 
 enum {
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    CABLES = 3,
+#else
     CABLES = 2,
+#endif
     CONFIG_SIZE = TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_MIDI_DESC_HEAD_LEN +
                   CABLES * TUD_MIDI_DESC_JACK_LEN + 2 * TUD_MIDI_DESC_EP_LEN(CABLES),
 };
@@ -40,11 +44,15 @@ static const tusb_desc_device_t device = {
     .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor = 0x1209,
     .idProduct = 0x0001,
-#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    .bcdDevice = 0x0105,
+#elif defined(GRIDPICO_RP2040_FLASH_ROUTER)
     .bcdDevice = 0x0104,
-    .iSerialNumber = FLASH_SERIAL_INDEX,
 #else
     .bcdDevice = 0x0103,
+#endif
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+    .iSerialNumber = FLASH_SERIAL_INDEX,
 #endif
     .iManufacturer = 1,
     .iProduct = 2,
@@ -56,10 +64,19 @@ static const uint8_t configuration[] = {
     TUD_MIDI_DESC_HEAD(2, 0, CABLES),
     TUD_MIDI_DESC_JACK_DESC(1, 3),
     TUD_MIDI_DESC_JACK_DESC(2, 4),
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    TUD_MIDI_DESC_JACK_DESC(3, 6),
+#endif
     TUD_MIDI_DESC_EP(0x03, 64, CABLES),
     TUD_MIDI_JACKID_IN_EMB(1), TUD_MIDI_JACKID_IN_EMB(2),
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    TUD_MIDI_JACKID_IN_EMB(3),
+#endif
     TUD_MIDI_DESC_EP(GRIDPICO_NATIVE_MIDI_IN_EP, 64, CABLES),
     TUD_MIDI_JACKID_OUT_EMB(1), TUD_MIDI_JACKID_OUT_EMB(2),
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    TUD_MIDI_JACKID_OUT_EMB(3),
+#endif
 };
 _Static_assert(sizeof(configuration) == CONFIG_SIZE, "Invalid USB descriptor length");
 
@@ -75,7 +92,11 @@ const uint8_t *tud_descriptor_configuration_cb(uint8_t index)
 
 const uint16_t *tud_descriptor_string_cb(uint8_t index, uint16_t language)
 {
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    static const char *const strings[] = {"Gridpico", "Gridpico RP2040 Router", "MIDI A", "APC Panel/LED", NULL, "MIDI B"};
+#else
     static const char *const strings[] = {"Gridpico", "Gridpico RP2040 Router", "Keybed", "Panel"};
+#endif
     static uint16_t descriptor[32];
     if (index == 0) {
         descriptor[0] = (TUSB_DESC_STRING << 8) | 4;
@@ -87,6 +108,9 @@ const uint16_t *tud_descriptor_string_cb(uint8_t index, uint16_t language)
 #endif
     if (language != 0x0409 || index > sizeof(strings) / sizeof(strings[0])) return NULL;
     const char *text = strings[index - 1];
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    if (text == NULL) return NULL;
+#endif
     uint8_t length = 0;
     while (length < 31 && text[length]) {
         descriptor[length + 1] = (uint8_t)text[length];

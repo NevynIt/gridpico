@@ -7,6 +7,9 @@
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
 #include "frontends/apc/apc_physical.h"
 #endif
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+#include "frontends/apc/apc_chooser.h"
+#endif
 
 typedef enum {
     GRIDPICO_PICO_APC,
@@ -28,6 +31,25 @@ typedef struct {
 } gridpico_pico_queue;
 
 typedef struct gridpico_pico_router gridpico_pico_router;
+
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+enum { GRIDPICO_PICO_KEYS_HOLDS = 96 };
+typedef struct {
+    uint8_t stream, status, data, count;
+    bool blocked;
+} gridpico_pico_keys_hold;
+
+typedef struct {
+    gridpico_apc_chooser chooser;
+    gridpico_apc_chooser_mode mode, next_mode;
+    gridpico_pico_queue apc_queue;
+    gridpico_pico_keys_hold holds[GRIDPICO_PICO_KEYS_HOLDS];
+    uint32_t source_generation[3];
+    bool source_connected[3];
+    gridpico_pico_packet computer_pad[2];
+    bool have_computer_pad[2];
+} gridpico_pico_keys;
+#endif
 
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
 typedef struct {
@@ -60,6 +82,9 @@ typedef struct {
 struct gridpico_pico_router {
     gridpico_patch_graph graph;
     gridpico_patch_session session;
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    gridpico_pico_keys keys;
+#endif
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
     gridpico_pico_patch_panel panels[2];
     gridpico_apc_patch_snapshot panel_scratch;
@@ -69,6 +94,7 @@ struct gridpico_pico_router {
 #else
     gridpico_apc_frontend panels[2];
 #endif
+
     bool attached[GRIDPICO_PICO_PEERS];
     uint32_t generation[GRIDPICO_PICO_PEERS];
     gridpico_pico_queue notes[2];
@@ -77,6 +103,11 @@ struct gridpico_pico_router {
     bool led_pending[2];
 #endif
 };
+
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+void gridpico_pico_router_finish_mode(gridpico_pico_router *router,
+                                     bool native_idle, bool apc_idle, bool synth_idle);
+#endif
 
 gridpico_result gridpico_pico_router_init(gridpico_pico_router *router);
 gridpico_route_snapshot gridpico_pico_router_pad_status(gridpico_pico_router *router);
