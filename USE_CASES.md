@@ -1,6 +1,55 @@
 # Gridpico operator workflows
 
-Strategist accepted these workflows. The immediate priority is a visible routed LED result on the canonical local launch, followed by editing a named route and switching servers. All three describe intended behavior. Browser permissions still need verification. [Product brief](PRODUCT_BRIEF.md) · [Architecture](ARCHITECTURE.md)
+The product journeys below are a first concept for review. Strategist accepted the three detailed repair workflows that follow them. The immediate priority is a visible routed LED result on the canonical local launch, followed by editing a named route and switching servers. The detailed repair workflows describe intended behavior. Browser permissions still need verification. [Product brief](PRODUCT_BRIEF.md) · [Architecture](ARCHITECTURE.md)
+
+## Operator journeys
+
+Visual references: [browser hierarchy and LED workflow](design/visuals/operator-workflows.png) · [one MIDI phrase on two surfaces](design/visuals/sequence-surfaces.svg).
+
+Use the browser to identify equipment, configure named routes and diagnose a signal path. At the instrument, the player should be able to leave the computer behind and recognize the same setup from the APC’s pads. Web APC lets someone rehearse those gestures with a pointer, keyboard or touch. The following index distinguishes the product direction from the verified behavior of a particular profile. [Product brief](PRODUCT_BRIEF.md) · [Architecture](ARCHITECTURE.md) · [Delivery evidence](ROADMAP.md)
+
+| Operator goal | Start here | Handoff or result |
+| --- | --- | --- |
+| Choose the rig | Home → Server address → Connect | The tool names the connected router and exposes its available actions. [Endpoint workflow](#switch-between-local-and-pi-within-one-loaded-tool) |
+| Prepare destinations | Routing → named source row → destination cells | Read back each enabled branch, then play and release one note. [Matrix workflow](#edit-a-route-between-named-ports) |
+| Perform away from the computer | Physical APC → Patch viewport and keybed | A prepared hardware destination receives the performance. [Performance](#prepare-and-play-a-set) |
+| Trace a silent note or capture a take | Diagnostics for MIDI and LED checks, Recordings for the Pi take | Observe actual receipt or download the finalized WAV. [Troubleshooting and recording](#follow-a-note-and-record-a-take) |
+| Build a pattern later | APC Sequence mode or a dedicated Circuit-style simulator | Both surfaces show the same MIDI pattern and transport. [Deferred sequencing](#deferred-sequencing-on-two-surfaces) |
+
+### Browser structure and appearance
+
+Keep a quiet, high-contrast work area with stable headings, readable port names and one prominent next action per task. Keep the connected router’s identity in a consistent position. Editing the address leaves the current identity visible until switching begins. On Home group Web APC, Routing and Diagnostics as tools, Recordings as a capability of the recording host, and optional instruments as separately deployed destinations. Keep unavailable tools discoverable with a reason and an actionable recovery. On supported direct-file Pico setups, start at the read-only drive’s Home and choose the local MIDI or serial device through the browser. Mounted-drive hardware and permissions remain target-specific gates.
+
+Use the same names in navigation, action labels and evidence. Reserve green/amber route feedback for committed Active/Pending in Patch. A checked managed route can be Pending. Browser text, headers and focus identify the state when color alone is ambiguous. On narrow screens put server, primary action and result together and keep wide matrices scrollable. Preserve the frozen local LED flow below. The written workflows govern any illustrative differences in either concept sheet; acceptance uses observed readability and behavior.
+
+### Prepare and play a set
+
+At setup, choose the router and find the source by device and directional port name. For example, prepare a P-95 part for a MicroFreak destination when those ports are registered; a second output on the same row can feed a receiving instrument or Monitor. Confirm each branch independently. Pending prompts the operator to check attachment. An ambiguous returning device requires identification before playing; a familiar display name alone cannot confirm it. A connected desktop profile and a stage rig have separate hardware evidence.
+
+For the intended computer-free set, leave the powered router, physical controller and receiving instruments connected. Play and release a phrase. The APC’s 25-key keybed sends musical MIDI into the graph. Its panel controls use the APC frontend and its LEDs show returned state. In the documented passive Patch viewport, each of five rows is a source and each of eight columns a destination. Hold Shift and press a labeled arrow on the first four Clip Stop buttons to pan one row or column. A dark cell can be Off or unmapped; amber is enabled/Pending, green Active. A pad press here leaves routes intact. The separate editable Patch profile supports a deliberate mapped-pad toggle. Check the profile before interpreting the gesture. Keep device color preferences distinct from branch status. The simulated APC preserves the same geometry and MIDI semantics and can add a text description for the focused pad. Confirm orientation, readability under stage light and physical attach/release behavior on the nominated hardware before claiming standalone acceptance. [APC viewport](api/routing.md#apc-viewport) · [Akai mapping and Patch profile](api/patchbay-controls.md#production-patch-surface)
+
+### Follow a note and record a take
+
+If the player hears silence, first confirm the connected router and branch in Routing. On a supported endpoint select MIDI Log’s receiving port in Diagnostics, play a fresh note and release it. Look for both received events and the expected transformed pitch. Then enable Monitor audio explicitly on its own bound input and check channel, mute and volume. A log receipt isolates delivery to Log; listening checks a separate receiving branch. For panel feedback trouble use the one-action LED workflow below.
+
+For a Pi take, open **Recordings** on the recording router’s own origin. Choose **Start**, wait for **recording**, play fresh notes, release them and choose **Stop**. Wait for finalization before downloading the latest completed WAV. On failure identify the failed take and retain access to the previous completed file. This capture uses a separate receiving synth on the Pi; other instruments and browser Monitor own their own audio. Closing a browser tool releases its own inputs and voices. [Pi recorder lifecycle](api/pi-recorder.md#optional-recording)
+
+### Deferred sequencing on two surfaces
+
+The first design exercise is **one MIDI track and one 16-step pattern**. Track identity, MIDI destination, enabled steps and playing position have the same meaning on both surfaces. Both translate gestures into intent for the shared Session/Sequencer and render resulting state. Musical Time owns transport and clock, sequence playback enters the ordinary MIDI graph and Projects owns durable saves. Changing surface or view should preserve musical state. Distinguish an applied edit from an acknowledged project save. These are forward design assumptions for review. [Sequencing boundary](ARCHITECTURE.md#time-and-future-sequencing)
+
+**Physical or simulated APC.** Enter an explicitly indicated Sequence mode. For discussion, a labeled simulator mode control and a Shift + scene-button gesture on hardware select the same mode. A lit top-row track pad selects the MIDI track. In Patterns mode select its first pattern, return to Steps, hold a step and play a key to enter pitch. Use the first two rows beneath the track row for steps 1–16, left to right. Leave the remaining rows inactive in this exercise. A transport gesture starts playback; a second stops it. Decide its physical assignment against documented buttons before implementation. A steady lit cell marks a programmed step. A brief contrasting playhead indication returns to that underlying state as the clock advances. Show mode via a persistent panel indicator and browser text. Re-enter Patch to inspect routing while the sequence continues. Modifier conflicts and fixed-color indicator legibility need hardware review.
+
+**Original Circuit-style simulator.** Choose the same named track from a dedicated track strip, open **Patterns**, select the pattern and use **Steps** to display a two-row phrase. Select a step, set its pitch using a labeled note control, then press a dedicated **Play** or **Stop** control. Use an independent position marker above the step to keep enabled content legible while playing. Handoff example: set step 5 on APC, open the simulator and see the same pitch on step 5 and the current transport position. Stop there and observe stopped transport back on APC. This is an original interaction study. Actual Circuit Tracks integration and control mapping require separate decisions.
+
+| Shared state | APC feedback proposal | Circuit-style simulator proposal |
+| --- | --- | --- |
+| Track and pattern | Selected track pad plus mode indicator; explicit pattern selection | Named track strip and pattern selector |
+| Step content and playhead | Stored step light with temporary position feedback | Enabled step and separate moving marker |
+| Transport and recording input | Play state indicator; explicit arm gesture only after choosing an input | Play/Stop, named recording input and separate arm state |
+| Later pattern change | Distinct queued pulse until playing selection commits | Separate queued and playing labels |
+
+A later illustration may fill eight track selectors and four rows of eight steps. Capacity, bank selection, pattern launch timing, recording semantics and clock-loss behavior need product and architecture decisions. The first exercise implies no additional track memory, firmware commitments or active delivery work. Consider pattern queuing only once a second pattern is in scope.
 
 ## Start Gridpico and see a pad respond
 

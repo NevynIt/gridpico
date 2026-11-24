@@ -6,6 +6,12 @@
 
 [Product brief](PRODUCT_BRIEF.md) · [Architecture](ARCHITECTURE.md) · [Team coordination](AGENT_TEAM_COORDINATION.md) · [Model and effort plan](.team/MODEL_PLAN.md)
 
+## Product horizon
+
+- **Now · Make Gridpico easy to operate from the browser.** Launch, run a visible LED test in Diagnostics, edit named routes in Routing, and switch between the laptop and Pi with a server address. Keep Pi recording available during the work. [Current UI delivery](#approved-ui-usability-delivery) · [Pi router and recording](#persistent-pi-router-and-recording)
+- **Next · Play one shared sequencer pattern.** Scope one MIDI track and one 16-step pattern after the current UI delivery. The original Circuit Tracks-style browser frontend and eventual APC adapter use the same Gridpico sequencer. Existing web instruments or external MIDI destinations provide sound. Design is under review. Implementation remains deferred. [Product brief](PRODUCT_BRIEF.md) · [Operator journeys](USE_CASES.md)
+- **Later · Connect and validate physical Gridpico.** Verify Pico USB MIDI, mounted tools and CDC, add supported physical controller and instrument workflows, and qualify native network MIDI across more targets, including Windows RTP. Keep evidence specific to each device and platform. [Hardware work](#hardware-work-when-access-returns) · [Transport delivery](#approved-delivery-midi-and-serial-cli-across-gridpico-hosts)
+
 ## Approved delivery: MIDI and serial CLI across Gridpico hosts
 
 **State** — RTP-MIDI and WebSocket MIDI are both approved product transports. They share production routing and selectable MIDI ports. The local WebSocket product path and timed Diagnostics replay are verified. The Linux↔Linux RTP bench has verified remote receipt, rebind and scoped cleanup. Session stability and in-session packet-loss recovery remain open. Pico USB/Wi-Fi and mounted-drive acceptance await a physical connection. Windows RTP remains a product path. Target acceptance and preview installation await a Windows test host. The Windows keyboard investigation remains a separate evidence track.
