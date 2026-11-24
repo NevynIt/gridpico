@@ -33,6 +33,11 @@ _Static_assert(GRIDPICO_APC_INTERFACE >= 0 && GRIDPICO_APC_INTERFACE <= UINT8_MA
                GRIDPICO_SYNTH_INTERFACE >= 0 && GRIDPICO_SYNTH_INTERFACE <= UINT8_MAX,
                "PIO MIDI interfaces must fit in a byte");
 
+#ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH
+_Static_assert(GRIDPICO_SYNTH_VID == 0x1c75 && GRIDPICO_SYNTH_PID == 0x0601 &&
+               GRIDPICO_SYNTH_INTERFACE == 2, "Program Change requires the selected MicroFreak");
+#endif
+
 enum {
     DEVICE_ROOT = 0,
     HOST_ROOT = 1,
@@ -447,11 +452,36 @@ void tuh_midi_tx_cb(uint8_t index, uint32_t transferred)
 static bool submit_host(uint8_t index, const gridpico_pico_packet *packet)
 {
     if (index == NO_INTERFACE || packet == NULL || interfaces[index].busy) return false;
-    if (!tuh_midi_packet_write(index, packet->bytes)) return false;
     host_interface *itf = &interfaces[index];
-    itf->in_flight = *packet;
+#ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH
+    const bool program_change = packet->bytes[0] == 0x0c;
+    if (program_change) {
+        const uint8_t endpoint = host_endpoints_out[index];
+        if (index != synth_interface || !itf->present || itf->faulted || !tuh_midi_mounted(index) ||
+            itf->device_address == 0 || endpoint == 0 || tu_edpt_dir(endpoint) != TUSB_DIR_OUT) {
+            return false;
+        }
+        /* Claim OUT directly so refused admission cannot leave a Program Change in the class FIFO.
+           The bound MIDI class still owns completion. */
+        itf->in_flight = *packet;
+        tuh_xfer_t transfer = {
+            .daddr = itf->device_address,
+            .ep_addr = endpoint,
+            .buflen = sizeof(itf->in_flight.bytes),
+            .buffer = itf->in_flight.bytes,
+        };
+        if (!tuh_edpt_xfer(&transfer)) return false;
+    } else
+#endif
+    {
+        if (!tuh_midi_packet_write(index, packet->bytes)) return false;
+        itf->in_flight = *packet;
+    }
     itf->busy = true;
     itf->deadline = time_us_64() + TX_TIMEOUT_US;
+#ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH
+    if (program_change) return true;
+#endif
     tuh_midi_write_flush(index);
     return true;
 }
@@ -459,6 +489,14 @@ static bool submit_host(uint8_t index, const gridpico_pico_packet *packet)
 static void receive(gridpico_pico_peer peer, const gridpico_pico_packet *packet)
 {
     add_trace('I', (uint8_t)peer, packet->bytes, sizeof(packet->bytes));
+#ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH
+    if (gridpico_pico_router_can_program_change(&router, peer, packet)) {
+        if (submit_host(synth_interface, packet)) {
+            add_trace('G', GRIDPICO_PICO_SYNTH, packet->bytes, sizeof(packet->bytes));
+        }
+        return;
+    }
+#endif
     gridpico_pico_router_receive(&router, peer, packet);
 }
 

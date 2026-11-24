@@ -183,6 +183,26 @@ static bool has_owed_release(const gridpico_patch_graph *graph, gridpico_port_id
     return false;
 }
 
+bool gridpico_patch_graph_destination_idle(const gridpico_patch_graph *graph, gridpico_port_id destination)
+{
+    if (graph == NULL) {
+        return false;
+    }
+    const size_t port = port_index(&graph->inventory, destination);
+    if (port == NO_PORT || graph->inventory.ports[port].direction != GRIDPICO_PATCH_OUTPUT) {
+        return false;
+    }
+
+    for (size_t i = 0; i < graph->release_credit_limit; ++i) {
+        const gridpico_patch_release_credit *credit = &graph->credits[i];
+        if (credit->delivery.destination.endpoint == destination &&
+            (credit->contributors != 0 || credit->owed_source != 0)) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool branch_active(const gridpico_patch_graph *graph, const gridpico_patch_graph_branch *branch)
 {
     const gridpico_patch_port *output = &graph->inventory.ports[branch->destination];

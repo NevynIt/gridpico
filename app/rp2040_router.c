@@ -190,6 +190,23 @@ gridpico_result gridpico_pico_router_receive(
     return delivered;
 }
 
+#ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH
+bool gridpico_pico_router_can_program_change(
+    gridpico_pico_router *router, gridpico_pico_peer peer, const gridpico_pico_packet *packet)
+{
+    if (peer != GRIDPICO_PICO_WEB || packet->bytes[0] != 0x0c || packet->bytes[1] != 0xc3 ||
+        packet->bytes[2] > 0x7f || packet->bytes[3] != 0 ||
+        !router->attached[GRIDPICO_PICO_WEB] || !router->attached[GRIDPICO_PICO_SYNTH] ||
+        gridpico_pico_router_note(router, GRIDPICO_PICO_SYNTH) != NULL) {
+        return false;
+    }
+    gridpico_local_route_status status;
+    return gridpico_patch_session_read_local_route(&router->session, &routes[2], &status) == GRIDPICO_OK &&
+           status.state == GRIDPICO_PATCH_ROUTE_ACTIVE &&
+           gridpico_patch_graph_destination_idle(&router->graph, SYNTH_NOTES);
+}
+#endif
+
 const gridpico_pico_packet *gridpico_pico_router_note(
     const gridpico_pico_router *router, gridpico_pico_peer peer)
 {

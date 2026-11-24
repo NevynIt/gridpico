@@ -88,6 +88,8 @@ gridpico_result gridpico_patch_graph_set_route(void *context,
                                                const gridpico_patch_route_request *request);
 gridpico_result gridpico_patch_graph_read_graph(void *context, gridpico_patch_graph_state *out);
 gridpico_result gridpico_patch_graph_read_local_state(void *context, gridpico_local_graph_state *out);
+/* Checks note obligations for a registered output across connection generations. */
+bool gridpico_patch_graph_destination_idle(const gridpico_patch_graph *graph, gridpico_port_id destination);
 gridpico_result gridpico_patch_graph_submit_note(void *context, const gridpico_ingress_note *input);
 gridpico_result gridpico_patch_graph_set_local_route(void *context,
                                                     const gridpico_local_route_request *request);

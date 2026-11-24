@@ -125,10 +125,74 @@ static void test_stalled_export(void)
     assert(rejected);
 }
 
+#ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH
+static void test_program_change_admission(void)
+{
+    static const gridpico_local_route native_to_synth = {2, 4, GRIDPICO_LOCAL_MANAGED};
+    static const gridpico_pico_packet minimum = {{0x0c, 0xc3, 0x00, 0}};
+    static const gridpico_pico_packet maximum = {{0x0c, 0xc3, 0x7f, 0}};
+    static const gridpico_pico_packet invalid[] = {
+        {{0x0c, 0xc3, 0x80, 0}}, {{0x0c, 0xc3, 0x7f, 1}}, {{0x0d, 0xc3, 0, 0}},
+        {{0x0c, 0xc4, 0, 0}}, {{0x1c, 0xc3, 0, 0}}, {{0x0c, 0xb3, 0, 0}},
+    };
+    connect();
+    const gridpico_revision revision = gridpico_pico_router_pad_status(&router).applied_revision;
+    assert(gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
+    assert(gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &maximum));
+    assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_APC, &minimum));
+    for (size_t i = 0; i < sizeof(invalid) / sizeof(invalid[0]); ++i) {
+        assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &invalid[i]));
+    }
+    assert(gridpico_pico_router_pad_status(&router).applied_revision == revision);
+    assert(gridpico_pico_router_led(&router, GRIDPICO_PICO_WEB) == NULL);
+    assert(gridpico_pico_router_led(&router, GRIDPICO_PICO_APC) == NULL);
+
+    /* Only the physical APC is sounding. It still makes the synth busy. */
+    assert(receive(GRIDPICO_PICO_APC, 9, 0x90, 61, 96) == GRIDPICO_OK);
+    expect_note(GRIDPICO_PICO_SYNTH, 9, 0x90, 61, 96);
+    assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
+    assert(receive(GRIDPICO_PICO_APC, 8, 0x80, 61, 32) == GRIDPICO_OK);
+    assert(gridpico_patch_graph_destination_idle(&router.graph, native_to_synth.destination));
+    assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
+    expect_note(GRIDPICO_PICO_SYNTH, 8, 0x80, 61, 32);
+    /* The native export still holds both frames. It cannot block the synth. */
+    assert(gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
+    expect_note(GRIDPICO_PICO_WEB, 9, 0x90, 61, 96);
+    expect_note(GRIDPICO_PICO_WEB, 8, 0x80, 61, 32);
+
+    assert(receive(GRIDPICO_PICO_APC, 0x19, 0x90, 0, 127) == GRIDPICO_OK);
+    assert(receive(GRIDPICO_PICO_APC, 9, 0x90, 62, 96) == GRIDPICO_OK);
+    assert(receive(GRIDPICO_PICO_APC, 0x18, 0x80, 0, 0) == GRIDPICO_OK);
+    assert(receive(GRIDPICO_PICO_APC, 0x19, 0x90, 0, 127) == GRIDPICO_OK);
+    assert(gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
+    assert(gridpico_pico_router_note(&router, GRIDPICO_PICO_SYNTH) == NULL);
+    expect_note(GRIDPICO_PICO_WEB, 9, 0x90, 62, 96);
+
+    assert(receive(GRIDPICO_PICO_WEB, 9, 0x93, 63, 96) == GRIDPICO_OK);
+    expect_note(GRIDPICO_PICO_SYNTH, 9, 0x93, 63, 96);
+    gridpico_pico_router_attach(&router, GRIDPICO_PICO_SYNTH, false);
+    assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
+    assert(receive(GRIDPICO_PICO_WEB, 8, 0x83, 63, 32) == GRIDPICO_OK);
+    assert(!gridpico_patch_graph_destination_idle(&router.graph, native_to_synth.destination));
+    gridpico_pico_router_attach(&router, GRIDPICO_PICO_SYNTH, true);
+    assert(gridpico_patch_graph_destination_idle(&router.graph, native_to_synth.destination));
+    assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
+    expect_note(GRIDPICO_PICO_SYNTH, 8, 0x83, 63, 0);
+    assert(gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
+
+    const gridpico_local_route_request disable = {.route = native_to_synth, .enabled = false};
+    assert(gridpico_patch_session_set_local_route(&router.session, &disable) == GRIDPICO_OK);
+    assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
+}
+#endif
+
 int main(void)
 {
     test_inputs_and_releases();
     test_shared_pad_independent_holds();
     test_destination_replacement();
     test_stalled_export();
+#ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH
+    test_program_change_admission();
+#endif
 }

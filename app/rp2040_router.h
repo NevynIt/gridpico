@@ -40,6 +40,10 @@ gridpico_route_snapshot gridpico_pico_router_pad_status(gridpico_pico_router *ro
 void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_peer peer, bool attached);
 gridpico_result gridpico_pico_router_receive(
     gridpico_pico_router *router, gridpico_pico_peer peer, const gridpico_pico_packet *packet);
+#ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH
+bool gridpico_pico_router_can_program_change(
+    gridpico_pico_router *router, gridpico_pico_peer peer, const gridpico_pico_packet *packet);
+#endif
 const gridpico_pico_packet *gridpico_pico_router_note(
     const gridpico_pico_router *router, gridpico_pico_peer peer);
 void gridpico_pico_router_note_sent(gridpico_pico_router *router, gridpico_pico_peer peer);
