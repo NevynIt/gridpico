@@ -16,6 +16,7 @@ FAKE_FLUID = """
 import os
 from pathlib import Path
 import sys
+import time
 import wave
 
 args = sys.argv[1:]
@@ -23,7 +24,15 @@ path = Path(next(arg.split("=", 1)[1] for arg in args if arg.startswith("audio.f
 name = next(arg.split("=", 1)[1] for arg in args if arg.startswith("midi.portname="))
 assert f"midi.alsa_seq.id={name}" in args
 assert "synth.midi-channels=16" in args
-Path(os.environ["FIXTURE_ENGINE"]).write_text(f"{os.getpid()} {name}")
+# Stock FluidSynth publishes the explicit midi.portname verbatim to ALSA.
+marker = Path(os.environ["FIXTURE_ENGINE"])
+marker.write_text(f"{os.getpid()}\\n{name}\\n")
+if os.environ.get("FIXTURE_WAV") == "oversize":
+    deadline = time.monotonic() + 4
+    while not marker.with_suffix(".oversize").exists() and time.monotonic() < deadline:
+        time.sleep(.01)
+    with path.open("r+b") as output:
+        output.truncate(12 * 1024 * 1024 + 1)
 assert sys.stdin.buffer.readline() == b"quit\\n"
 if os.environ.get("FIXTURE_WAV") == "truncated":
     path.write_bytes(b"RIFF" + (100).to_bytes(4, "little") + b"WAVEfmt ")
@@ -45,7 +54,8 @@ for _ in range(200):
     if engine.exists() and engine.read_text():
         break
     time.sleep(.01)
-assert engine.read_text() == " ".join(sys.argv[1:])
+pid, alsa_port = engine.read_text().splitlines()
+assert sys.argv[1:] == [pid, alsa_port]
 os.kill(int(sys.argv[1]), 0)
 print("ready", flush=True)
 with open(os.environ["FIXTURE_MIDI"], "wb", buffering=0) as log:
@@ -170,6 +180,20 @@ class RecorderTest(unittest.TestCase):
         self.expect(b"error ENGINE_EXIT")
         self.assert_reaped(1)
         self.assertFalse(self.wav.exists())
+
+    def test_oversize_idle_take_discards_only_partial(self):
+        latest = self.directory / "latest.wav"
+        with wave.open(str(latest), "wb") as wav:
+            wav.setparams((2, 2, 44100, 0, "NONE", "not compressed"))
+            wav.writeframes(b"\x01\x00\x01\x00" * 32)
+        previous = latest.read_bytes()
+        self.start(FIXTURE_WAV="oversize")
+        self.attach()
+        self.engine.with_suffix(".oversize").touch()
+        self.expect(b"error WAV_LIMIT")
+        self.assert_reaped(1)
+        self.assertFalse(self.wav.exists())
+        self.assertEqual(latest.read_bytes(), previous)
 
     def test_release_drain_at_occurrence_limit(self):
         self.start()

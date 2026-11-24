@@ -6,7 +6,6 @@ from collections import Counter
 import os
 from pathlib import Path
 import re
-import resource
 import secrets
 import select
 import shutil
@@ -22,6 +21,7 @@ from run import engine_command, finish, reserve_wav, soundfont
 
 WAV_NAME = "recording.wav"
 WAV_LIMIT = 12 * 1024 * 1024
+WAV_CHECK_SECONDS = 0.1
 START_SECONDS = 10
 TAKE_SECONDS = 60
 TAIL_SECONDS = 1
@@ -118,9 +118,15 @@ class Take:
         self.control = Pipe(sys.stdin, "HOST_LOST")
         self.held = Counter()
         self.hold_count = 0
+        self.next_wav_check = 0
 
     def cancel(self, _signal, _frame):
         self.cancelled = True
+
+    def check_wav_size(self):
+        if self.wav.stat().st_size > WAV_LIMIT:
+            self.engine.kill()
+            raise TakeError("WAV_LIMIT")
 
     def read(self, pipe, deadline):
         sources = [pipe] if pipe is self.alsa else [self.alsa, pipe]
@@ -134,7 +140,11 @@ class Take:
                 raise TakeError("ALSA_LOST")
             if pipe is not self.alsa and self.alsa.line() is not None:
                 raise TakeError("ALSA_LOST")
-            delay = deadline - time.monotonic()
+            now = time.monotonic()
+            if now >= self.next_wav_check:
+                self.check_wav_size()
+                self.next_wav_check = now + WAV_CHECK_SECONDS
+            delay = deadline - now
             if delay <= 0:
                 return None
             # Check for an asynchronous ALSA fault before a buffered host command.
@@ -148,7 +158,7 @@ class Take:
                     raise TakeError("SOCKET_LOST")
                 return line
             if not ready:
-                ready, _, _ = select.select(by_fd, [], [], min(delay, 0.1))
+                ready, _, _ = select.select(by_fd, [], [], min(delay, self.next_wav_check - now))
             for fd in ready:
                 by_fd[fd].read()
 
@@ -247,6 +257,7 @@ class Take:
             raise TakeError("ALSA_LOST")
         if self.engine.poll() is not None:
             raise TakeError("ENGINE_LOST")
+        self.check_wav_size()
         if self.finish_engine() != 0:
             raise TakeError("ENGINE_EXIT")
         if self.cancelled:
@@ -274,9 +285,6 @@ def main():
     take = Take(settings)
     for signum in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         signal.signal(signum, take.cancel)
-    soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
-    resource.setrlimit(resource.RLIMIT_FSIZE,
-                       (min(WAV_LIMIT, soft) if soft >= 0 else WAV_LIMIT, hard))
     complete = False
     error = None
     try:
