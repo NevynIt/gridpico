@@ -11,7 +11,7 @@ The intended setup includes a Yamaha P-95, Arturia MicroFreak, Akai APC Key 25 m
 
 ## User experience
 
-The APC is the preferred physical interface. Its browser simulator is the preferred graphical configuration interface, using the same APC protocol and production frontend. Additional browser tools are justified only for operations that cannot reasonably fit the APC surface.
+The APC is the preferred physical interface. Its browser simulator uses the same APC protocol and production frontend. The browser also provides dedicated Routing and Diagnostics views for inspecting and configuring setups that are difficult to see on the APC surface.
 
 The first browser APC slice shows the 5×8 pad grid, the other APC panel buttons and the 25-key playing keyboard. Prioritize a playable keybed whose presses and releases send MIDI Note On and Note Off through the simulated keybed path into the routing kernel. Basic pad and button LED feedback is sufficient for this slice.
 
@@ -27,7 +27,9 @@ The musical kernel is not APC-specific. A CLI and, later, piano-key/pedal contro
 
 The first usable Patch view routes one source to multiple destinations. The initial serial CLI shows the device names and MIDI ports the core recognizes, their connection state, and which ports occupy each source row and destination column. Users can assign a color to a recognized device through either the CLI or APC. Both views use the same device preference. Colors identify devices and route feedback shows route state.
 
-Diagnostics is the separate page for the serial CLI, MIDI Log, Monitor, and routed protocol replay. The browser terminal uses the same CLI commands as a serial terminal.
+The dedicated Routing view shows named MIDI inputs and outputs in a matrix. It distinguishes port availability from route state and lets users enable or disable routes through the existing serial CLI. Port capacity is configurable within each target's tested limits. The APC viewport can move through routing matrices larger than its physical grid. When USB devices reconnect, Gridpico reuses logical ports and routes where a device can be matched reliably and asks the user to resolve ambiguous matches.
+
+Diagnostics is the separate page for the serial CLI, MIDI Log, Monitor, and routed protocol replay. The browser terminal uses the same CLI commands as a serial terminal and can select either the local router's loopback CLI or a local serial device through Web Serial. Users can send Diagnostics LED sequences through Gridpico to the Web APC or directly to a physical APC over local Web MIDI. Diagnostics reports submission status so users can check the effect on the receiving APC.
 
 On RP2040, USB-hosted devices connect through a hub. Native USB offers multiple MIDI ports, CDC and a read-only `GRIDPICO` drive carrying the self-contained browser interface and documentation. The user has already demonstrated the HTML-drive approach in a separate prototype.
 
@@ -37,9 +39,9 @@ The desktop targets are Linux x86, Linux ARM (including Raspberry Pi Zero), and 
 
 Gridpico supports two network MIDI transports. RTP-MIDI is a product path for native Linux and Windows routers and compatible MIDI applications. WebSocket MIDI is a product path for the Web APC, Diagnostics, Monitor, and other compatible browser or native clients. Both connect to the production routing system through selectable MIDI ports. Separately running components exchange MIDI or the serial CLI byte stream.
 
-A web landing page links to the available tools, starting with Web APC and Diagnostics. On a computer, `scripts/web-ui.sh` opens that landing page. The Pico's read-only drive carries the landing page and self-contained offline tools. Browser tools share a MIDI connection layer for port selection and sending or receiving messages over Web MIDI or WebSocket MIDI. Web MIDI can select RTP-MIDI ports exposed by the operating system.
+A web landing page links to Web APC, Diagnostics, Routing, and instrument tools. On a computer, `scripts/web-ui.sh` opens that landing page. The Pico's read-only drive carries the landing page and self-contained offline tools. Each MIDI tool independently selects its ports through the shared browser connection layer, using local Web MIDI or the chosen WS/WSS router. Web MIDI can select RTP-MIDI ports exposed by the operating system. A WSS router's operator chooses which directional ports to publish.
 
-Optional instruments are separate MIDI destinations. A FluidSynth wrapper plays routed MIDI on a Linux host, and a standalone browser FM instrument plays it through Web Audio. The initial browser acceptance case is a routed note that sounds and releases using a built-in FM voice. These instruments generate sound at the receiving end, alongside the existing browser Monitor.
+Optional instruments are separate MIDI destinations and generate audio at the receiving end. A FluidSynth wrapper plays routed MIDI on a Linux host, and a lightweight browser FM instrument plays it through Web Audio offline. Gridpico links to a separately distributed and credited Web Synth fork as an optional instrument. The fork retains the upstream FM interface and licensing and adds a receive-only WSS MIDI input.
 
 ## Value
 

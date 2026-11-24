@@ -61,6 +61,7 @@
     #input-error:empty { margin: 0; }
     #midi-connection, #midi-signals, #local-midi { margin-top: 2rem; }
     #local-midi label { margin-top: .65rem; }
+    #local-midi-manual-confirm { min-height: 0; vertical-align: middle; }
     .sequence-table { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; margin: .7rem 0; }
     th, td {
@@ -180,22 +181,28 @@
         <button id="local-midi-disconnect" type="button" disabled>Disconnect MIDI</button>
       </div>
       <p id="local-midi-status" role="status">MIDI disconnected.</p>
+      <div id="local-midi-lease">
+        <label for="local-midi-destination">APC LED RX port</label>
+        <input id="local-midi-destination" type="number" min="1" max="65535" step="1" required>
+        <p>
+          Connect Diagnostics MIDI output and the Web APC LED input. In the router CLI,
+          enter <code id="local-midi-lease-on">route SRC DST raw on</code>, then check
+          <code id="local-midi-lease-read">route SRC DST raw</code> for Active.
+          Use <code id="local-midi-lease-off">route SRC DST raw off</code> to end the run.
+          The lease can expire during a run. Check the APC pad for the result.
+        </p>
+        <label id="local-midi-manual-check" hidden>
+          <input id="local-midi-manual-confirm" type="checkbox">
+          I checked that this route is Active in the router CLI.
+        </label>
+        <p id="local-midi-route-status" role="status">Raw route not verified here.</p>
+      </div>
       <div class="command-row">
         <button id="local-midi-solid" type="button" disabled>Solid green · 96 00 15</button>
         <button id="local-midi-off" type="button" disabled>Off · 96 00 00</button>
       </div>
 
       <h3>Timed RGB pads</h3>
-      <div id="local-midi-lease">
-        <label for="local-midi-destination">APC LED RX port</label>
-        <input id="local-midi-destination" type="number" min="1" max="65535" step="1" required>
-        <p>
-          Connect both MIDI ports and enter <code id="local-midi-lease-on">route SRC DST raw on</code>
-          in the local CLI. Wait for the route to report Active. Use
-          <code id="local-midi-lease-off">route SRC DST raw off</code> to end it from the CLI.
-          The router may end the run when the Raw lease expires.
-        </p>
-      </div>
       <p>
         120 BPM fixture tempo, with a 500 ms quarter note. Step sends one row at
         your pace. Replay sends rows once, with the minimum waits below. A run
@@ -226,6 +233,8 @@
     };
     const commandLimit = 63;
     const transcriptLimit = 16384;
+    const localReplyLimit = 512;
+    const localReplyTimeout = 5000;
     const encoder = new TextEncoder();
     const connectButton = document.querySelector("#connect");
     const disconnectButton = document.querySelector("#disconnect");
@@ -242,12 +251,92 @@
     let localSerial;
 
     function updateControls() {
-      const connected = connection && !connection.closing && (!connection.local || connection.ready);
+      const connected = connection && !connection.closing &&
+        (!connection.local || (connection.ready && connection.prompt));
       connectButton.disabled = (!serial && !localSerial) || connecting || Boolean(connection);
       disconnectButton.disabled = !connection || connection.closing;
       command.disabled = !connected;
       sendButton.disabled = !connected || Boolean(connection?.writer);
     }
+
+    function notifyLocalCli() {
+      window.dispatchEvent(new Event("gridpico-local-cli-binding"));
+    }
+
+    function finishLocalCommand(active, reply, error) {
+      const pending = active.pending;
+      if (!pending) return;
+      active.pending = undefined;
+      clearTimeout(pending.timer);
+      if (error) pending.reject(error);
+      else pending.resolve(reply);
+    }
+
+    function readLocalReply(active, chunk) {
+      appendTranscript(chunk);
+      active.tail = (active.tail + chunk).slice(-localReplyLimit);
+      if (active.tail !== "> " && !active.tail.endsWith("\r\n> ")) return;
+      const initialPrompt = !active.prompt && !active.pending;
+      active.prompt = true;
+      finishLocalCommand(active, active.tail);
+      active.tail = "";
+      updateControls();
+      if (initialPrompt && active.ready) command.focus();
+    }
+
+    function sendLocalCommand(active, line) {
+      if (!active.ready || !active.prompt || active.closing) {
+        return Promise.reject(new Error("The local CLI is busy or disconnected. Try again."));
+      }
+      active.prompt = false;
+      active.tail = "";
+      updateControls();
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          finishLocalCommand(active, undefined, new Error("The local CLI did not finish the command."));
+          void disconnect(active, "The local CLI did not finish the command.", true);
+        }, localReplyTimeout);
+        active.pending = { resolve, reject, timer };
+        try {
+          if (active.handle.send(encoder.encode(line + "\n"))) return;
+        } catch {
+          finishLocalCommand(active, undefined, new Error("The local CLI could not send this line."));
+          void disconnect(active, "The local CLI connection failed.", true);
+          return;
+        }
+        finishLocalCommand(active, undefined, new Error("The local CLI could not send this line."));
+        active.prompt = !active.closing;
+        updateControls();
+      });
+    }
+
+    window.gridpicoDiagnosticsCli = Object.freeze({
+      get attached() { return Boolean(connection?.local); },
+      async checkRawRoute(source, destination) {
+        const validId = (value) => Number.isInteger(value) && value > 0 && value <= 65535;
+        if (!validId(source) || !validId(destination)) throw new Error("Choose the source and LED receiver port IDs.");
+        const active = connection;
+        if (!active?.local) throw new Error("The local CLI is disconnected.");
+        const cmd = `route ${source} ${destination} raw`;
+        const reply = await sendLocalCommand(active, cmd);
+        if (connection !== active || active.closing) throw new Error("The local CLI disconnected during the check.");
+        const prefix = `${cmd}\r\nROUTE ${source} ${destination} RAW `;
+        for (const state of ["OFF", "PENDING", "ACTIVE"]) {
+          if (reply === `${prefix}${state}\r\nOK\r\n> `) return state;
+        }
+        const rejections = [
+          ["INVALID", "The selected ports are incompatible with this Raw route"],
+          ["CAPACITY", "The router reported a capacity limit"],
+          ["UNAVAILABLE", "The Raw route is unavailable"],
+        ];
+        for (const [code, message] of rejections) {
+          if (reply === `${cmd}\r\nERR ${code}\r\n> `) {
+            throw new Error(`Raw route ${source} → ${destination} check failed (ERR ${code}). ${message}.`);
+          }
+        }
+        throw new Error("The local CLI did not confirm this Raw route.");
+      },
+    });
 
     function showStatus(message, error = false) {
       status.textContent = message;
@@ -295,6 +384,7 @@
       showStatus("Disconnecting…");
       updateControls();
       if (active.local) {
+        finishLocalCommand(active, undefined, new Error("The local CLI disconnected."));
         active.handle.close();
         return;
       }
@@ -316,16 +406,17 @@
     }
 
     function connectLocal() {
-      const active = { local: true, ready: false, closing: false };
+      const active = { local: true, ready: false, closing: false, tail: "", prompt: false };
       const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
       connection = active;
       inputError.textContent = "";
       showStatus("Connecting to the local CLI…");
       updateControls();
+      notifyLocalCli();
       try {
         active.handle = localSerial({
           onData(bytes) {
-            if (connection === active) appendTranscript(decoder.decode(bytes, { stream: true }));
+            if (connection === active) readLocalReply(active, decoder.decode(bytes, { stream: true }));
           },
           onState(state, reason) {
             if (connection !== active) return;
@@ -334,8 +425,10 @@
               showStatus("Local CLI connected.");
             } else if (state === "disconnected") {
               appendTranscript(decoder.decode());
+              finishLocalCommand(active, undefined, new Error("The local CLI disconnected."));
               connection = undefined;
               showStatus(reason || "Local CLI disconnected.", Boolean(reason));
+              notifyLocalCli();
             }
             updateControls();
             if (state === "connected" && active.ready) command.focus();
@@ -345,6 +438,7 @@
         connection = undefined;
         showStatus(`Could not connect to the local CLI: ${error.message}`, true);
         updateControls();
+        notifyLocalCli();
       }
     }
 
@@ -418,13 +512,17 @@
         return;
       }
 
-      const bytes = encoder.encode(line + "\n");
       if (active.local) {
-        if (active.ready && active.handle.send(bytes)) command.value = "";
-        else inputError.textContent = "The local CLI could not send this line.";
+        try {
+          await sendLocalCommand(active, line);
+          if (connection === active && command.value === line) command.value = "";
+        } catch (error) {
+          inputError.textContent = error.message;
+        }
         return;
       }
 
+      const bytes = encoder.encode(line + "\n");
       try {
         active.writer = active.port.writable.getWriter();
         updateControls();

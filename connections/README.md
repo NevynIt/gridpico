@@ -165,8 +165,9 @@ route 1 6 managed on
 ```
 
 For the solid/off check, connect Diagnostics MIDI to port 4 and Web APC LED
-RX to port 3. Run `route 4 3 raw on` in the local CLI, then click
-**Solid green** and **Off** and check the bottom-left APC pad. Run
+RX to port 3. Run `route 4 3 raw on` in the router CLI, then check
+`route 4 3 raw` for Active. Click **Solid green** and **Off** and check the
+bottom-left APC pad. Run
 `route 4 3 raw off` to end the run and restore committed APC feedback.
 A new run requires a fresh Diagnostics MIDI connection and an explicit
 `on`. The Raw lease also ends after 30 seconds or if an affected MIDI
@@ -222,9 +223,13 @@ drive acceptance remain open.
 
 In Diagnostics, select the MIDI output. For WebSocket, connect the APC LED
 receiver, enter the shown `route SRC DST raw on` command and wait for the
-CLI to report Active. Keep Diagnostics visible during the run.
-For Web MIDI, choose a system output connected to
-the APC LED input. **Step** queues one row at your pace. **Replay** starts
+CLI to report Active. With a connected **Local CLI** in the same page,
+Diagnostics checks the selected Raw pair before a sequence or a single
+Solid green/Off send. With an external CLI or WSS, confirm the readback
+manually in Diagnostics. Keep Diagnostics visible during the run. The
+queued status reports local submission. Check the live APC pad for the result.
+For Web MIDI, choose a system output connected to the APC LED input.
+**Step** queues one row at your pace. **Replay** starts
 from row 1 and queues each row once with these minimum waits.
 
 | Hex sent and expected at LED RX | Minimum wait after send | Expected at 120 BPM fixture tempo |

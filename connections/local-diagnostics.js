@@ -27,7 +27,12 @@ window.addEventListener("DOMContentLoaded", () => {
   const reset = document.querySelector("#local-midi-reset");
   const steps = document.querySelector("#local-midi-steps");
   const leaseOn = document.querySelector("#local-midi-lease-on");
+  const leaseRead = document.querySelector("#local-midi-lease-read");
   const leaseOff = document.querySelector("#local-midi-lease-off");
+  const routeStatus = document.querySelector("#local-midi-route-status");
+  const manualCheck = document.querySelector("#local-midi-manual-check");
+  const manualConfirm = document.querySelector("#local-midi-manual-confirm");
+  const routerCli = window.gridpicoDiagnosticsCli;
 
   const runLimitMs = 20000;
   const sequence = [
@@ -40,6 +45,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   let current;
   let run;
+  let checking;
   let position = 0;
   let requesting = false;
   let accessGranted = false;
@@ -331,6 +337,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const source = validPort(port) ? port.valueAsNumber : "SRC";
     const sink = validPort(destination) ? destination.valueAsNumber : "DST";
     leaseOn.textContent = `route ${source} ${sink} raw on`;
+    leaseRead.textContent = `route ${source} ${sink} raw`;
     leaseOff.textContent = `route ${source} ${sink} raw off`;
     const direction = directMidi()
       ? osPort.selectedOptions[0]?.text || "MIDI output"
@@ -346,12 +353,20 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function clearRouteCheck() {
+    checking = undefined;
+    manualConfirm.checked = false;
+    routeStatus.textContent = "Raw route not verified here.";
+  }
+
   function updateControls() {
     const direct = directMidi();
     access.hidden = accessStatus.hidden = !direct;
     osControls.hidden = !direct;
     routerPort.hidden = direct;
     lease.hidden = direct;
+    manualCheck.hidden = Boolean(routerCli?.attached);
+    manualConfirm.disabled = Boolean(run || checking);
     provider.disabled = Boolean(current || requesting);
     access.disabled = Boolean(current || requesting);
     osPort.disabled = Boolean(current || requesting);
@@ -359,9 +374,11 @@ window.addEventListener("DOMContentLoaded", () => {
     port.disabled = Boolean(current);
     disconnect.disabled = !current || current.closing;
     const available = Boolean(current?.ready && !current.closing);
-    const sequenceReady = available && (direct || validPort(destination)) && !document.hidden;
-    destination.disabled = Boolean(run);
-    solid.disabled = !available || Boolean(run);
+    const readyToSend = available && !checking &&
+      (direct || (validPort(destination) && (routerCli?.attached || manualConfirm.checked)));
+    const sequenceReady = readyToSend && !document.hidden;
+    destination.disabled = Boolean(run || checking);
+    solid.disabled = !readyToSend || Boolean(run);
     off.disabled = solid.disabled;
     step.disabled = !sequenceReady || Boolean(run?.automatic);
     replay.disabled = !sequenceReady || Boolean(run);
@@ -377,6 +394,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   function finish(message, restart = false) {
     clearRun();
+    clearRouteCheck();
     if (restart) position = 0;
     status.textContent = message;
     if (current && !current.closing) {
@@ -388,6 +406,7 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   provider.addEventListener("change", () => {
+    clearRouteCheck();
     for (const receiver of receivers) {
       receiver.retire();
       receiver.refresh();
@@ -427,6 +446,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const name = direct ? osPort.selectedOptions[0].text : `MIDI port ${id}`;
     const active = { ready: false, closing: false, name };
     current = active;
+    clearRouteCheck();
     try {
       active.handle = adapter.openMidi(id, {
         provider: provider.value,
@@ -435,6 +455,7 @@ window.addEventListener("DOMContentLoaded", () => {
           if (current !== active) return;
           if (state === "disconnected") {
             clearRun();
+            clearRouteCheck();
             current = undefined;
             if (!active.closing) status.textContent = reason || "MIDI disconnected.";
           } else if (state === "connected" && !active.closing) {
@@ -456,11 +477,53 @@ window.addEventListener("DOMContentLoaded", () => {
   function queue(bytes) {
     if (!current?.ready || current.closing) return false;
     if (current.handle.send(Uint8Array.from(bytes))) {
-      status.textContent = `Queued ${hex(bytes)} on ${current.name}.`;
+      status.textContent = `Queued locally on ${current.name}: ${hex(bytes)}. Check the APC pad for delivery.`;
       return true;
     }
     finish("MIDI output could not queue the message. Reconnect MIDI before retrying.");
     return false;
+  }
+
+  async function withRouteCheck(send) {
+    const binding = current;
+    if (!binding?.ready || binding.closing || checking) return;
+    if (directMidi()) {
+      send();
+      return;
+    }
+    if (!validPort(port) || !validPort(destination)) return;
+    if (!routerCli?.attached) {
+      if (manualConfirm.checked) send();
+      return;
+    }
+
+    const source = port.valueAsNumber;
+    const sink = destination.valueAsNumber;
+    const attempt = { binding, source, sink };
+    checking = attempt;
+    routeStatus.textContent = `Checking Raw route ${source} → ${sink} in the local CLI…`;
+    updateControls();
+    try {
+      const state = await routerCli.checkRawRoute(source, sink);
+      if (checking !== attempt || current !== binding) return;
+      if (state === "ACTIVE") {
+        routeStatus.textContent = `Last CLI check: Raw route ${source} → ${sink} Active. Delivery unverified.`;
+        send();
+      } else {
+        const label = state === "OFF" ? "Off" : "Pending";
+        status.textContent = `Raw route ${source} → ${sink} is ${label}. Nothing was sent. Connect both ports and use ${leaseOn.textContent}.`;
+        routeStatus.textContent = `Last CLI check: Raw route ${source} → ${sink} ${label}.`;
+      }
+    } catch (error) {
+      if (checking !== attempt || current !== binding) return;
+      routeStatus.textContent = "Raw route not verified here.";
+      status.textContent = `${error.message} Nothing was sent. Check ${leaseRead.textContent} in the router CLI.`;
+    } finally {
+      if (checking === attempt) {
+        checking = undefined;
+        updateControls();
+      }
+    }
   }
 
   function submit(active) {
@@ -478,7 +541,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!queue(frame.bytes)) return;
     position++;
     if (position === sequence.length) {
-      finish(`Queued ${hex(frame.bytes)}. Sequence ended. Reconnect MIDI for another run.`);
+      finish(`Queued locally: ${hex(frame.bytes)}. Sequence ended. Check the APC pads for delivery. Reconnect MIDI for another run.`);
       return;
     }
     if (active.automatic) {
@@ -500,20 +563,31 @@ window.addEventListener("DOMContentLoaded", () => {
     submit(active);
   }
 
-  port.addEventListener("input", renderSteps);
-  destination.addEventListener("input", () => { renderSteps(); updateControls(); });
+  function changedRoute() {
+    clearRouteCheck();
+    renderSteps();
+    updateControls();
+  }
+  port.addEventListener("input", changedRoute);
+  destination.addEventListener("input", changedRoute);
+  manualConfirm.addEventListener("change", updateControls);
+  window.addEventListener("gridpico-local-cli-binding", () => {
+    clearRouteCheck();
+    updateControls();
+  });
   disconnect.addEventListener("click", () => finish("MIDI disconnected."));
-  solid.addEventListener("click", () => queue([0x96, 0, 0x15]));
-  off.addEventListener("click", () => queue([0x96, 0, 0]));
+  solid.addEventListener("click", () => { void withRouteCheck(() => queue([0x96, 0, 0x15])); });
+  off.addEventListener("click", () => { void withRouteCheck(() => queue([0x96, 0, 0])); });
   step.addEventListener("click", () => {
     if (run && !run.automatic) submit(run);
-    else if (!run) start(false);
+    else if (!run) void withRouteCheck(() => start(false));
   });
-  replay.addEventListener("click", () => { if (!run) start(true); });
+  replay.addEventListener("click", () => { if (!run) void withRouteCheck(() => start(true)); });
   stop.addEventListener("click", () => finish("Sequence stopped. Reconnect MIDI before another run."));
   reset.addEventListener("click", () => finish("Sequence reset to step 1.", true));
   document.addEventListener("visibilitychange", () => {
     if (document.hidden && run) finish("Sequence stopped when Diagnostics was hidden.");
+    else if (document.hidden && checking) clearRouteCheck();
     updateControls();
   });
   window.addEventListener("pagehide", () => {
