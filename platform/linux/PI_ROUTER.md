@@ -1,6 +1,6 @@
 # Pi router deployment
 
-The Pi Zero 2 W runs `gridpico-router.service` as the `pi` user. The router release is pinned to `048accf54233d0865404bb93e7b1158fdd2142ec` and uses the portable AArch64 router, Debian Trixie Node 20.19.2, and locked `ws` 8.23.0. The recorder uses stock FluidSynth 2.4.4 and the separately packaged TimGM6mb SoundFont.
+The Pi Zero 2 W runs `gridpico-router.service` as the `pi` user. The router release is pinned to `40161d9ca5cafd7eab1b47c6b0816c236cd13565` and uses the portable AArch64 router, Debian Trixie Node 20.19.2, and locked `ws` 8.23.0. The recorder uses stock FluidSynth 2.4.4 and the separately packaged TimGM6mb SoundFont.
 
 | Endpoint | Access |
 | --- | --- |
@@ -10,6 +10,15 @@ The Pi Zero 2 W runs `gridpico-router.service` as the `pi` user. The router rele
 LAN serial is unavailable. The recorder reserves managed output 12 for its own local connection. WSS is a separate opt-in profile and is off on this deployment. The fixed address is a deployment setting, and the observed WLAN lease is dynamic. Changing the address requires a deliberate review of the pinned LAN profile and configuration before restarting.
 
 Use direct LAN access from trusted devices on the approved subnet. The LAN listener admits by source address and has no per-user login. Eligible browsers share the same router, APC bindings and recorder slot.
+
+Both listeners serve the same verified shared UI bundle. The per-deployment capability descriptor is served separately at `/ui-capabilities.json`.
+
+| Listener | Bundle files |
+| --- | --- |
+| Pi LAN | [Manifest](http://192.168.0.223:18768/web-ui/SHA256SUMS) · [ZIP](http://192.168.0.223:18768/web-ui.zip) |
+| Pi loopback through the SSH forward | [Manifest](http://127.0.0.1:18767/web-ui/SHA256SUMS) · [ZIP](http://127.0.0.1:18767/web-ui.zip) |
+
+The LAN configuration grants the exact browser origin `http://127.0.0.1:8767` read access to the capability descriptor and WebSocket MIDI access to Keybed input 1, Panel input 2, and LED output 3. The alternate descriptor reports CLI, LED test and recording disabled. Open Recordings directly from the Pi's own Home page to use recorder controls and downloads on the same origin.
 
 From the operator laptop, keep the forward on loopback and open the literal `http://127.0.0.1:18767/` URL. The laptop router on port 8767 is independent.
 
@@ -25,11 +34,13 @@ The Pi user owns `~/.local/share/gridpico-router/` and installs the unit at `~/.
 | --- | --- |
 | `current` | Symlink to the explicitly selected `release/<commit>`. |
 | `current/RELEASE` and `current/SHA256SUMS` | Pin and per-file manifest for the installed snapshot. |
-| `launch.sh` | Starts the portable router and Node host with the Pi profile and enabled local configuration. |
+| `launch.sh` | Supplies the private runtime and invokes the selected release's canonical `scripts/web-ui.sh` in prepared mode. |
 | `config/trusted-lan.json` and `config/recorder.json` | Selected LAN address and recorder paths. |
 | `runtime/node/` and `runtime/fluidsynth/` | Privately extracted runtime dependencies. |
 | `recordings/latest.wav` | Most recent successfully completed recording. An active or failed take has no public download. |
 | `state/` | SFTP staging and deployment validation artifacts. |
+
+The launcher supplies `--runner` and the selected release's `app/profiles/pi.conf`, sets `--port 18767 --no-open --web-ui`, and passes the existing `--trusted-lan-config` and `--recorder-config` files. The previous release `048accf54233d0865404bb93e7b1158fdd2142ec` remains installed. Its exact launcher and configuration are backed up in the private `state/ui-promotion.Dr8ta8/` directory.
 
 The user service is enabled in `default.target` with linger. A fresh SSH session verified that the service remained active after the launch connection ended. Its retry delay is ten seconds if startup fails while waiting for the configured interface. Boot configuration has been verified. Startup after an actual reboot remains untested.
 
@@ -43,7 +54,7 @@ cat current/RELEASE
 (cd current && sha256sum -c SHA256SUMS)
 ```
 
-An update is explicit. Build a reviewed commit, verify the archive SHA after SFTP, and extract it to a new `release/<commit>` directory. Verify its file manifest before changing `current`. Use an atomic symlink rename and restart only `gridpico-router.service`. Check both listeners and the selected recorder configuration. Keep the prior release and corresponding config until health checks pass, and restore them if the new release fails. The unit never pulls from Git or deploys a new release unattended.
+An update is explicit. Build a reviewed commit, verify the archive SHA after SFTP, and extract it to a new `release/<commit>` directory. Verify its file manifest before changing `current` and record the size and SHA-256 of `recordings/latest.wav`. Defer cutover while the recorder is active. Use an atomic symlink rename and confirm `/recordings/status` reports `state: idle` with `activeId: null` immediately before restarting `gridpico-router.service`. After restart, check both listeners, the pinned bundle and the latest WAV hash and size. If health checks fail, restore the prior release symlink, launcher and exact configuration for the rollback restart. The unit never pulls from Git or deploys a new release unattended.
 
 ## Record and download
 
