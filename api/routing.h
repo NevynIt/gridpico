@@ -53,4 +53,52 @@ typedef gridpico_result (*gridpico_local_read_routing_fn)(
 typedef gridpico_result (*gridpico_local_read_patch_page_fn)(
     void *context, const gridpico_local_patch_viewport *request, gridpico_local_patch_page *out);
 
+/* Volatile editable physical APC page. The registered-order passive viewport
+ * continues to use gridpico_local_patch_page.
+ */
+typedef struct {
+    gridpico_port_id rows[GRIDPICO_PATCH_SOURCE_ROWS];
+    gridpico_port_id columns[GRIDPICO_PATCH_DESTINATION_COLUMNS];
+} gridpico_apc_patch_layout;
+
+typedef struct {
+    gridpico_port_id id;
+    gridpico_patch_direction direction;
+    bool connected;
+    uint64_t last_attack_sequence;
+    uint64_t last_attack_us;
+} gridpico_apc_patch_port;
+
+typedef struct {
+    gridpico_patch_route_state state;
+    bool compatible;
+    bool available;
+} gridpico_apc_patch_cell;
+
+typedef struct {
+    gridpico_revision layout_revision;
+    gridpico_revision graph_revision;
+    gridpico_apc_patch_layout layout;
+    size_t port_count;
+    gridpico_apc_patch_port ports[GRIDPICO_PATCH_MAX_PORTS];
+    uint64_t attack_sequence;
+    gridpico_apc_patch_cell cells[GRIDPICO_PATCH_SOURCE_ROWS][GRIDPICO_PATCH_DESTINATION_COLUMNS];
+} gridpico_apc_patch_snapshot;
+
+typedef gridpico_result (*gridpico_apc_patch_read_fn)(
+    void *context, gridpico_apc_patch_snapshot *out);
+typedef gridpico_result (*gridpico_apc_patch_assign_fn)(
+    void *context, gridpico_revision layout_revision, gridpico_patch_direction axis,
+    uint8_t slot, gridpico_port_id port);
+typedef gridpico_result (*gridpico_apc_patch_move_fn)(
+    void *context, gridpico_revision layout_revision, gridpico_patch_direction axis,
+    uint8_t from, uint8_t to);
+typedef gridpico_result (*gridpico_apc_patch_set_cell_fn)(
+    void *context, gridpico_revision layout_revision, gridpico_revision graph_revision,
+    uint8_t row, uint8_t column, bool enabled);
+
+/* Context identifies the current panel owner. Stop affects only that owner. */
+typedef gridpico_result (*gridpico_apc_patch_audition_fn)(
+    void *context, gridpico_port_id destination, bool start);
+
 #endif

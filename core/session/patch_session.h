@@ -9,6 +9,11 @@ typedef struct {
 } gridpico_patch_color_preference;
 
 typedef struct {
+    uint64_t sequence;
+    uint64_t time_us;
+} gridpico_patch_attack;
+
+typedef struct {
     void *graph_context;
     gridpico_patch_read_graph_fn read_graph;
     gridpico_patch_set_route_fn set_graph_route;
@@ -25,6 +30,12 @@ typedef struct {
     gridpico_revision routing_color_revision;
     size_t routing_port_count;
     gridpico_local_port_availability routing_availability[GRIDPICO_PATCH_MAX_PORTS];
+    gridpico_apc_patch_layout apc_layout;
+    gridpico_revision apc_layout_revision;
+    gridpico_port_id apc_audition_source;
+    gridpico_port_id apc_attack_sources[GRIDPICO_PATCH_MAX_PORTS];
+    uint64_t apc_attack_sequence;
+    gridpico_patch_attack apc_attacks[GRIDPICO_PATCH_MAX_PORTS];
 } gridpico_patch_session;
 
 /* Bind both callbacks to the same graph. Assembly serializes commands and
@@ -44,6 +55,26 @@ void gridpico_patch_session_bind_local_routing(gridpico_patch_session *session,
                                               gridpico_local_read_graph_fn read_graph,
                                               gridpico_local_read_availability_fn read_availability,
                                               void *availability_context);
+
+/* Bind the editable layout once, after binding the local graph reader. */
+gridpico_result gridpico_patch_session_bind_apc_patch(gridpico_patch_session *session,
+                                                    const gridpico_apc_patch_layout *layout,
+                                                    gridpico_port_id audition_source);
+gridpico_result gridpico_patch_session_read_apc_patch(void *context,
+                                                    gridpico_apc_patch_snapshot *out);
+gridpico_result gridpico_patch_session_assign_apc_patch(void *context, gridpico_revision layout_revision,
+                                                      gridpico_patch_direction axis, uint8_t slot,
+                                                      gridpico_port_id port);
+gridpico_result gridpico_patch_session_move_apc_patch(void *context, gridpico_revision layout_revision,
+                                                    gridpico_patch_direction axis, uint8_t from,
+                                                    uint8_t to);
+gridpico_result gridpico_patch_session_set_apc_patch_cell(void *context,
+                                                        gridpico_revision layout_revision,
+                                                        gridpico_revision graph_revision,
+                                                        uint8_t row, uint8_t column, bool enabled);
+/* Assembly checks that ingress belongs to the current attachment. */
+void gridpico_patch_session_observe_apc_patch_note(gridpico_patch_session *session,
+                                                const gridpico_ingress_note *input, uint64_t now_us);
 
 gridpico_result gridpico_patch_session_read_local_routing(void *context,
                                                          gridpico_local_routing_snapshot *out);

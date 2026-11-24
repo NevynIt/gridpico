@@ -33,9 +33,14 @@ gridpico_apc_pad_event gridpico_apc_decode_pad(const gridpico_apc_surface_messag
     return note == GRIDPICO_APC_DEMO_PAD ? event : GRIDPICO_APC_PAD_IGNORED;
 }
 
+gridpico_apc_surface_message gridpico_apc_encode_led(uint8_t status, uint8_t note, uint8_t value)
+{
+    return (gridpico_apc_surface_message){{status, note, value}};
+}
+
 gridpico_apc_surface_message gridpico_apc_encode_rgb_pad(uint8_t note, uint8_t palette)
 {
-    return (gridpico_apc_surface_message){{GRIDPICO_APC_DEMO_LED_STATUS, note, palette}};
+    return gridpico_apc_encode_led(GRIDPICO_APC_DEMO_LED_STATUS, note, palette);
 }
 
 gridpico_apc_surface_message gridpico_apc_encode_pad_led(bool lit)
