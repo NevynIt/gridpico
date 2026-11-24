@@ -271,6 +271,18 @@ WebSocket at that page's origin. The browser applies the destination's TLS
 and client-certificate rules. Use Back to return to the previous page.
 [Server selection and status](../api/browser-midi.md#server-selection-and-status)
 
+In the isolated endpoint-switch profile, Web APC at
+`http://127.0.0.1:8767/apc/` offers **Switch router** for the exact candidate
+`http://192.168.0.223:18768`. The trusted-LAN configuration opts in with
+`"uiOrigin": "http://127.0.0.1:8767"` and requires descriptor mode. The grant
+covers the capability read and the three published APC MIDI sockets only.
+Web APC checks that the destination has the same browser release before
+retiring the old bindings. If a switch cannot be verified, the current
+router stays selected and the page offers to open Web APC on the destination.
+If a MIDI role fails after selection, retry that role or use the same
+navigation link.
+[Isolated endpoint grant](../api/browser-midi.md#shared-bundle-and-endpoint-selection)
+
 ### Offline tools
 
 Build the checksummed `GRIDPICO` asset bundle:

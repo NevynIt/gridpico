@@ -184,6 +184,10 @@ Using the exact canonical `./scripts/web-ui.sh` launcher with a Linux Compose st
 
 Independent Chromium testing at both lab widths verified that the canonical launcher serves a distinct `/routing/` view with labeled crosspoints operable by mouse and keyboard, committed CLI readback for Pending, Active and Off, and a 6×9 desktop profile, while preserving the existing connection when serial was busy and retaining the one-action Diagnostics LED test.
 
+Independent same-origin tests for published `a11f4d9` verified identical bytes for all 11 assets, the manifest and ZIP across ordinary and prepared canonical launches and a temporary ARM Pi loopback instance, with capability descriptors matching each endpoint, while the production Pi recorder stays on its pinned release, and in-place endpoint switching remains pending.
+
+Independent testing in stock Chrome verified a same-document switch from the local router to an isolated instance of the exact Pi profile and back, with fresh routed panel input and LED feedback, release of held notes from the old binding, and exact-Origin access limited to the published controller MIDI roles, with serial, Raw and recording outside that grant. Production Pi rollout and testing on the operator’s laptop remain open.
+
 UI Designer reviews the workflow and visual hierarchy before implementation and advises on uncertain UI choices. Route unresolved product trade-offs through Strategist. Visual references guide layout, defaults and interaction. Testing independently checks visible results, readability, hierarchy and honest states at representative desktop and narrow widths. Exact asset bytes have their own check. The operator's actual laptop is a separate regression check when available. Keep the 30% weekly floor and leave the sequencer frontend deferred.
 
 ## Demo sequence for 23 November at 09:00 CET (08:00 UTC)

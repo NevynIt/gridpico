@@ -63,7 +63,8 @@
     display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: .35rem;
     font-weight: 400;
   }
-  #local-provider-controls:not([hidden]) { display: flex; align-items: center; gap: .35rem; }
+  #local-provider-controls { display: flex; align-items: center; gap: .35rem; }
+  #local-provider-controls[hidden] { display: none; }
   #local-midi-server { margin-top: .55rem; font-size: .875rem; }
   #local-midi-server label { display: inline-block; margin-bottom: .25rem; }
   #local-midi-server .midi-server-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
@@ -72,6 +73,7 @@
     border: 1px solid var(--line); border-radius: .35rem;
   }
   #local-midi-server button { padding: .35rem .55rem; border: 1px solid var(--line); border-radius: .35rem; background: #f2ebf8; }
+  #local-midi-active-router, #midi-server-status { overflow-wrap: anywhere; }
   #midi-server-status[data-error] { margin-top: .25rem; color: #8b3d2b; }
   .local-binding [data-state="connected"], #local-midi-transport-status[data-connected] {
     color: #21613f; font-weight: 650;
@@ -350,6 +352,7 @@
     .track, .scene { width: 100%; }
     .patch-section { padding: .75rem; }
     .patch-devices { grid-template-columns: 1fr; }
+    #local-midi-server input { width: 100%; }
   }
 </style>
 <script defer src="/local-transport.js"></script>
@@ -393,6 +396,7 @@
     <div class="lab-actions" id="local-provider-controls" hidden>
       <button type="button" id="local-midi-access">Allow Web MIDI</button>
     </div>
+    <p class="patch-status" id="local-midi-active-router" hidden></p>
     <div id="local-midi-server"></div>
     <p class="patch-status" id="local-capability-error" hidden>Could not load capabilities from this MIDI server. <button type="button" aria-label="Retry loading router capabilities">Retry</button></p>
     <p class="patch-status" id="local-midi-transport-status" role="status"></p>
@@ -1987,11 +1991,7 @@ function mountLocalMidi(adapter) {
   const home = nav.querySelector('a[href="/"]');
   const diagnostics = nav.querySelector('a[href="/diagnostics/"]');
   const diagnosticsHelp = document.querySelector("#local-diagnostics-help");
-  const capabilities = adapter?.capabilities;
-  const trustedLan = adapter?.trustedLan === true;
   home.hidden = location.protocol === "https:";
-  diagnostics.hidden = trustedLan && !capabilities;
-  diagnosticsHelp.hidden = trustedLan;
   if (fileProductPage) {
     home.href = "HOME.HTM";
     diagnostics.href = "DIAG.HTM";
@@ -2006,21 +2006,19 @@ function mountLocalMidi(adapter) {
   const access = document.querySelector("#local-midi-access");
   const accessStatus = document.querySelector("#local-midi-access-status");
   const guide = document.querySelector("#local-port-guide");
+  const activeRouter = document.querySelector("#local-midi-active-router");
   const transportStatus = document.querySelector("#local-midi-transport-status");
   let accessGranted = false;
-  const providers = adapter.midiProviders;
-  adapter.mountServerSelection?.(document.querySelector("#local-midi-server"), "/apc/");
+  adapter.mountServerSelection?.(document.querySelector("#local-midi-server"), "/apc/", { inPlace: true });
   if (adapter.capabilityStatus === "unavailable") {
     const error = document.querySelector("#local-capability-error");
     error.hidden = false;
     error.querySelector("button").addEventListener("click", () => location.reload());
   }
-  if (!providers.length) {
+  if (!adapter.midiProviders.length) {
     guide.textContent = "No MIDI transport is available here. Open a served Gridpico controller or use a browser with Web MIDI.";
     return null;
   }
-  const socketName = location.protocol === "https:" ? "Gridpico WSS" : "Gridpico WebSocket";
-
   const definitions = [
     ["keybed", "Keybed TX", "send"],
     ["panel", "Panel TX", "send"],
@@ -2031,13 +2029,24 @@ function mountLocalMidi(adapter) {
   const controls = new Map(
     Array.from(surface.querySelectorAll("button[data-apc-note]"), button => [Number(button.dataset.apcNote), button])
   );
+  const servedOrigin = servedLocalPage ? location.origin : "";
+  const routerOrigin = () => servedOrigin ? adapter.target?.origin ?? servedOrigin : "";
+  const remoteTarget = () => routerOrigin() !== servedOrigin;
+  const targetCapabilities = () => adapter.target?.capabilities ?? adapter.capabilities;
 
   function renderConnection() {
-    const activeCount = [...bindings.values()].filter(binding => binding.state === "connected").length;
-    const opening = [...bindings.values()].some(binding => binding.state === "connecting");
+    const current = [...bindings.values()];
+    const activeCount = current.filter(binding => binding.state === "connected").length;
+    const opening = current.some(binding => binding.state === "connecting");
     const activity = activeCount ? `${activeCount} of ${definitions.length} roles connected` : "No roles connected";
     transportStatus.textContent = `${activity}${opening ? " · Connecting…" : ""}`;
     transportStatus.toggleAttribute("data-connected", activeCount > 0);
+    const origin = routerOrigin();
+    activeRouter.hidden = !origin;
+    const sockets = current.filter(binding => binding.provider === "websocket");
+    const label = sockets.some(binding => binding.state === "connected") ? "Connected router"
+      : sockets.length ? "Connecting to router" : "Selected router";
+    activeRouter.textContent = origin ? `${label} · ${origin}` : "";
   }
 
   function setBindingStatus(role, state, message) {
@@ -2118,6 +2127,10 @@ function mountLocalMidi(adapter) {
     const webMidi = selectedProvider === "web-midi";
     const id = webMidi ? ports.value : Number(field.value);
     if (webMidi && !id) return;
+    if (remoteTarget()) {
+      const offered = targetCapabilities()?.roles[role];
+      if (webMidi || offered?.direction !== direction || offered.port !== id) return;
+    }
     if (!webMidi && (!/^[1-9]\d{0,4}$/.test(field.value) || id > 0xffff)) {
       field.setCustomValidity("Enter a port ID from 1 to 65535.");
       field.reportValidity();
@@ -2134,12 +2147,20 @@ function mountLocalMidi(adapter) {
       binding.handle = adapter.openMidi(id, {
         direction,
         provider: selectedProvider,
+        role: webMidi ? undefined : role,
         onData: bytes => receive(role, binding, bytes),
         onState(state, reason) {
           if (bindings.get(role) !== binding) return;
           if (state === "connected") {
             binding.state = state;
             setBindingStatus(role, state, `Connected · ${label}`);
+            const target = adapter.target;
+            if (target?.epoch > 0 && definitions.every(([name]) => {
+              const current = bindings.get(name);
+              return current?.provider === "websocket" && current.state === "connected";
+            })) {
+              window.dispatchEvent(new CustomEvent("gridpico-target-roles-ready", { detail: target }));
+            }
           } else if (state === "disconnected") {
             retire(role, binding, false, typeof reason === "string" ? reason : "");
           }
@@ -2157,7 +2178,7 @@ function mountLocalMidi(adapter) {
     ports.hidden = ports.disabled = !webMidi;
     label.htmlFor = webMidi ? ports.id : field.id;
     if (!webMidi) {
-      submit.disabled = false;
+      submit.disabled = field.readOnly && !field.value;
       return;
     }
     const selected = ports.value;
@@ -2176,15 +2197,6 @@ function mountLocalMidi(adapter) {
     accessControls.hidden = accessStatus.hidden = !webMidiSelected;
   }
 
-  if (trustedLan) {
-    guide.textContent = "This trusted-LAN server provides WebSocket MIDI for Keybed TX, Panel TX and LED RX. To use another trusted-LAN server, open its APC URL in your browser’s address bar.";
-  } else if (!providers.includes("websocket")) {
-    guide.textContent = "Choose system MIDI outputs for TX and an input for LED RX.";
-  } else if (capabilities?.actions.cli === false || adapter.capabilityStatus === "unavailable") {
-    guide.textContent = "Choose a transport for each role. Use the suggested router port or enter an authorized port ID.";
-  } else {
-    guide.textContent = "Choose a transport for each role. Find router port IDs in Diagnostics inventory.";
-  }
   const container = document.querySelector("#local-bindings");
   for (const [role, name, direction] of definitions) {
     const id = `local-${role}-port`;
@@ -2198,7 +2210,6 @@ function mountLocalMidi(adapter) {
     const provider = document.createElement("select");
     provider.id = `local-${role}-provider`;
     provider.setAttribute("aria-label", `${name} transport`);
-    for (const id of providers) provider.add(new Option(id === "websocket" ? socketName : "Web MIDI", id));
     providerLabel.append(provider);
     const actions = document.createElement("div");
     actions.className = "lab-actions";
@@ -2210,9 +2221,6 @@ function mountLocalMidi(adapter) {
     field.maxLength = 5;
     field.placeholder = "Port ID";
     field.required = true;
-    const offered = capabilities?.roles[role];
-    const portPublished = offered?.direction === direction;
-    if (portPublished) field.value = String(offered.port);
     field.addEventListener("input", () => field.setCustomValidity(""));
     const ports = document.createElement("select");
     ports.id = `${id}-web`;
@@ -2229,9 +2237,6 @@ function mountLocalMidi(adapter) {
     ports.addEventListener("change", () => { submit.disabled = !ports.value; });
     const choice = { name, status, disconnect, direction, field, ports, submit, label, provider };
     choices.set(role, choice);
-    setBindingStatus(role, "disconnected", capabilities && !portPublished
-      ? "No published binding for this role."
-      : "Disconnected");
     form.append(label, providerLabel, actions, status);
     form.addEventListener("submit", event => {
       event.preventDefault();
@@ -2248,10 +2253,51 @@ function mountLocalMidi(adapter) {
       showAccess();
     });
     container.append(form);
-    showPorts(choice);
   }
 
-  showAccess();
+  function presentTarget() {
+    const capabilities = targetCapabilities();
+    const remote = remoteTarget();
+    const trustedLan = adapter.trustedLan === true;
+    const providers = remote ? ["websocket"] : adapter.midiProviders;
+    const socketName = routerOrigin().startsWith("https:") ? "Gridpico WSS" : "Gridpico WebSocket";
+    diagnostics.hidden = remote || (trustedLan && !capabilities);
+    diagnosticsHelp.hidden = remote || trustedLan;
+    if (remote) {
+      guide.textContent = "Use the router’s published WebSocket MIDI ports. Open Web APC on that router to access its other tools.";
+    } else if (trustedLan) {
+      guide.textContent = "This trusted-LAN server provides WebSocket MIDI for Keybed TX, Panel TX and LED RX. To use another trusted-LAN server, open its APC URL in your browser’s address bar.";
+    } else if (!providers.includes("websocket")) {
+      guide.textContent = "Choose system MIDI outputs for TX and an input for LED RX.";
+    } else if (capabilities?.actions.cli === false || adapter.capabilityStatus === "unavailable") {
+      guide.textContent = "Choose a transport for each role. Use the suggested router port or enter an authorized port ID.";
+    } else {
+      guide.textContent = "Choose a transport for each role. Find router port IDs in Diagnostics inventory.";
+    }
+    for (const [role, choice] of choices) {
+      const { provider, field, direction } = choice;
+      provider.replaceChildren(...providers.map(id => new Option(id === "websocket" ? socketName : "Web MIDI", id)));
+      provider.disabled = remote;
+      const offered = capabilities?.roles[role];
+      const published = offered?.direction === direction;
+      field.setCustomValidity("");
+      field.value = published ? String(offered.port) : "";
+      field.readOnly = remote;
+      setBindingStatus(role, "disconnected", capabilities && !published
+        ? "No published binding for this role."
+        : "Disconnected");
+      showPorts(choice);
+    }
+    showAccess();
+    for (const [role, { provider, field }] of choices) {
+      if (provider.value !== "websocket") continue;
+      const id = adapter.startupPorts?.[role];
+      if (!Number.isInteger(id) || id < 1 || id > 65535) continue;
+      field.value = String(id);
+      bind(role);
+    }
+  }
+
   access.addEventListener("click", async () => {
     access.disabled = true;
     accessStatus.textContent = "Requesting MIDI access…";
@@ -2269,14 +2315,17 @@ function mountLocalMidi(adapter) {
       }
     }
   });
-  if (adapter.startupPorts) {
-    for (const [role, { provider, field }] of choices) {
-      if (provider.value !== "websocket") continue;
-      const id = adapter.startupPorts[role];
-      if (!Number.isInteger(id) || id < 1 || id > 65535) continue;
-      field.value = String(id);
-      bind(role);
-    }
+  presentTarget();
+  if (servedLocalPage) {
+    window.addEventListener("gridpico-target-changing", () => {
+      releaseAll();
+      if (!bindings.has("led")) clearBindingState("led");
+      for (const [role, binding] of bindings) retire(role, binding, false);
+    });
+    window.addEventListener("gridpico-target-changed", () => {
+      accessStatus.textContent = "";
+      presentTarget();
+    });
   }
 
   window.addEventListener("pagehide", () => {

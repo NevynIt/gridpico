@@ -63,7 +63,7 @@ let lan;
 let bundle;
 try {
   if (uiDescriptor) bundle = loadWebUiBundle();
-  if (lanConfig !== undefined) lan = createTrustedLanListener(lanConfig);
+  if (lanConfig !== undefined) lan = createTrustedLanListener(lanConfig, uiDescriptor);
   if (recorderConfig !== undefined) recorder = createRecorder(recorderConfig);
 } catch (error) {
   console.error(`Invalid browser bundle, recorder or trusted LAN setup: ${error.message}`);
@@ -108,6 +108,7 @@ function legacyAssets() {
 }
 const legacy = bundle ? undefined : legacyAssets();
 const capabilityBodies = new Map();
+let alternateCapabilities;
 
 function prepareCapabilities(runtimeRoles) {
   const instance = randomBytes(16).toString("hex");
@@ -131,9 +132,15 @@ function prepareCapabilities(runtimeRoles) {
       ledTest: !listener && webUi && roles.sequence?.port === 4 && roles.led?.port === 3,
       recording: Boolean(recorder && (!listener || listener.trustedLan)),
     };
-    const body = Buffer.from(JSON.stringify({ version: 1, release: bundle.release, instance, roles, autoBind, actions }));
+    const descriptor = { version: 1, release: bundle.release, instance, roles, autoBind, actions };
+    const body = Buffer.from(JSON.stringify(descriptor));
     if (body.length > 2048) throw new Error("Browser capability descriptor exceeds its bound");
     capabilityBodies.set(listener, body);
+    if (listener?.uiOrigin) {
+      alternateCapabilities = Buffer.from(JSON.stringify({
+        ...descriptor, actions: { cli: false, ledTest: false, recording: false },
+      }));
+    }
   }
 }
 
@@ -173,16 +180,21 @@ function serve(request, response, listener) {
     return;
   }
   const origin = listener?.origin ?? `http://${host}`;
-  if (listener?.trustedLan && request.headers.origin !== undefined && !matchesHeader(request, "origin", origin)) {
+  const sameOrigin = request.headers.origin === undefined || matchesHeader(request, "origin", origin);
+  const capabilityPath = request.url === "/ui-capabilities.json";
+  const alternate = listener?.uiOrigin && capabilityPath && request.method === "GET" &&
+    matchesHeader(request, "origin", listener.uiOrigin);
+  if (listener?.trustedLan && !sameOrigin && !alternate) {
     response.writeHead(403).end();
     return;
   }
-  const capability = request.url === "/ui-capabilities.json" && capabilityBodies.get(listener);
+  const capability = capabilityPath && (alternate ? alternateCapabilities : capabilityBodies.get(listener));
   if (capability) {
     const site = request.headers["sec-fetch-site"];
-    if (!matchesHeader(request, "host", host) ||
-        (request.headers.origin !== undefined && !matchesHeader(request, "origin", origin)) ||
-        (site !== undefined && !["same-origin", "none"].some(value => matchesHeader(request, "sec-fetch-site", value)))) {
+    const sameOriginFetch = site === undefined || ["same-origin", "none"].some(value =>
+      matchesHeader(request, "sec-fetch-site", value));
+    const credentials = request.headers.cookie !== undefined || request.headers.authorization !== undefined;
+    if (!matchesHeader(request, "host", host) || (alternate ? credentials : !sameOrigin || !sameOriginFetch)) {
       response.writeHead(403).end();
       return;
     }
@@ -190,10 +202,13 @@ function serve(request, response, listener) {
       response.writeHead(405, { Allow: "GET" }).end();
       return;
     }
-    response.writeHead(200, {
+    const headers = {
       "Content-Type": "application/json; charset=utf-8", "Content-Length": capability.length,
       "Cache-Control": "no-store", "Cross-Origin-Resource-Policy": "same-origin", "X-Content-Type-Options": "nosniff",
-    }).end(capability);
+    };
+    if (listener?.uiOrigin) headers.Vary = "Origin";
+    if (alternate) headers["Access-Control-Allow-Origin"] = listener.uiOrigin;
+    response.writeHead(200, headers).end(capability);
     return;
   }
   if (recordings && !listener && request.url.startsWith("/recordings/") && !matchesHeader(request, "host", host)) {
@@ -447,9 +462,11 @@ function acceptUpgrade(request, raw, head, listener) {
   const identity = listener?.identity(raw);
   const synthReceive = identity === "synth" ? listener.synthReceive : undefined;
   const expectedOrigin = synthReceive?.origin ?? listener?.origin ?? `http://${expectedHost}`;
+  const alternate = listener?.uiOrigin && /^\/midi\/[123]$/.test(request.url) &&
+    matchesHeader(request, "origin", listener.uiOrigin);
   const admitted = listener
     ? identity && matchesHeader(request, "host", expectedHost) &&
-      matchesHeader(request, "origin", expectedOrigin)
+      (matchesHeader(request, "origin", expectedOrigin) || alternate)
     : request.headers.host === expectedHost && request.headers.origin === expectedOrigin;
   if (!admitted) {
     reject(raw, "403 Forbidden");

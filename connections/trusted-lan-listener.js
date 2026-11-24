@@ -5,13 +5,16 @@ const { createServer } = require("node:http");
 const { isIPv4 } = require("node:net");
 const { networkInterfaces } = require("node:os");
 
-function createTrustedLanListener(filename) {
+function createTrustedLanListener(filename, uiDescriptor = false) {
   const info = statSync(filename);
   if (!info.isFile() || info.size > 4096) throw new Error("Expected a small trusted LAN configuration file");
   const config = JSON.parse(readFileSync(filename, "utf8"));
-  const { interface: device, address, port, cidr } = config;
+  const { interface: device, address, port, cidr, uiOrigin } = config;
   if (device !== "wlan0" || address !== "192.168.0.223" || port !== 18768 || cidr !== "192.168.0.0/24") {
     throw new Error("Expected wlan0, 192.168.0.223:18768 and 192.168.0.0/24");
+  }
+  if (uiOrigin !== undefined && (!uiDescriptor || uiOrigin !== "http://127.0.0.1:8767")) {
+    throw new Error("Trusted LAN uiOrigin requires --ui-descriptor and http://127.0.0.1:8767");
   }
   const matching = () => networkInterfaces()[device]?.some((entry) =>
     entry.family === "IPv4" && !entry.internal && entry.address === address && entry.netmask === "255.255.255.0");
@@ -23,6 +26,7 @@ function createTrustedLanListener(filename) {
     port,
     host: `${address}:${port}`,
     origin: `http://${address}:${port}`,
+    uiOrigin,
     ports: new Map([[1, "in"], [2, "in"], [3, "out"]]),
     trustedLan: true,
     available: matching,
