@@ -168,6 +168,14 @@ The Pi has its own enabled `gridpico-router.service`, independent of the laptop'
 
 Start a take in **Recordings**, wait for **Recording**, and play the APC on the same Pi origin in another tab. The starter managed route 1 → 12 reaches only the recorder's local binding. Stop finalizes the take, and the latest validated stereo PCM WAV is available by download. Capture is limited to 60 seconds and the completed file to 12 MiB. Actual direct Chromium confirmed routed APC MIDI and downloaded a non-silent stock FluidSynth WAV whose SHA-256 matched the Pi file. The enabled user service and SSH-independent operation were verified. An actual reboot, the operator laptop and physical Pico/CDC remain open. [Pi operation and updates](platform/linux/PI_ROUTER.md) · [Recording contract](api/pi-recorder.md)
 
+## Approved UI usability delivery
+
+Start with one action from canonical local startup through Diagnostics to a visible routed LED effect, with known starter routes. The same view observes the actual receiver green, Off and committed restore. Keep a distinct top-level Routing view with named inputs as rows, named outputs as columns, and editable crosspoints where the selected endpoint permits edits. Report enable intent separately from Pending or Active feedback, and distinguish both from port availability. [Reviewed use cases](USE_CASES.md)
+
+Use one parameterized `scripts/web-ui.sh` and verify that local and Pi serve the same core pages and assets at a matching release. Keep tool destinations visible and show unavailable capabilities in place. Prove a server-address switch in the loaded UI on an approved exact-origin browser path. Track a same-tool navigation fallback separately. Preserve the live Pi recorder, local-only serial authority and independent instrument deployments.
+
+UI Designer reviews the workflow and visual hierarchy before implementation and advises on uncertain UI choices. Route unresolved product trade-offs through Strategist. Visual references guide layout, defaults and interaction. Testing independently checks visible results, readability, hierarchy and honest states at representative desktop and narrow widths. Exact asset bytes have their own check. The operator's actual laptop is a separate regression check when available. Keep the 45% weekly floor and leave the sequencer frontend deferred.
+
 ## Demo sequence for 23 November at 09:00 CET (08:00 UTC)
 
 Historical delivery plan. The current entry point and startup evidence are in [controller and Diagnostics startup](#approved-follow-up--controller-and-diagnostics-startup).

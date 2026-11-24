@@ -21,6 +21,7 @@ The bootstrap sessions displayed the model and effort settings listed below. Pro
 | Interfaces: CLI frontend | `gpt-6-luna` | medium | Later |
 | Interfaces: Web APC simulator | `gpt-6.2-sol` | medium | Later |
 | Interfaces: Computer connections | `gpt-6.2-sol` | medium | Later |
+| UI Designer | `gpt-6.2-astra` | low | Approved, workflow and visual concepts first |
 | Platforms: Application Assembly | `gpt-6.2-sol` | high | Later |
 | Platforms: RP2040 HAL | `gpt-6.2-sol` | high | Later |
 | Platforms: Linux HAL (x86 and ARM) | `gpt-6.2-sol` | medium | Later |
