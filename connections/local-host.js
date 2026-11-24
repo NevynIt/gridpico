@@ -60,14 +60,20 @@ function page(file, extra = "") {
   if (!html.includes("</head>")) throw new Error("Local router HTML is missing </head>");
   return html.replace("</head>", script + extra + "\n</head>");
 }
+const diagnosticsPage = "diagnostics/index.html";
+const routingPage = page(diagnosticsPage, '<script defer src="/local-routing.js"></script>')
+  .replace("<title>Gridpico Diagnostics</title>", "<title>Gridpico Routing</title>")
+  .replace("<body>", '<body data-tool="routing">')
+  .replace("<h1>Gridpico Diagnostics</h1>", "<h1>Routing</h1>");
 const assets = new Map([
   ["/apc/", ["text/html; charset=utf-8", page("../web/apc/index.html")]],
-  ["/diagnostics/", ["text/html; charset=utf-8", page("diagnostics/index.html",
+  ["/diagnostics/", ["text/html; charset=utf-8", page(diagnosticsPage,
     '<script defer src="/local-diagnostics.js"></script><script defer src="/local-routing.js"></script>')]],
   ["/local-transport.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-transport.js"))]],
   ["/local-diagnostics.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-diagnostics.js"))]],
   ["/local-routing.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-routing.js"))]],
 ]);
+const loopbackRouting = ["text/html; charset=utf-8", routingPage];
 const startupAssets = new Map();
 if (webUi) {
   for (const url of ["/apc/", "/diagnostics/"]) {
@@ -95,7 +101,9 @@ try {
 }
 const recordings = recorder && createRecordingsHttp(recorder, matchesHeader);
 const recordingsLink = '<li><a href="/recordings/"><strong>Recordings</strong><span>Record a take and download the WAV.</span></a></li>';
-const localHome = assets.has("/fm/") ? homePage : homePage.replace(/^ *<li data-optional-tool="fm">.*<\/li>\n/m, "");
+// The offline asset builder removes the legacy Routing link from the shared template.
+const hostedHome = homePage.replace('href="/diagnostics/#routing"', 'href="/routing/"');
+const localHome = assets.has("/fm/") ? hostedHome : hostedHome.replace(/^ *<li data-optional-tool="fm">.*<\/li>\n/m, "");
 const home = ["text/html; charset=utf-8", recorder ? localHome.replace("</ul>", `${recordingsLink}\n</ul>`) : localHome];
 const lanAssets = lan && new Map([
   ["/", ["text/html; charset=utf-8", homePage.replace(/<ul>[\s\S]*?<\/ul>/,
@@ -128,7 +136,8 @@ function matchesHeader(request, name, expected) {
 function serve(request, response, listener) {
   const host = listener?.host ?? `${address}:${request.socket.localPort}`;
   const asset = listener?.trustedLan ? lanAssets.get(request.url) : listener ? assets.get(request.url) :
-    request.url === "/" ? home : startupAssets.get(request.url) ?? assets.get(request.url);
+    request.url === "/" ? home : request.url === "/routing/" ? loopbackRouting :
+      startupAssets.get(request.url) ?? assets.get(request.url);
   const identity = listener?.identity(request.socket);
   if (listener && (!identity || !matchesHeader(request, "host", host))) {
     response.writeHead(403).end();

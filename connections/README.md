@@ -180,21 +180,26 @@ as three-byte binary frames at `/midi/<port-id>` and serial CLI bytes at
 ### Routing
 
 On the local router host, open **Routing** from Gridpico Home. It opens
-`/diagnostics/#routing` and shares the selected serial session with Diagnostics.
+`/routing/`. The old served `/diagnostics/#routing` bookmark opens this tool.
+Routing and Diagnostics use the same serial client. Connect again in the next
+tool after navigating. A router accepts one serial session at a time.
 Connect **Loopback CLI** to read the named inputs, outputs, and routes. Routing reads
 all pages before displaying a snapshot. Use **Refresh routing** to check
 current availability, which can change after a snapshot is read.
 The standard `./scripts/web-ui.sh` launch shows the six-port profile.
 
-The managed matrix shows Off, Pending, or Active for each compatible pair.
-Pending and Active both indicate an enabled route. Free, In use, and
-Unavailable describe each port separately. Use **Enable** or **Disable**
-to request an edit and see the router's readback. The Raw LED pair appears
-separately and still requires an explicit enable. The local CLI remains
-available for terminal commands in the same page.
+Managed inputs are rows and outputs are columns. Each compatible crosspoint
+shows its confirmed enabled state and whether the route is Off, Pending, or
+Active. Free, In use, and Unavailable describe each port separately. Toggle a
+crosspoint to request an edit. Routing keeps the confirmed value until it
+finishes reading back the current snapshot. The Raw LED pair and Panel
+inventory are under **Raw routes and port inventory**. The Raw lease still
+requires an explicit enable. Terminal commands are available on Routing under
+**Serial transcript and CLI commands**.
 
-To use a local device, select **Web Serial CDC** in Diagnostics and choose
-its port. It starts as a plain transcript. Identify the attached device,
+To use a local device, select **Web Serial CDC** and choose its port. The
+offline Diagnostics page keeps its in-file `#routing` entry. Identify the
+attached device in the plain serial transcript,
 then choose **Check Routing** to read its capabilities. Confirm the selected
 router before editing. A device without a matching Routing reply stays in
 the plain terminal. Changing the serial provider clears the prior snapshot

@@ -182,6 +182,8 @@ Use one parameterized `scripts/web-ui.sh` and verify that local and Pi serve the
 
 Using the exact canonical `./scripts/web-ui.sh` launcher with a Linux Compose stand-in, independent testing in Chromium verified that one click in Diagnostics from Home showed green, Off and a full restore of the current 40-pad state in the same view, with accurate Stop and connection-loss status, while in-browser endpoint switching and the Pi same-bundle rollout remain separate pending milestones.
 
+Independent Chromium testing at both lab widths verified that the canonical launcher serves a distinct `/routing/` view with labeled crosspoints operable by mouse and keyboard, committed CLI readback for Pending, Active and Off, and a 6×9 desktop profile, while preserving the existing connection when serial was busy and retaining the one-action Diagnostics LED test.
+
 UI Designer reviews the workflow and visual hierarchy before implementation and advises on uncertain UI choices. Route unresolved product trade-offs through Strategist. Visual references guide layout, defaults and interaction. Testing independently checks visible results, readability, hierarchy and honest states at representative desktop and narrow widths. Exact asset bytes have their own check. The operator's actual laptop is a separate regression check when available. Keep the 30% weekly floor and leave the sequencer frontend deferred.
 
 ## Demo sequence for 23 November at 09:00 CET (08:00 UTC)

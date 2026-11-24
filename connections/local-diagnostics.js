@@ -3,6 +3,21 @@ window.addEventListener("DOMContentLoaded", () => {
 
   const adapter = window.gridpicoLocal;
   if (!adapter) return;
+  const localTool = location.protocol === "http:" && location.hostname === "127.0.0.1";
+  if (localTool) {
+    const handoff = () => {
+      if (location.hash === "#routing") location.replace("/routing/");
+    };
+    window.addEventListener("hashchange", handoff);
+    if (location.hash === "#routing") {
+      handoff();
+      return;
+    }
+    const routing = document.querySelector("#routing-navigation");
+    routing.querySelector("a").href = "/routing/";
+    routing.hidden = false;
+    document.querySelector("#diagnostics-home").hidden = false;
+  }
   if (location.protocol === "file:") document.querySelector("#diagnostics-apc").href = "INDEX.HTM";
   document.querySelector("#diagnostics-navigation").hidden = false;
   const section = document.querySelector("#local-midi");

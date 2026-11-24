@@ -76,12 +76,33 @@
     #monitor-volume { flex: 0 1 12rem; }
     #routing { margin: 1.5rem 0; }
     #routing .matrix-wrap { overflow: auto; }
+    #routing .matrix { border-collapse: separate; border-spacing: 0; }
     #routing .matrix th { min-width: 9rem; }
+    #routing .matrix tr > th:first-child { position: sticky; left: 0; z-index: 1; background: #212a28; }
     #routing .matrix button { width: 100%; }
     #routing .port-name { display: block; font-weight: 600; }
     #routing .port-role { font-size: .875rem; font-weight: normal; }
     #routing [data-route-state="active"] { border-color: #8fe0b6; }
     #routing [data-route-state="pending"] { border-color: #f5d18b; }
+    [data-tool="routing"] nav { display: flex; flex-wrap: wrap; gap: .8rem; margin-bottom: .85rem; }
+    [data-tool="routing"] [aria-current="page"] { font-weight: 700; }
+    [data-tool="routing"] #routing-title { display: none; }
+    [data-tool="routing"] #routing { margin-top: 0; }
+    [data-tool="routing"] #routing-session .connection { margin-bottom: .65rem; }
+    [data-tool="routing"] #routing-status, #routing-router { margin: .6rem 0; }
+    #routing .matrix-wrap { border: 1px solid #56615e; border-radius: .45rem; }
+    #routing .matrix { margin: 0; }
+    #routing .matrix th, #routing .matrix td { vertical-align: top; }
+    #routing .matrix thead th { background: #212a28; }
+    #routing .route-switch { text-align: left; white-space: nowrap; }
+    #routing .route-switch:focus-visible { outline-offset: -3px; }
+    #routing .route-switch[aria-disabled="true"] { opacity: .72; cursor: default; background: #242b2a; }
+    #routing .route-switch[aria-disabled="true"]:hover { background: #242b2a; }
+    #routing .route-state, #routing .route-note { display: block; font-size: .875rem; white-space: normal; }
+    #routing .route-note { margin-top: .3rem; }
+    #routing-focus { min-height: 1.5em; margin: .5rem 0; }
+    #routing-more, #routing-terminal { margin-top: 1.25rem; }
+    #routing-more summary, #routing-terminal summary { cursor: pointer; }
     #led-test { margin: 0 0 1.7rem; padding: clamp(1rem, 3vw, 1.75rem); border: 1px solid #53635e; border-radius: .75rem; background: #1c2422; }
     #led-test-title { font-size: 1.55rem; }
     #led-test-server { margin: .7rem 0 1.4rem; }
@@ -109,6 +130,12 @@
 <body>
   <main>
     <h1>Gridpico Diagnostics</h1>
+    <nav id="routing-tools" aria-label="Gridpico tools" hidden>
+      <a href="/">Home</a>
+      <a href="/apc/">Web APC</a>
+      <a href="/diagnostics/">Diagnostics</a>
+      <a href="/routing/" aria-current="page">Routing</a>
+    </nav>
     <section id="led-test" hidden aria-labelledby="led-test-title">
       <h2 id="led-test-title">LED test</h2>
       <div id="led-test-server"></div>
@@ -129,6 +156,7 @@
       </div>
     </section>
     <nav id="diagnostics-navigation" aria-label="Gridpico tools" hidden>
+      <span id="diagnostics-home" hidden><a href="/">Home</a> · </span>
       <a id="diagnostics-apc" href="/apc/" target="_blank" rel="noopener">Open Web APC in another tab</a>
       <span id="routing-navigation" hidden> · <a href="#routing">Routing</a></span>
     </nav>
@@ -164,10 +192,11 @@
     <section id="routing" hidden aria-labelledby="routing-title">
       <h2 id="routing-title">Routing</h2>
       <p id="routing-router"></p>
+      <div id="routing-session"></div>
       <div class="command-row">
         <button id="routing-connect" type="button">Connect local CLI</button>
         <button id="routing-refresh" type="button" disabled>Refresh routing</button>
-        <a href="#terminal">Open CLI transcript and commands</a>
+        <a id="routing-terminal-link" href="#terminal">Open CLI transcript and commands</a>
       </div>
       <p id="routing-status" role="status"></p>
       <label id="routing-confirm-label" hidden>
@@ -178,12 +207,18 @@
       <div id="routing-snapshot" hidden>
         <p id="routing-revision"></p>
         <h3>Managed routes</h3>
-        <div class="matrix-wrap"><table class="matrix" id="routing-managed"></table></div>
-        <h3>Raw routes</h3>
-        <div class="matrix-wrap"><table id="routing-raw"></table></div>
-        <h3>Port availability</h3>
-        <p>Availability describes this router. It can change after a snapshot is read.</p>
-        <table id="routing-inventory"></table>
+        <p id="routing-focus">Focus a crosspoint to see its full port names.</p>
+        <div class="matrix-wrap" tabindex="0" role="region" aria-label="Managed routing matrix">
+          <table class="matrix" id="routing-managed" aria-label="Managed inputs and outputs"></table>
+        </div>
+        <details id="routing-more" open>
+          <summary>Raw routes and port inventory</summary>
+          <h3>Raw routes</h3>
+          <div class="matrix-wrap"><table id="routing-raw"></table></div>
+          <h3>Port availability</h3>
+          <p>Availability describes this router. It can change after a snapshot is read.</p>
+          <div class="matrix-wrap"><table id="routing-inventory"></table></div>
+        </details>
       </div>
     </section>
     <section id="midi-connection" hidden aria-labelledby="midi-connection-title">
@@ -309,6 +344,7 @@
 
     const localPage = location.protocol === "file:" ||
       (location.protocol === "http:" && location.hostname === "127.0.0.1");
+    const routingView = document.body.dataset.tool === "routing";
     const serial = localPage ? navigator.serial : undefined;
     const settings = {
       baudRate: 115200, dataBits: 8, parity: "none", stopBits: 1, flowControl: "none",
@@ -392,7 +428,8 @@
         completeCommand(active);
       }
       updateControls();
-      if (initialPrompt && active.ready && active.focusCommand && !active.ledTest && location.hash !== "#routing") command.focus();
+      if (initialPrompt && active.ready && active.focusCommand && !active.ledTest && !routingView &&
+          location.hash !== "#routing") command.focus();
     }
 
     async function writeBytes(active, bytes) {
@@ -634,8 +671,11 @@
             if (connection !== active) return;
             if (state === "connected" && !active.closing) {
               active.ready = true;
-              showStatus(`Local CLI connected · ${location.origin}`);
+              showStatus(routingView ? "Local CLI connected." : `Local CLI connected · ${location.origin}`);
             } else if (state === "disconnected") {
+              if (!active.ready && !active.closing && routingView) {
+                reason = "Couldn’t connect to the Loopback CLI. It may be in use or unavailable.";
+              }
               readReply(active, decoder.decode());
               finishCommand(active, new Error("The local CLI disconnected."));
               connection = undefined;
@@ -645,7 +685,8 @@
               notifyLocalCli();
             }
             updateControls();
-            if (state === "connected" && active.ready && active.focusCommand && location.hash !== "#routing") command.focus();
+            if (state === "connected" && active.ready && active.focusCommand && !routingView &&
+                location.hash !== "#routing") command.focus();
           },
         });
       } catch (error) {

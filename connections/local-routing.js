@@ -1,6 +1,8 @@
 window.addEventListener("DOMContentLoaded", () => {
   "use strict";
 
+  const dedicated = document.body.dataset.tool === "routing";
+  if (!dedicated && location.protocol === "http:" && location.hostname === "127.0.0.1") return;
   const cli = window.gridpicoDiagnosticsCli;
   const view = document.querySelector("#routing");
   const link = document.querySelector("#routing-navigation");
@@ -16,7 +18,27 @@ window.addEventListener("DOMContentLoaded", () => {
   const managedTable = document.querySelector("#routing-managed");
   const rawTable = document.querySelector("#routing-raw");
   const inventoryTable = document.querySelector("#routing-inventory");
+  const focusedPair = document.querySelector("#routing-focus");
+  const matrixRegion = managedTable.parentElement;
   const encoder = new TextEncoder();
+
+  if (dedicated) {
+    document.querySelector("#routing-tools").hidden = false;
+    view.setAttribute("aria-label", "Router connections and routes");
+    view.removeAttribute("aria-labelledby");
+    document.querySelector("#routing-session").append(document.querySelector(".connection[data-serial-controls]"));
+    document.querySelector("#routing-terminal-link").hidden = true;
+    document.querySelector("#routing-more").open = false;
+
+    const terminal = document.createElement("details");
+    terminal.id = "routing-terminal";
+    const title = document.createElement("summary");
+    title.textContent = "Serial transcript and CLI commands";
+    terminal.append(title, document.querySelector('[aria-labelledby="transcript-heading"]'),
+      document.querySelector("#terminal"));
+    view.after(terminal);
+    if (location.hash === "#terminal") terminal.open = true;
+  }
 
   // The CLI projection backing is 8 devices, 18 ports and 13 enabled routes.
   const maxDevices = 8;
@@ -32,6 +54,7 @@ window.addEventListener("DOMContentLoaded", () => {
   let work;
   let stale = false;
   let initialRead = true;
+  let editFeedback;
 
   function assert(condition) {
     if (!condition) throw new Error("The local CLI returned an incomplete or invalid Routing reply.");
@@ -141,6 +164,10 @@ window.addEventListener("DOMContentLoaded", () => {
     return `${projection.devices.get(port.device).name} / ${port.name} (ID ${port.id})`;
   }
 
+  function pairName(source, destination) {
+    return `${source.name} (${source.id}) to ${destination.name} (${destination.id})`;
+  }
+
   function cells(row, names) {
     for (const name of names) {
       const cell = document.createElement("th");
@@ -169,25 +196,73 @@ window.addEventListener("DOMContentLoaded", () => {
   function addRouteCell(cell, projection, source, destination, mode) {
     const route = { source: source.id, destination: destination.id, mode };
     const state = projection.routes.get(key(route)) ?? "OFF";
-    const action = state === "OFF" ? "Enable" : "Disable";
+    const enabled = state !== "OFF";
+    const pair = pairName(source, destination);
     const button = document.createElement("button");
     button.type = "button";
+    button.className = "route-switch";
     button.dataset.routeState = state.toLowerCase();
     button.dataset.source = String(source.id);
     button.dataset.destination = String(destination.id);
     button.dataset.mode = mode;
-    button.textContent = `${routeLabels[state]} · ${action}`;
-    button.setAttribute("aria-label", `${action} ${portDisplay(source, projection)} to ${portDisplay(destination, projection)}, currently ${routeLabels[state]}`);
-    button.addEventListener("click", () => { void edit(route, state === "OFF"); });
+    button.setAttribute("role", "switch");
+    button.setAttribute("aria-checked", String(enabled));
+    button.setAttribute("aria-label", pair);
+    const stateText = document.createElement("span");
+    stateText.className = "route-state";
+    stateText.id = `route-state-${source.id}-${destination.id}`;
+    stateText.textContent = routeLabels[state];
+    button.setAttribute("aria-describedby", stateText.id);
+    button.append(enabled ? "Enabled" : "Disabled", stateText);
+    button.addEventListener("click", () => {
+      if (button.getAttribute("aria-disabled") !== "true") void edit(route, !enabled);
+    });
+    button.addEventListener("focus", () => {
+      focusedPair.textContent = pair;
+      if (mode !== "managed") return;
+      const region = matrixRegion.getBoundingClientRect();
+      const bounds = cell.getBoundingClientRect();
+      const firstColumn = cell.parentElement.firstElementChild.getBoundingClientRect();
+      if (bounds.right > region.right - 1) matrixRegion.scrollLeft += bounds.right - region.right + 1;
+      else if (bounds.left < firstColumn.right) matrixRegion.scrollLeft -= firstColumn.right - bounds.left;
+    });
     cell.append(button);
+    const note = document.createElement("small");
+    note.className = "route-note";
+    note.id = `route-note-${source.id}-${destination.id}`;
+    const feedback = editFeedback?.key === key(route) ? editFeedback.message : "";
+    note.textContent = feedback;
+    note.hidden = !feedback;
+    button.setAttribute("aria-describedby", `${stateText.id} ${note.id}`);
+    cell.append(note);
+  }
+
+  function editNote(route, message) {
+    editFeedback = { key: key(route), message };
+    const { source, destination } = route;
+    const note = document.getElementById(`route-note-${source}-${destination}`);
+    if (!note) return;
+    note.hidden = !message;
+    note.textContent = message;
   }
 
   function render(projection) {
+    const focused = document.activeElement?.closest(".route-switch");
+    const scrollLeft = matrixRegion.scrollLeft;
     const entries = [...projection.ports.values()];
     const byMode = (direction, mode) => entries.filter(port => port.direction === direction && port.mode === mode);
     managedTable.replaceChildren();
     const header = managedTable.createTHead().insertRow();
-    cells(header, ["Source input / Destination output"]);
+    const axes = document.createElement("th");
+    axes.scope = "col";
+    const outputs = document.createElement("span");
+    outputs.className = "port-name";
+    outputs.textContent = "Outputs / destinations";
+    const inputs = document.createElement("span");
+    inputs.className = "port-role";
+    inputs.textContent = "Inputs / sources";
+    axes.append(outputs, inputs);
+    header.append(axes);
     const destinations = byMode("out", "managed");
     for (const destination of destinations) {
       const column = document.createElement("th");
@@ -196,7 +271,8 @@ window.addEventListener("DOMContentLoaded", () => {
       header.append(column);
     }
     const matrix = managedTable.createTBody();
-    for (const source of byMode("in", "managed")) {
+    const sources = byMode("in", "managed");
+    for (const source of sources) {
       const row = matrix.insertRow();
       const label = document.createElement("th");
       label.scope = "row";
@@ -205,8 +281,13 @@ window.addEventListener("DOMContentLoaded", () => {
       for (const destination of destinations) {
         const cell = row.insertCell();
         if (compatible(source, destination, "managed")) addRouteCell(cell, projection, source, destination, "managed");
-        else cell.textContent = "Incompatible";
+        else cell.textContent = "Incompatible · same device";
       }
+    }
+    if (!sources.length || !destinations.length) {
+      const cell = matrix.insertRow().insertCell();
+      cell.colSpan = destinations.length + 1;
+      cell.textContent = "This router has no managed input and output pairs.";
     }
     const raw = tableBody(rawTable, ["Source input", "LED receiver output", "Route"]);
     const rawInputs = byMode("in", "raw");
@@ -231,24 +312,38 @@ window.addEventListener("DOMContentLoaded", () => {
         port.mode, availabilityLabels[port.availability]]) row.insertCell().textContent = value;
     }
     results.hidden = false;
+    matrixRegion.scrollLeft = scrollLeft;
+    if (focused && results.contains(focused) === false) {
+      const { source, destination, mode } = focused.dataset;
+      results.querySelector(`.route-switch[data-source="${source}"][data-destination="${destination}"][data-mode="${mode}"]`)
+        ?.focus({ preventScroll: true });
+    }
   }
 
   function updateControls() {
-    connect.hidden = !cli?.supported;
+    connect.hidden = dedicated || !cli?.supported;
     connect.textContent = cli?.selected === "cdc" ? "Connect Web Serial CDC" : "Connect local CLI";
     connect.disabled = Boolean(cli?.attached);
     refresh.textContent = cli?.attached && !cli.structured ? "Check Routing" : "Refresh routing";
     refresh.disabled = !cli?.ready || Boolean(work);
     confirmLabel.hidden = !cli?.attached || cli.loopback || !cli.structured || !snapshot;
     confirmRouter.disabled = Boolean(work || stale);
-    const enabled = Boolean(cli?.ready && !work && !stale && (cli.loopback || (cli.structured && confirmRouter.checked)));
-    for (const button of results.querySelectorAll("button")) button.disabled = !enabled;
-    link.hidden = !cli?.supported;
+    const authorized = cli?.loopback || (cli?.structured && confirmRouter.checked);
+    const enabled = Boolean(cli?.ready && !work && !stale && authorized);
+    for (const button of results.querySelectorAll(".route-switch")) {
+      button.setAttribute("aria-disabled", String(!enabled));
+      if (!dedicated) button.disabled = !enabled;
+    }
+    if (!dedicated) link.hidden = !cli?.supported;
     router.textContent = cli?.endpoint ? `Selected router endpoint · ${cli.endpoint}` :
       cli?.selected === "loopback" ? `Selected router ${location.origin} · Loopback CLI` :
         cli?.selected === "cdc" ? "Web Serial CDC · Choose the router’s port." : "Routing needs a local serial provider.";
-    if (snapshot) revision.textContent = stale ? `Stale snapshot · revision ${snapshot.revision}. Refresh before editing.` :
-      `Snapshot revision ${snapshot.revision}`;
+    if (snapshot) {
+      if (work) revision.textContent = `Reading current state · showing confirmed revision ${snapshot.revision}.`;
+      else if (stale) revision.textContent = `Stale snapshot · revision ${snapshot.revision}. Refresh before editing.`;
+      else if (!authorized) revision.textContent = `Read-only · revision ${snapshot.revision}. Confirm the selected device to edit.`;
+      else revision.textContent = `Snapshot revision ${snapshot.revision}`;
+    }
   }
 
   function begin() {
@@ -287,6 +382,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const job = begin();
     if (!job) return;
     editStatus.textContent = "";
+    editFeedback = undefined;
     try { await load(job); } catch (error) {
       if (work === job) {
         const probing = !cli.loopback && !cli.structured;
@@ -304,24 +400,42 @@ window.addEventListener("DOMContentLoaded", () => {
     const job = begin();
     if (!job) return;
     const { source, destination, mode } = route;
-    const pair = `${source} → ${destination}`;
+    const pair = pairName(snapshot.ports.get(source), snapshot.ports.get(destination));
+    const previous = editFeedback?.key.split("/").map(Number);
+    if (previous) {
+      const note = document.getElementById(`route-note-${previous[0]}-${previous[1]}`);
+      if (note) note.hidden = true;
+    }
+    editNote(route, "Awaiting readback.");
     status.textContent = "Waiting for the router to commit the edit…";
-    editStatus.textContent = "";
+    editStatus.textContent = `${pair} · Awaiting readback.`;
     try {
       const command = `route ${source} ${destination} ${mode} ${on ? "on" : "off"}`;
       const reply = cliReply(await cli.routingCommand(command, confirmRouter.checked), command);
       if (work !== job) return;
       if (reply.rejected) {
-        editStatus.textContent = `Route ${pair} edit rejected (ERR ${reply.rejected}). ${rejections[reply.rejected]}.`;
+        const reason = `Edit rejected (ERR ${reply.rejected}) · ${rejections[reply.rejected]}.`;
+        editNote(route, reason);
+        editStatus.textContent = `${pair} · ${reason}`;
       } else {
         assert(reply.lines.length === 1);
         const committed = routeFrom(reply.lines[0]);
         assert(key(committed) === key(route));
-        editStatus.textContent = `Route ${pair} reported ${routeLabels[committed.state]}.`;
       }
       await load(job);
+      if (work === job && !reply.rejected) {
+        editNote(route, "");
+        const state = snapshot.routes.get(key(route)) ?? "OFF";
+        editStatus.textContent = `${pair} · Confirmed ${routeLabels[state]}.`;
+      }
     } catch (error) {
-      if (work === job) status.textContent = `${error.message} Refresh to check committed state.`;
+      if (work === job) {
+        if (editFeedback?.message === "Awaiting readback.") {
+          editNote(route, "Readback unconfirmed. Refresh this route.");
+        }
+        status.textContent = `${error.message} Refresh to check committed state.`;
+        editStatus.textContent = `${pair} · ${editFeedback.message}`;
+      }
     } finally {
       end(job);
     }
@@ -333,12 +447,12 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   function onHash() {
-    view.hidden = location.hash !== "#routing";
+    view.hidden = !dedicated && location.hash !== "#routing";
     if (!view.hidden) {
-      if (!cli?.supported) status.textContent = "Open Routing on the router host or in a supported local browser.";
-      else if (!cli.attached) status.textContent = cli.notice || "Choose and connect a serial provider to read this router.";
+      if (!cli?.supported) status.textContent = "Routing unavailable. Open it from the router’s loopback Home or connect the device through Web Serial CDC in a supported browser.";
+      else if (!cli.attached) status.textContent = cli.notice || "Routing unavailable. Connect a serial provider to read this router.";
       onQueue();
-      view.scrollIntoView();
+      if (!dedicated) view.scrollIntoView();
     }
   }
 
@@ -354,13 +468,15 @@ window.addEventListener("DOMContentLoaded", () => {
     rawTable.replaceChildren();
     inventoryTable.replaceChildren();
     revision.textContent = "";
+    editFeedback = undefined;
+    focusedPair.textContent = "Focus a crosspoint to see its full port names.";
     confirmRouter.checked = false;
     stale = true;
     initialRead = true;
     editStatus.textContent = "";
     status.textContent = cli?.notice || (cli?.attached && cli.loopback ? "Connecting the local CLI…" :
       cli?.attached ? "Identify the selected router in the transcript, then choose Check Routing." :
-        "Choose and connect a serial provider to read this router.");
+        "Routing unavailable. Connect a serial provider to read this router.");
     onQueue();
   });
   window.addEventListener("gridpico-local-cli-terminal", () => {
