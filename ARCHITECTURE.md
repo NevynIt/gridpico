@@ -55,7 +55,7 @@ Application Assembly supplies the execution context. Platform callbacks submit b
 
 The basic route is **source selection → processor chain → destination(s)**. Fan-out can have independent branches and processor settings. The patch grid and advanced editing operate on this one model, not separate routing engines.
 
-Device bindings use logical identity and user aliases. Assembly resolves a registered port using adapter-qualified identity and direction. A unique verified USB match can reattach on a fresh generation. Ambiguous or missing identity leaves enabled routes pending until resolved. The graph reconciles applicable cleanup before activation and waits for fresh input. [USB replacement contract](api/routing.md#verified-usb-replacement)
+Device bindings use logical identity and user aliases. Stage 3 supports opt-in Linux USB input selection when the adapter can prove one match. The physical gate covers scoped cleanup on unplug and a verified return on a fresh input generation. Missing or ambiguous input matches leave enabled routes Pending. A USB output selector reserves its port and stays Pending. Operators can still configure an explicit numeric ALSA output. Generation-bound verified output awaits a separate transport and delivery review. [USB replacement contract](api/routing.md#verified-usb-replacement)
 
 Represent cable/port, MIDI channel and device identity separately. USB packet framing belongs in adapters. The core event contract must preserve ordinary MIDI, realtime messages and bounded/streamed SysEx without assuming every message is a four-byte USB packet.
 
@@ -99,7 +99,7 @@ The computer-visible read-only filesystem is **not** this writable project store
 
 Inside the APC frontend, keep protocol decoding/encoding separate from view/gesture interpretation even though one owner initially owns both. Other frontends neither impersonate the APC nor import its view implementation.
 
-Physical and simulated panel messages reach the production APC frontend through Computer connections or platform MIDI. The frontend translates panel gestures into typed commands and renders state-derived LED feedback. Keybed notes enter the production MIDI graph through musical ingress. The configurable profile adds a passive APC viewport. Its navigation only changes which five source rows and eight destination columns are visible. Route editing for that view stays in the local CLI. [APC viewport contract](api/routing.md#apc-viewport)
+Physical and simulated panel messages reach the production APC frontend through Computer connections or platform MIDI. The frontend translates panel gestures into typed commands and renders state-derived LED feedback. Keybed notes enter the production MIDI graph through musical ingress. The verified desktop profile uses a passive APC viewport. Its navigation only changes which five source rows and eight destination columns are visible. Route editing stays in the local CLI. Physical APC acceptance remains separate. [APC viewport contract](api/routing.md#apc-viewport)
 
 Independently running components exchange MIDI or the serial CLI byte stream. On RP2040, the browser can select computer-visible MIDI ports. The desktop WebSocket adapter carries the same APC messages to the production frontend. Router inventory, status and route control are available through the local serial CLI. Typed routing, port registration and delivery accounting stay within the production runtime.
 
@@ -107,11 +107,11 @@ The piano frontend must remember whether a press/pedal transition was consumed o
 
 ### Web landing page and browser MIDI
 
-Assembly owns `scripts/web-ui.sh` as the computer entry point for the production web home. Connections hosts the landing page with links to Web APC, Diagnostics and the optional FM instrument. Assembly stages `HOME.HTM` with relative links to self-contained `INDEX.HTM`, `DIAG.HTM` and `FM.HTM` for read-only `GRIDPICO` distribution. Staged-file checks verified direct opening. Actual mounted Pico and CDC acceptance remains pending. [Web startup and evidence](api/browser-midi.md)
+Assembly owns `scripts/web-ui.sh` as the computer entry point for the production web home. Connections hosts the landing page with links to Web APC, Diagnostics, Routing and the optional FM instrument. Assembly stages `HOME.HTM` with relative links to self-contained `INDEX.HTM`, `DIAG.HTM` and `FM.HTM` for read-only `GRIDPICO` distribution. Staged-file checks verified direct opening. Routing through local CDC and actual mounted Pico access remain pending. [Web startup and evidence](api/browser-midi.md)
 
 Connections shares one in-page browser MIDI layer for provider and port selection, send, receive and binding lifecycle. Web MIDI can select ordinary OS ports, including OS-exposed RTP-MIDI endpoints when the browser grants access. The WebSocket provider binds directional ports to the production router over the existing binary MIDI wire. This shared layer is a code boundary inside the page. Diagnostics opens its serial CLI stream independently. [Browser MIDI and landing page contract](api/browser-midi.md)
 
-The approved Home-linked Routing view shares one serial session with Diagnostics, using the local loopback CLI or local Web Serial CDC. It displays coherent named directional ports and occupancy separately from desired and active route state. The CLI owns route commands and replies. The browser keeps its own provider, permission and selected-port state. The direct Web MIDI path can reach physical APC LED RX independently of the router. Hardware and mounted-drive results have separate acceptance. [Routing and serial](api/routing.md#routing-through-the-local-cli)
+The Home-linked Routing view shares the local loopback CLI session with Diagnostics. The six-port default and 18-port desktop profile both expose it. It displays named directional ports and occupancy separately from desired and active route state. The CLI owns route commands and replies. The browser keeps its own provider, permission and selected-port state. The local Web Serial CDC option for Routing and direct Web MIDI to physical APC LED RX remain Stage 3 gates. [Routing and serial](api/routing.md#routing-through-the-local-cli)
 
 ### Browser Monitor
 
@@ -123,7 +123,7 @@ Track voices by destination, MIDI channel and key so two channels using the same
 
 Sound-generating peers open ordinary MIDI inputs. Stock FluidSynth and the standalone wrapper each received MIDI through the production Pi ALSA route and produced a verified local WAV. The wrapper owns the engine process, SoundFont and local output. The standalone browser FM instrument uses the shared receive adapter and owns its built-in voice, Web Audio and local voice cleanup. Routed Note On and Note Off were verified through loopback WebSocket and selected ALSA Web MIDI ports. Both peers ship independently from the router and firmware. [Instrument-peer contracts and evidence](api/instrument-peers.md)
 
-The approved optional Web Synth fork stays independently hosted and credited. It can receive ordinary MIDI through a gated, explicitly published WSS output. The fork owns its existing interface, engine and local audio. Its upstream source and browser admission gates precede integration. Gridpico retains the staged offline FM instrument. [Web Synth peer contract](api/instrument-peers.md#optional-hosted-web-synth)
+The planned optional Web Synth fork will be independently hosted and credited. Its upstream source and browser admission gates precede integration with an explicitly published WSS MIDI output. The fork retains its own interface, engine and local audio. Gridpico retains the staged offline FM instrument. [Web Synth peer contract](api/instrument-peers.md#optional-hosted-web-synth)
 
 ### Patch and Circuit views
 
@@ -198,7 +198,7 @@ Arrows in the [architecture diagram](docs/diagrams/README.md) show data or contr
 
 Application Assembly publishes one effective capacity profile for each supported target or deterministic simulation setup, with backend input and domain validation. Optional features report availability separately. Kernel limits apply before a configuration becomes live. Queues and other performance resources have finite bounds and explicit exhaustion behavior. Frontends page endpoints and report limits using the current profile and command results. The [capacity contract](api/README.md#capacity-profiles) lists the required units and admission rules.
 
-The physical five-by-eight APC surface is a viewport over the target's configured logical ports. Measure registry backing, admitted live peers, fan-out, held occurrences, release capacity and queue isolation independently. Use the proposed five-pair RP2040 composite layout alongside active instrument routing and read-only disk activity as a separate workload. Verified limits belong to each target profile. Keep WSS publication independent of registry size. [Configurable profile contract](api/routing.md#profile-and-admission)
+The verified desktop profile maps the five-by-eight APC viewport over six managed source rows and nine managed destination columns. Its 18 directional ports and 200 release credits reflect the tested desktop workload. Registry backing, live peer admission, fan-out, held occurrences, release capacity and queue isolation are target-specific. The proposed five-pair RP2040 composite layout with active routing and read-only disk activity remains a separate workload. WSS publication is independent of registry size. [Configurable profile contract](api/routing.md#profile-and-admission)
 
 ## 7. Agent mapping and ownership
 

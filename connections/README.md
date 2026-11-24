@@ -180,8 +180,8 @@ as three-byte binary frames at `/midi/<port-id>` and serial CLI bytes at
 ### Routing
 
 On the local router host, open **Routing** from Gridpico Home. It opens
-`/diagnostics/#routing` and uses the same local CLI connection as Diagnostics.
-Connect the CLI to read the named inputs, outputs, and routes. Routing reads
+`/diagnostics/#routing` and shares the selected serial session with Diagnostics.
+Connect **Loopback CLI** to read the named inputs, outputs, and routes. Routing reads
 all pages before displaying a snapshot. Use **Refresh routing** to check
 current availability, which can change after a snapshot is read.
 The standard `./scripts/web-ui.sh` launch shows the six-port profile.
@@ -192,6 +192,13 @@ Unavailable describe each port separately. Use **Enable** or **Disable**
 to request an edit and see the router's readback. The Raw LED pair appears
 separately and still requires an explicit enable. The local CLI remains
 available for terminal commands in the same page.
+
+To use a local device, select **Web Serial CDC** in Diagnostics and choose
+its port. It starts as a plain transcript. Identify the attached device,
+then choose **Check Routing** to read its capabilities. Confirm the selected
+router before editing. A device without a matching Routing reply stays in
+the plain terminal. Changing the serial provider clears the prior snapshot
+and requires a fresh connection.
 
 For the expanded desktop profile, run
 `./scripts/web-ui.sh --profile app/profiles/desktop.conf` on the launcher host.
@@ -212,6 +219,11 @@ OS MIDI port. Grant access from the page, select a named system output for
 sending or input for receiving, then connect. Refresh the list after adding
 or replacing a port. A lost port needs a fresh selection. Chrome with real
 ALSA ports verified this browser selection and device-loss behavior.
+
+In Diagnostics, LED Sequence, Monitor and MIDI Log each have their own
+provider and port selection. Direct Web MIDI sends use the selected system
+output connected to APC Port 1. Check the lamp to verify receipt. This send
+uses no Raw lease.
 
 The OS manages RTP-MIDI sessions. Select an RTP port in Web MIDI if the OS
 exposes it and the browser lists it. The Linux two-host RTP bench verified
@@ -250,9 +262,9 @@ drive acceptance remain open.
 
 In Diagnostics, select the MIDI output. For WebSocket, connect the APC LED
 receiver, enter the shown `route SRC DST raw on` command and wait for the
-CLI to report Active. With a connected **Local CLI** in the same page,
+CLI to report Active. With **Loopback CLI** connected in the same page,
 Diagnostics checks the selected Raw pair before a sequence or a single
-Solid green/Off send. With an external CLI or WSS, confirm the readback
+Solid green/Off send. With Web Serial CDC, an external CLI, or WSS, confirm the readback
 manually in Diagnostics. Keep Diagnostics visible during the run. The
 queued status reports local submission. Check the live APC pad for the result.
 For Web MIDI, choose a system output connected to the APC LED input.

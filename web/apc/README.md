@@ -156,17 +156,18 @@ slash. Remote access requires a trusted server certificate and an enrolled
 client certificate.
 [Server choices and admission](../../api/browser-midi.md#server-selection-and-status)
 
-To use system MIDI, select **Web MIDI** and click **Allow Web MIDI**. Grant
-browser access, then choose a system output for each TX role and a system
-input for LED RX. Click **Connect** for each selected port. Use **Refresh MIDI
-ports** after changing devices. The offline package starts in Web MIDI when
-the browser supports it and requests permission from the same button.
+Choose a transport independently for Keybed TX, Panel TX and LED RX. For
+system MIDI, select **Web MIDI** on the role and click **Allow Web MIDI**.
+Grant browser access, then choose a system output for TX or a system input
+for LED RX and click **Connect**. Use **Refresh MIDI ports** after changing
+devices. The offline package starts in Web MIDI when the browser supports
+it and requests permission from the same button.
 
 Keybed notes and panel button pairs use separate TX links. Rebinding sends
 releases on the old available link. A lost link clears its held controls.
-Changing LED RX clears its display until fresh feedback arrives. Other
-bindings stay active when one link changes. Connect again explicitly
-after a loss.
+Changing LED RX clears its display until fresh feedback arrives. When you
+change a role's transport, its old binding closes and the other roles stay
+connected. Select the new port and connect explicitly.
 
 For a WebSocket LED check, connect Web APC LED RX and the Diagnostics LED
 Sequence TX, run `route 4 3 raw on` in the local Diagnostics CLI for the

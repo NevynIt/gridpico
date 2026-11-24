@@ -14,12 +14,17 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-enum { CONFIG_BYTES = 4096, ALSA_ADDRESSES = 65536, SERVICE_INTERVAL_MS = 5 };
+enum {
+    CONFIG_BYTES = 4096, ALSA_ADDRESSES = 65536, SERVICE_INTERVAL_MS = 5,
+    RESCAN_EVENT_BUDGET = 2 * GRIDPICO_LOCAL_PORTS,
+};
 
 typedef struct {
     gridpico_port_id port;
     gridpico_patch_direction direction;
     gridpico_linux_midi_address address;
+    gridpico_linux_usb_selector usb;
+    bool verified_usb;
 } selection;
 
 typedef struct {
@@ -37,6 +42,8 @@ typedef struct {
     const char *config;
     selection_list selected;
     attachment active[GRIDPICO_LOCAL_PORTS];
+    bool rescan_pending;
+    unsigned rescan_events_left;
 } linux_router;
 
 static volatile sig_atomic_t reload_requested;
@@ -50,6 +57,13 @@ static void request_reload(int signal_number)
 static bool same_address(gridpico_linux_midi_address a, gridpico_linux_midi_address b)
 {
     return a.client == b.client && a.port == b.port;
+}
+
+static bool same_usb(const gridpico_linux_usb_selector *a, const gridpico_linux_usb_selector *b)
+{
+    return a->vendor_id == b->vendor_id && a->product_id == b->product_id &&
+           a->interface_number == b->interface_number && a->serial_size == b->serial_size &&
+           memcmp(a->serial, b->serial, a->serial_size) == 0;
 }
 
 static const char *direction_name(gridpico_patch_direction direction)
@@ -85,37 +99,86 @@ static char *skip_space(char *text)
     return text;
 }
 
+static int hex_digit(unsigned char digit)
+{
+    if (digit >= '0' && digit <= '9') return digit - '0';
+    if (digit >= 'A' && digit <= 'F') return digit - 'A' + 10;
+    if (digit >= 'a' && digit <= 'f') return digit - 'a' + 10;
+    return -1;
+}
+
+static bool hex_field(char **cursor, unsigned digits, uint16_t *out)
+{
+    unsigned value = 0;
+    for (unsigned i = 0; i < digits; ++i) {
+        const int digit = hex_digit((unsigned char)**cursor);
+        if (digit < 0) return false;
+        value = value * 16u + (unsigned)digit;
+        ++*cursor;
+    }
+    *out = (uint16_t)value;
+    return true;
+}
+
+static bool parse_usb(char **cursor, gridpico_linux_usb_selector *selector)
+{
+    if (!hex_field(cursor, 4, &selector->vendor_id) || **cursor != ':') return false;
+    ++*cursor;
+    if (!hex_field(cursor, 4, &selector->product_id) || !isspace((unsigned char)**cursor)) {
+        return false;
+    }
+    *cursor = skip_space(*cursor);
+    while (!isspace((unsigned char)**cursor)) {
+        uint16_t byte;
+        if (selector->serial_size == GRIDPICO_LINUX_USB_SERIAL_BYTES ||
+            !hex_field(cursor, 2, &byte)) return false;
+        selector->serial[selector->serial_size++] = (uint8_t)byte;
+    }
+    *cursor = skip_space(*cursor);
+    uint16_t interface;
+    if (selector->serial_size == 0 || !hex_field(cursor, 2, &interface)) return false;
+    selector->interface_number = (uint8_t)interface;
+    return true;
+}
+
 static bool add_selection(const local_runtime *runtime, selection_list *list, char *line)
 {
     char *cursor = skip_space(line);
     if (*cursor == '\0' || *cursor == '#') {
         return true;
     }
-    unsigned long id, client, port;
+    unsigned long id;
     if (!number(&cursor, UINT16_MAX, &id) || !isspace((unsigned char)*cursor)) {
         return false;
     }
     cursor = skip_space(cursor);
-    if (!number(&cursor, UINT8_MAX, &client) || *cursor++ != ':' ||
-        !number(&cursor, UINT8_MAX, &port)) {
-        return false;
+    selection row = {.port = (gridpico_port_id)id};
+    if (strncmp(cursor, "usb", 3) == 0 && isspace((unsigned char)cursor[3])) {
+        row.verified_usb = true;
+        cursor = skip_space(cursor + 3);
+        if (!parse_usb(&cursor, &row.usb)) return false;
+    } else {
+        unsigned long client, port;
+        if (!number(&cursor, UINT8_MAX, &client) || *cursor++ != ':' ||
+            !number(&cursor, UINT8_MAX, &port)) return false;
+        row.address = (gridpico_linux_midi_address){(uint8_t)client, (uint8_t)port};
     }
     cursor = skip_space(cursor);
-    const gridpico_port_id logical = (gridpico_port_id)id;
     local_port_state state;
     if ((*cursor != '\0' && *cursor != '#') || list->count == GRIDPICO_LOCAL_PORTS ||
-        local_runtime_port(runtime, logical, &state) != GRIDPICO_OK ||
-        select_index(list, logical) != list->count) {
+        local_runtime_port(runtime, row.port, &state) != GRIDPICO_OK ||
+        select_index(list, row.port) != list->count) {
         return false;
     }
-    const gridpico_linux_midi_address address = {(uint8_t)client, (uint8_t)port};
+    row.direction = state.direction;
     for (size_t i = 0; i < list->count; ++i) {
-        if (list->rows[i].direction == state.direction &&
-            same_address(list->rows[i].address, address)) {
-            return false;
+        const selection *other = &list->rows[i];
+        if (other->direction == row.direction && other->verified_usb == row.verified_usb) {
+            if (row.verified_usb ? same_usb(&other->usb, &row.usb)
+                                 : same_address(other->address, row.address)) return false;
         }
     }
-    list->rows[list->count++] = (selection){logical, state.direction, address};
+    list->rows[list->count++] = row;
     return true;
 }
 
@@ -157,7 +220,7 @@ static bool load_config(const char *path, const local_runtime *runtime, selectio
             *next++ = '\0';
         }
         if (!add_selection(runtime, list, line)) {
-            fprintf(stderr, "%s:%zu: expected a unique logical port and ALSA CLIENT:PORT\n",
+            fprintf(stderr, "%s:%zu: expected a unique logical port and an ALSA address or USB selector\n",
                     path, line_no);
             return false;
         }
@@ -198,17 +261,17 @@ static bool read_ports(gridpico_linux_midi *midi, gridpico_linux_midi_port **por
 
 static bool verify_selections(gridpico_linux_midi *midi, const selection_list *list)
 {
-    gridpico_linux_midi_port *ports;
-    size_t count;
-    if (list->count == 0) {
-        return true;
-    }
-    if (!read_ports(midi, &ports, &count)) {
-        return false;
-    }
+    gridpico_linux_midi_port *ports = NULL;
+    size_t count = 0;
+    bool read = false;
     bool verified = true;
     for (size_t i = 0; i < list->count; ++i) {
         const selection *row = &list->rows[i];
+        if (row->verified_usb) continue;
+        if (!read) {
+            if (!read_ports(midi, &ports, &count)) return false;
+            read = true;
+        }
         size_t j = 0;
         for (; j < count; ++j) {
             const bool allowed = row->direction == GRIDPICO_PATCH_INPUT
@@ -262,11 +325,23 @@ static gridpico_result attach(linux_router *router, local_runtime *runtime, size
         !state.adapter_owned || state.attached || state.generation == UINT32_MAX) {
         return GRIDPICO_UNAVAILABLE;
     }
+    if (row->verified_usb && state.direction == GRIDPICO_PATCH_OUTPUT) {
+        fprintf(stderr, "Verified USB output logical port %u is reserved and remains pending\n",
+                (unsigned)row->port);
+        return GRIDPICO_UNAVAILABLE;
+    }
     const gridpico_connection connection = {row->port, state.generation + 1u};
-    gridpico_result result = gridpico_linux_midi_bind(router->midi, row->address,
-                                                    state.direction, connection);
+    gridpico_linux_midi_address address = row->address;
+    gridpico_result result = row->verified_usb
+        ? gridpico_linux_midi_bind_usb(router->midi, &row->usb, state.direction, connection, &address)
+        : gridpico_linux_midi_bind(router->midi, address, state.direction, connection);
+    if (row->verified_usb && result != GRIDPICO_OK) {
+        fprintf(stderr, "Verified USB logical port %u (%s) is pending (%d)\n",
+                (unsigned)row->port, direction_name(state.direction), result);
+        return result;
+    }
     if (result == GRIDPICO_OK) {
-        router->active[i] = (attachment){connection, row->address};
+        router->active[i] = (attachment){connection, address};
         const local_midi_adapter adapter = {
             .context = router, .retire = retire_midi,
             .send = state.direction == GRIDPICO_PATCH_OUTPUT ? send_midi : NULL,
@@ -279,7 +354,7 @@ static gridpico_result attach(linux_router *router, local_runtime *runtime, size
     fprintf(stderr, "ALSA %s logical port %u (%s) at %u:%u generation %" PRIu32 " (%d)\n",
             result == GRIDPICO_OK ? "attached" : "could not attach",
             (unsigned)row->port, direction_name(state.direction),
-            (unsigned)row->address.client, (unsigned)row->address.port,
+            (unsigned)address.client, (unsigned)address.port,
             connection.generation, result);
     return result;
 }
@@ -293,7 +368,7 @@ static gridpico_result attach_missing(linux_router *router, local_runtime *runti
             if (router->selected.rows[i].direction == order[direction] &&
                 router->active[i].connection.generation == 0) {
                 const gridpico_result attached = attach(router, runtime, i);
-                if (result == GRIDPICO_OK) {
+                if (result == GRIDPICO_OK && !router->selected.rows[i].verified_usb) {
                     result = attached;
                 }
             }
@@ -321,7 +396,14 @@ static gridpico_result rebind(linux_router *router, local_runtime *runtime)
             return GRIDPICO_INVALID;
         }
         ordered.rows[i] = desired.rows[j];
-        if (!same_address(router->selected.rows[i].address, ordered.rows[i].address)) {
+        const selection *previous = &router->selected.rows[i];
+        const selection *replacement = &ordered.rows[i];
+        if (previous->verified_usb != replacement->verified_usb ||
+            (previous->verified_usb && !same_usb(&previous->usb, &replacement->usb))) {
+            fputs("Changing an ALSA selector kind or USB identity requires a new router process\n", stderr);
+            return GRIDPICO_INVALID;
+        }
+        if (!previous->verified_usb && !same_address(previous->address, replacement->address)) {
             changed.rows[changed.count++] = ordered.rows[i];
         }
     }
@@ -333,8 +415,13 @@ static gridpico_result rebind(linux_router *router, local_runtime *runtime)
     for (size_t direction = 0; direction < 2; ++direction) {
         for (size_t i = 0; i < ordered.count; ++i) {
             const attachment active = router->active[i];
-            if (ordered.rows[i].direction == order[direction] && active.connection.generation != 0 &&
-                !same_address(active.address, ordered.rows[i].address)) {
+            const selection *row = &ordered.rows[i];
+            if (row->direction != order[direction] || active.connection.generation == 0) continue;
+            const bool retire = row->verified_usb
+                ? gridpico_linux_midi_check_usb_binding(router->midi, &row->usb,
+                                                       active.connection) != GRIDPICO_OK
+                : !same_address(active.address, row->address);
+            if (retire) {
                 const gridpico_result detached = local_runtime_detach(runtime, active.connection);
                 if (result == GRIDPICO_OK) {
                     result = detached;
@@ -352,14 +439,21 @@ static gridpico_result next_event(void *context, local_runtime *runtime, bool *h
     linux_router *router = context;
     if (reload_requested) {
         reload_requested = 0;
+        if (!router->rescan_pending) router->rescan_events_left = RESCAN_EVENT_BUDGET;
+        router->rescan_pending = true;
+    }
+    gridpico_linux_midi_event event;
+    if (!router->rescan_pending || router->rescan_events_left != 0) {
+        const gridpico_result result = gridpico_linux_midi_next(router->midi, &event, handled);
+        if (result != GRIDPICO_OK || (!router->rescan_pending && !*handled)) return result;
+    }
+    /* Drain the adapter's observed events first, with a bound under live input. */
+    if (router->rescan_pending && (!*handled || router->rescan_events_left == 0)) {
+        router->rescan_pending = false;
         *handled = true;
         return rebind(router, runtime);
     }
-    gridpico_linux_midi_event event;
-    const gridpico_result result = gridpico_linux_midi_next(router->midi, &event, handled);
-    if (result != GRIDPICO_OK || !*handled) {
-        return result;
-    }
+    if (router->rescan_pending) --router->rescan_events_left;
     const size_t i = select_index(&router->selected, event.connection.endpoint);
     if (i == router->selected.count ||
         router->active[i].connection.generation != event.connection.generation) {
@@ -396,10 +490,13 @@ static void usage(FILE *out)
 {
     fputs("Usage: gridpico_linux_router [--list-alsa | --help]\n"
           "Set GRIDPICO_ALSA_BINDINGS_FILE to a file with LOGICAL_PORT CLIENT:PORT rows.\n"
+          "For verified USB input use LOGICAL_PORT usb VID:PID SERIAL_HEX INTERFACE.\n"
+          "Use four hex digits for VID and PID, 2-128 even serial digits, and two for interface.\n"
+          "A USB output selector reserves its port and remains pending. Outputs can use explicit CLIENT:PORT.\n"
           "Use readable ALSA ports for router inputs and writable ports for outputs.\n"
           "Configure routes through the existing serial CLI. Unmapped ports use the local host.\n"
-          "SIGHUP rechecks selections and attaches changed or retired addresses.\n"
-          "Changing which logical ports use ALSA requires a new router process.\n", out);
+          "SIGHUP rechecks explicit address and verified USB input bindings. Unmatched inputs stay pending.\n"
+          "Changing logical ALSA port ownership, selector kind or USB identity requires a new process.\n", out);
 }
 
 static int run(linux_router *router)

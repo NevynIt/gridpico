@@ -66,6 +66,7 @@ if(GRIDPICO_ENABLE_ALSA)
         app/linux_router.c
         app/local_router.c
         platform/linux/linux_midi.c
+        platform/linux/usb_identity.c
     )
     target_compile_definitions(gridpico_linux_router PRIVATE GRIDPICO_LOCAL_ROUTER_RUNNER_ONLY)
     target_link_libraries(gridpico_linux_router PRIVATE gridpico_local_runtime ALSA::ALSA)

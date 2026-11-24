@@ -9,6 +9,8 @@ window.addEventListener("DOMContentLoaded", () => {
   const refresh = document.querySelector("#routing-refresh");
   const status = document.querySelector("#routing-status");
   const editStatus = document.querySelector("#routing-edit-status");
+  const confirmLabel = document.querySelector("#routing-confirm-label");
+  const confirmRouter = document.querySelector("#routing-confirm");
   const results = document.querySelector("#routing-snapshot");
   const revision = document.querySelector("#routing-revision");
   const managedTable = document.querySelector("#routing-managed");
@@ -36,7 +38,7 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   function cliReply(reply, command) {
-    const lines = reply.split("\r\n");
+    const lines = (cli.loopback ? reply : reply.replace(/^> (?:\r\n)?/, "")).split("\r\n");
     const echo = lines.shift();
     // The terminal can echo the no-argument routing command with one trailing space.
     assert((echo === command || (command === "routing" && echo === "routing ")) && lines.pop() === "> ");
@@ -113,7 +115,7 @@ window.addEventListener("DOMContentLoaded", () => {
       if (work !== job) return;
       if (reply.rejected) {
         if (offset && reply.rejected === "UNAVAILABLE") return { changed: true };
-        if (!offset && reply.rejected === "INVALID") {
+        if (cli.loopback && !offset && reply.rejected === "INVALID") {
           throw new Error("The selected router did not accept Routing. Start it with ./scripts/web-ui.sh.");
         }
         throw new Error(`Routing read failed (ERR ${reply.rejected}). ${rejections[reply.rejected]}.`);
@@ -233,10 +235,18 @@ window.addEventListener("DOMContentLoaded", () => {
 
   function updateControls() {
     connect.hidden = !cli?.supported;
+    connect.textContent = cli?.selected === "cdc" ? "Connect Web Serial CDC" : "Connect local CLI";
     connect.disabled = Boolean(cli?.attached);
+    refresh.textContent = cli?.attached && !cli.structured ? "Check Routing" : "Refresh routing";
     refresh.disabled = !cli?.ready || Boolean(work);
-    const enabled = Boolean(cli?.ready && !work && !stale);
+    confirmLabel.hidden = !cli?.attached || cli.loopback || !cli.structured || !snapshot;
+    confirmRouter.disabled = Boolean(work || stale);
+    const enabled = Boolean(cli?.ready && !work && !stale && (cli.loopback || (cli.structured && confirmRouter.checked)));
     for (const button of results.querySelectorAll("button")) button.disabled = !enabled;
+    link.hidden = !cli?.supported;
+    router.textContent = cli?.endpoint ? `Selected router endpoint · ${cli.endpoint}` :
+      cli?.selected === "loopback" ? `Selected router ${location.origin} · Loopback CLI` :
+        cli?.selected === "cdc" ? "Web Serial CDC · Choose the router’s port." : "Routing needs a local serial provider.";
     if (snapshot) revision.textContent = stale ? `Stale snapshot · revision ${snapshot.revision}. Refresh before editing.` :
       `Snapshot revision ${snapshot.revision}`;
   }
@@ -254,12 +264,13 @@ window.addEventListener("DOMContentLoaded", () => {
   async function load(job) {
     status.textContent = "Reading Routing snapshot…";
     let completed = await readAll(job);
-    if (completed?.changed) {
+    if (completed?.changed && cli.loopback) {
       status.textContent = "Routing changed during the read. Starting again…";
       completed = await readAll(job);
     }
     if (work !== job) return;
     if (completed.changed) throw new Error("Routing changed again. Refresh to try a new snapshot.");
+    cli.confirmRoutingCapability();
     render(completed);
     snapshot = completed;
     stale = false;
@@ -277,14 +288,19 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!job) return;
     editStatus.textContent = "";
     try { await load(job); } catch (error) {
-      if (work === job) status.textContent = error.message;
+      if (work === job) {
+        const probing = !cli.loopback && !cli.structured;
+        if (probing) cli.keepPlainTerminal();
+        status.textContent = probing ? `${error.message} The plain terminal is available. Reconnect before checking Routing again.` :
+          error.message;
+      }
     } finally {
       end(job);
     }
   }
 
   async function edit(route, on) {
-    if (stale) return;
+    if (stale || (!cli.loopback && !confirmRouter.checked)) return;
     const job = begin();
     if (!job) return;
     const { source, destination, mode } = route;
@@ -293,7 +309,7 @@ window.addEventListener("DOMContentLoaded", () => {
     editStatus.textContent = "";
     try {
       const command = `route ${source} ${destination} ${mode} ${on ? "on" : "off"}`;
-      const reply = cliReply(await cli.routingCommand(command), command);
+      const reply = cliReply(await cli.routingCommand(command, confirmRouter.checked), command);
       if (work !== job) return;
       if (reply.rejected) {
         editStatus.textContent = `Route ${pair} edit rejected (ERR ${reply.rejected}). ${rejections[reply.rejected]}.`;
@@ -313,31 +329,38 @@ window.addEventListener("DOMContentLoaded", () => {
 
   function onQueue() {
     updateControls();
-    if (!view.hidden && cli?.ready && initialRead && !work) void read();
+    if (!view.hidden && cli?.loopback && cli.ready && initialRead && !work) void read();
   }
 
   function onHash() {
     view.hidden = location.hash !== "#routing";
     if (!view.hidden) {
-      if (!cli?.supported) status.textContent = "Open Routing on the router host to use its loopback CLI.";
-      else if (!cli.attached) status.textContent = "Connect the local CLI to read this router.";
+      if (!cli?.supported) status.textContent = "Open Routing on the router host or in a supported local browser.";
+      else if (!cli.attached) status.textContent = cli.notice || "Choose and connect a serial provider to read this router.";
       onQueue();
       view.scrollIntoView();
     }
   }
 
-  link.hidden = !cli?.supported;
-  router.textContent = cli?.supported ? `Selected router ${location.origin} · Local CLI` :
-    "Routing uses the local CLI on the router host.";
-  connect.addEventListener("click", () => cli?.connectLocal());
+  connect.addEventListener("click", () => cli?.connect());
   refresh.addEventListener("click", () => { void read(); });
+  confirmRouter.addEventListener("change", updateControls);
   window.addEventListener("gridpico-local-cli-queue", onQueue);
   window.addEventListener("gridpico-local-cli-binding", () => {
     work = undefined;
+    snapshot = undefined;
+    results.hidden = true;
+    managedTable.replaceChildren();
+    rawTable.replaceChildren();
+    inventoryTable.replaceChildren();
+    revision.textContent = "";
+    confirmRouter.checked = false;
     stale = true;
     initialRead = true;
     editStatus.textContent = "";
-    status.textContent = cli?.attached ? "Connecting the local CLI…" : "Local CLI disconnected. Reconnect to refresh.";
+    status.textContent = cli?.notice || (cli?.attached && cli.loopback ? "Connecting the local CLI…" :
+      cli?.attached ? "Identify the selected router in the transcript, then choose Check Routing." :
+        "Choose and connect a serial provider to read this router.");
     onQueue();
   });
   window.addEventListener("gridpico-local-cli-terminal", () => {

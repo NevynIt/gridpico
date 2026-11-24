@@ -58,9 +58,12 @@ window.addEventListener("DOMContentLoaded", () => {
     accessStatus.textContent = "No MIDI provider is available in this browser or context.";
     return;
   }
-  for (const id of adapter.midiProviders) {
-    provider.add(new Option(id === "web-midi" ? "Web MIDI" : "WebSocket", id));
+  function addProviders(select) {
+    for (const id of adapter.midiProviders) {
+      select.add(new Option(id === "web-midi" ? "Web MIDI" : "WebSocket", id));
+    }
   }
+  addProviders(provider);
 
   function directMidi() {
     return provider.value === "web-midi";
@@ -225,13 +228,16 @@ window.addEventListener("DOMContentLoaded", () => {
 
   function mountReceiver(role, receive, lost) {
     const root = document.querySelector(`#${role}-binding`);
-    const field = root.querySelector("input");
-    const ports = root.querySelector("select");
-    const label = root.querySelector("label");
+    const select = root.querySelector(`#${role}-provider`);
+    const field = root.querySelector(`#${role}-port`);
+    const ports = root.querySelector(`#${role}-system-port`);
+    const label = root.querySelector(`label[for="${role}-port"]`);
     const bind = root.querySelector("[data-bind]");
     const unbind = root.querySelector("[data-disconnect]");
     const indicator = root.querySelector("[role=status]");
     let currentBinding;
+    addProviders(select);
+    const isWebMidi = () => select.value === "web-midi";
 
     function report(state, message) {
       indicator.dataset.state = state;
@@ -241,7 +247,7 @@ window.addEventListener("DOMContentLoaded", () => {
     }
 
     function refresh() {
-      const direct = directMidi();
+      const direct = isWebMidi();
       const previous = ports.value;
       const inputs = direct ? adapter.listMidiPorts("receive") : [];
       if (direct) {
@@ -262,22 +268,23 @@ window.addEventListener("DOMContentLoaded", () => {
       const previous = currentBinding;
       currentBinding = undefined;
       previous.handle?.close();
+      if (previous.direct) ports.value = "";
       lost?.();
       report(reason ? "error" : "disconnected", reason || "Disconnected.");
       refresh();
     }
 
     function open() {
-      const direct = directMidi();
+      const direct = isWebMidi();
       if (currentBinding || (direct ? !ports.value : !field.reportValidity())) return;
       const id = direct ? ports.value : field.valueAsNumber;
       const name = direct ? ports.selectedOptions[0].text : `MIDI port ${id}`;
-      const active = { ready: false };
+      const active = { ready: false, direct };
       currentBinding = active;
       report("connecting", `Connecting to ${name}…`);
       try {
         active.handle = adapter.openMidi(id, {
-          provider: provider.value,
+          provider: select.value,
           direction: "receive",
           onData(bytes) {
             if (currentBinding === active && active.ready) receive(bytes, name);
@@ -300,6 +307,12 @@ window.addEventListener("DOMContentLoaded", () => {
 
     bind.addEventListener("click", open);
     unbind.addEventListener("click", () => retire());
+    select.addEventListener("change", () => {
+      retire();
+      ports.value = "";
+      refresh();
+      updateMidiAccess();
+    });
     ports.addEventListener("change", () => { bind.disabled = !ports.value; });
     const defaultPort = adapter.startupPorts?.[role];
     if (defaultPort) {
@@ -307,7 +320,7 @@ window.addEventListener("DOMContentLoaded", () => {
       open();
     }
     refresh();
-    return { refresh, retire };
+    return { refresh, retire, isWebMidi };
   }
 
   const monitor = mountMonitor();
@@ -331,6 +344,11 @@ window.addEventListener("DOMContentLoaded", () => {
   if (adapter.startupPorts) {
     port.value = adapter.startupPorts.sequence;
     destination.value = adapter.startupPorts.led;
+  }
+
+  function updateMidiAccess() {
+    access.hidden = accessStatus.hidden = !directMidi() && !receivers.some(receiver => receiver.isWebMidi());
+    access.disabled = requesting;
   }
 
   function renderSteps() {
@@ -361,21 +379,20 @@ window.addEventListener("DOMContentLoaded", () => {
 
   function updateControls() {
     const direct = directMidi();
-    access.hidden = accessStatus.hidden = !direct;
+    updateMidiAccess();
     osControls.hidden = !direct;
     routerPort.hidden = direct;
     lease.hidden = direct;
-    manualCheck.hidden = Boolean(routerCli?.attached);
+    manualCheck.hidden = Boolean(routerCli?.loopback);
     manualConfirm.disabled = Boolean(run || checking);
-    provider.disabled = Boolean(current || requesting);
-    access.disabled = Boolean(current || requesting);
+    provider.disabled = requesting;
     osPort.disabled = Boolean(current || requesting);
     connect.disabled = Boolean(current || requesting || (direct && !osPort.value));
     port.disabled = Boolean(current);
     disconnect.disabled = !current || current.closing;
     const available = Boolean(current?.ready && !current.closing);
     const readyToSend = available && !checking &&
-      (direct || (validPort(destination) && (routerCli?.attached || manualConfirm.checked)));
+      (direct || (validPort(destination) && (run || routerCli?.loopback || manualConfirm.checked)));
     const sequenceReady = readyToSend && !document.hidden;
     destination.disabled = Boolean(run || checking);
     solid.disabled = !readyToSend || Boolean(run);
@@ -406,13 +423,9 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   provider.addEventListener("change", () => {
-    clearRouteCheck();
-    for (const receiver of receivers) {
-      receiver.retire();
-      receiver.refresh();
-    }
+    finish("LED Sequence MIDI disconnected.", true);
+    osPort.value = "";
     if (directMidi()) refreshPorts();
-    status.textContent = "MIDI disconnected.";
     renderSteps();
     updateControls();
   });
@@ -427,7 +440,7 @@ window.addEventListener("DOMContentLoaded", () => {
       const outputs = refreshPorts();
       const inputs = adapter.listMidiPorts("receive").length;
       accessStatus.textContent = inputs || outputs ? "Choose a compatible MIDI port." : "No eligible MIDI ports are connected.";
-      status.textContent = outputs ? "Choose a MIDI output." : "No eligible MIDI outputs are connected.";
+      if (directMidi() && !current) status.textContent = outputs ? "Choose a MIDI output." : "No eligible MIDI outputs are connected.";
     } catch (error) {
       accessStatus.textContent = error.message;
     } finally {
@@ -444,7 +457,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if (current || !(direct ? osPort.reportValidity() : port.reportValidity())) return;
     const id = direct ? osPort.value : port.valueAsNumber;
     const name = direct ? osPort.selectedOptions[0].text : `MIDI port ${id}`;
-    const active = { ready: false, closing: false, name };
+    const active = { ready: false, closing: false, name, direct };
     current = active;
     clearRouteCheck();
     try {
@@ -457,6 +470,10 @@ window.addEventListener("DOMContentLoaded", () => {
             clearRun();
             clearRouteCheck();
             current = undefined;
+            if (active.direct) {
+              osPort.value = "";
+              refreshPorts();
+            }
             if (!active.closing) status.textContent = reason || "MIDI disconnected.";
           } else if (state === "connected" && !active.closing) {
             active.ready = true;
@@ -492,7 +509,7 @@ window.addEventListener("DOMContentLoaded", () => {
       return;
     }
     if (!validPort(port) || !validPort(destination)) return;
-    if (!routerCli?.attached) {
+    if (!routerCli?.loopback) {
       if (manualConfirm.checked) send();
       return;
     }

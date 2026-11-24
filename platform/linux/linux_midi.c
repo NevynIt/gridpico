@@ -1,18 +1,27 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "api/linux_midi.h"
+#include "usb_identity.h"
 
 #include <alsa/asoundlib.h>
 #include <alloca.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 enum {
     ALSA_INPUT_BUDGET = 16,
     ALSA_ADDRESS_SPACE = SND_SEQ_ADDRESS_UNKNOWN * (UINT8_MAX + 1)
 };
+
+typedef struct {
+    gridpico_linux_midi_address address;
+    linux_usb_location location;
+    linux_usb_node card;
+} usb_observation;
 
 typedef struct {
     snd_seq_t *seq;
@@ -23,6 +32,9 @@ typedef struct {
     bool faulted;
     bool fault_pending;
     gridpico_linux_midi_event_kind fault;
+    /* Zero serial size denotes a manual ALSA address rather than a USB bind. */
+    gridpico_linux_usb_selector selector;
+    usb_observation usb;
 } linux_binding;
 
 struct gridpico_linux_midi {
@@ -190,6 +202,127 @@ gridpico_result gridpico_linux_midi_list(gridpico_linux_midi *midi,
     return result;
 }
 
+static int subscription_status(const linux_binding *binding)
+{
+    snd_seq_port_subscribe_t *subscription;
+    snd_seq_port_subscribe_alloca(&subscription);
+    const bool input = binding->direction == GRIDPICO_PATCH_INPUT;
+    snd_seq_port_subscribe_set_sender(subscription, input ? &binding->remote : &binding->local);
+    snd_seq_port_subscribe_set_dest(subscription, input ? &binding->local : &binding->remote);
+    return snd_seq_get_port_subscription(binding->seq, subscription);
+}
+
+static bool valid_selector(const gridpico_linux_usb_selector *selector)
+{
+    return selector && selector->serial_size > 0 &&
+           selector->serial_size <= GRIDPICO_LINUX_USB_SERIAL_BYTES;
+}
+
+static bool same_selector(const gridpico_linux_usb_selector *left,
+                          const gridpico_linux_usb_selector *right)
+{
+    return left->vendor_id == right->vendor_id && left->product_id == right->product_id &&
+           left->interface_number == right->interface_number &&
+           left->serial_size == right->serial_size &&
+           memcmp(left->serial, right->serial, left->serial_size) == 0;
+}
+
+static bool same_usb_observation(const usb_observation *left, const usb_observation *right)
+{
+    return left->address.client == right->address.client &&
+           left->address.port == right->address.port &&
+           linux_usb_same_node(left->card, right->card) &&
+           linux_usb_same_node(left->location.device, right->location.device) &&
+           linux_usb_same_node(left->location.interface, right->location.interface);
+}
+
+static bool observe_usb_once(snd_seq_t *seq, int sysfs,
+                             const gridpico_linux_usb_selector *selector,
+                             gridpico_patch_direction direction, usb_observation *out)
+{
+    snd_seq_client_info_t *client;
+    snd_seq_port_info_t *port;
+    snd_seq_client_info_alloca(&client);
+    snd_seq_port_info_alloca(&port);
+    /* A self PID verifies that the running kernel supplies the card field. */
+    if (snd_seq_get_client_info(seq, client) < 0 ||
+        snd_seq_client_info_get_pid(client) != getpid() ||
+        !linux_usb_find(sysfs, selector, &out->location)) {
+        return false;
+    }
+    snd_seq_client_info_set_client(client, -1);
+    bool found = false;
+    int status;
+    while ((status = snd_seq_query_next_client(seq, client)) >= 0) {
+        const int id = snd_seq_client_info_get_client(client);
+        const int card = snd_seq_client_info_get_card(client);
+        if (id <= SND_SEQ_CLIENT_SYSTEM || id >= SND_SEQ_ADDRESS_UNKNOWN ||
+            snd_seq_client_info_get_type(client) != SND_SEQ_KERNEL_CLIENT || card < 0) {
+            continue;
+        }
+        linux_usb_node card_node;
+        const int match = linux_usb_card_matches(sysfs, card, out->location.interface, &card_node);
+        if (match < 0) {
+            return false;
+        }
+        if (!match) {
+            continue;
+        }
+        snd_seq_port_info_set_client(port, id);
+        snd_seq_port_info_set_port(port, -1);
+        while ((status = snd_seq_query_next_port(seq, port)) >= 0) {
+            const unsigned int required = SND_SEQ_PORT_TYPE_HARDWARE | SND_SEQ_PORT_TYPE_MIDI_GENERIC;
+            if ((snd_seq_port_info_get_type(port) & required) != required ||
+                !supports(snd_seq_port_info_get_capability(port), direction)) {
+                continue;
+            }
+            if (found) {
+                return false;
+            }
+            out->address = (gridpico_linux_midi_address){
+                (uint8_t)id, (uint8_t)snd_seq_port_info_get_port(port)
+            };
+            out->card = card_node;
+            found = true;
+        }
+        if (status != -ENOENT) {
+            return false;
+        }
+    }
+    return found && status == -ENOENT;
+}
+
+static bool observe_usb(gridpico_linux_midi *midi, const gridpico_linux_usb_selector *selector,
+                        gridpico_patch_direction direction, usb_observation *out)
+{
+    const int sysfs = open("/sys", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    if (sysfs < 0) {
+        return false;
+    }
+    usb_observation prior;
+    const bool verified = observe_usb_once(midi->inventory, sysfs, selector, direction, &prior) &&
+                          observe_usb_once(midi->inventory, sysfs, selector, direction, out) &&
+                          same_usb_observation(&prior, out);
+    close(sysfs);
+    return verified;
+}
+
+gridpico_result gridpico_linux_midi_resolve_usb(
+    gridpico_linux_midi *midi, const gridpico_linux_usb_selector *selector,
+    gridpico_patch_direction direction, gridpico_linux_midi_address *out_address)
+{
+    if (!midi || !valid_selector(selector) || !out_address ||
+        (direction != GRIDPICO_PATCH_INPUT && direction != GRIDPICO_PATCH_OUTPUT)) {
+        return GRIDPICO_INVALID;
+    }
+    usb_observation current;
+    if (!observe_usb(midi, selector, direction, &current)) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    *out_address = current.address;
+    return GRIDPICO_OK;
+}
+
 gridpico_result gridpico_linux_midi_bind(gridpico_linux_midi *midi,
                                         gridpico_linux_midi_address address,
                                         gridpico_patch_direction direction,
@@ -268,6 +401,65 @@ gridpico_result gridpico_linux_midi_bind(gridpico_linux_midi *midi,
     return GRIDPICO_OK;
 }
 
+gridpico_result gridpico_linux_midi_bind_usb(
+    gridpico_linux_midi *midi, const gridpico_linux_usb_selector *selector,
+    gridpico_patch_direction direction, gridpico_connection connection,
+    gridpico_linux_midi_address *out_address)
+{
+    if (!midi || !valid_selector(selector) || !connection.endpoint ||
+        !connection.generation || !out_address ||
+        (direction != GRIDPICO_PATCH_INPUT && direction != GRIDPICO_PATCH_OUTPUT)) {
+        return GRIDPICO_INVALID;
+    }
+    /* ALSA cannot confirm which subscription accepted a written event.
+     * Keep verified USB outputs pending until held-note delivery is safe. */
+    if (direction == GRIDPICO_PATCH_OUTPUT) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    usb_observation prior;
+    if (!observe_usb(midi, selector, direction, &prior)) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    linux_binding *old = binding_for(midi, connection);
+    const linux_binding previous = old ? *old : (linux_binding){0};
+    const gridpico_result result = gridpico_linux_midi_bind(midi, prior.address, direction, connection);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+    linux_binding *binding = binding_for(midi, connection);
+    usb_observation current;
+    if (!observe_usb(midi, selector, direction, &current) ||
+        !same_usb_observation(&prior, &current) || subscription_status(binding) < 0) {
+        snd_seq_close(binding->seq);
+        *binding = previous;
+        return GRIDPICO_UNAVAILABLE;
+    }
+    binding->selector = *selector;
+    binding->usb = current;
+    *out_address = current.address;
+    return GRIDPICO_OK;
+}
+
+gridpico_result gridpico_linux_midi_check_usb_binding(
+    gridpico_linux_midi *midi, const gridpico_linux_usb_selector *selector,
+    gridpico_connection connection)
+{
+    if (!midi || !valid_selector(selector) || !connection.endpoint || !connection.generation) {
+        return GRIDPICO_INVALID;
+    }
+    linux_binding *binding = binding_for(midi, connection);
+    usb_observation current;
+    if (!binding || !binding->seq || binding->faulted ||
+        binding->direction != GRIDPICO_PATCH_INPUT ||
+        binding->connection.generation != connection.generation ||
+        !same_selector(&binding->selector, selector) ||
+        !observe_usb(midi, selector, binding->direction, &current) ||
+        !same_usb_observation(&binding->usb, &current) || subscription_status(binding) < 0) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    return GRIDPICO_OK;
+}
+
 gridpico_result gridpico_linux_midi_unbind(gridpico_linux_midi *midi, gridpico_connection connection)
 {
     if (!midi || !connection.endpoint || !connection.generation) {
@@ -303,11 +495,7 @@ gridpico_result gridpico_linux_midi_send(gridpico_linux_midi *midi,
         GRIDPICO_LOCAL_MESSAGE_BYTES || event.type == SND_SEQ_EVENT_NONE) {
         return GRIDPICO_INVALID;
     }
-    snd_seq_port_subscribe_t *subscription;
-    snd_seq_port_subscribe_alloca(&subscription);
-    snd_seq_port_subscribe_set_sender(subscription, &binding->local);
-    snd_seq_port_subscribe_set_dest(subscription, &binding->remote);
-    const int subscribed = snd_seq_get_port_subscription(binding->seq, subscription);
+    const int subscribed = subscription_status(binding);
     if (subscribed < 0) {
         remember_fault(binding, subscribed == -ENOENT
             ? GRIDPICO_LINUX_MIDI_SUBSCRIPTION_REMOVED : GRIDPICO_LINUX_MIDI_IO_FAILED);

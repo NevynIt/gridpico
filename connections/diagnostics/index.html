@@ -61,7 +61,7 @@
     #input-error:empty { margin: 0; }
     #midi-connection, #midi-signals, #local-midi { margin-top: 2rem; }
     #local-midi label { margin-top: .65rem; }
-    #local-midi-manual-confirm { min-height: 0; vertical-align: middle; }
+    #local-midi-manual-confirm, #routing-confirm { min-height: 0; vertical-align: middle; }
     .sequence-table { overflow-x: auto; }
     table { width: 100%; border-collapse: collapse; margin: .7rem 0; }
     th, td {
@@ -94,6 +94,8 @@
     </nav>
     <p id="local-midi-only" hidden>Use the loopback CLI on the router host to configure routes.</p>
     <div class="connection" data-serial-controls>
+      <label for="serial-provider">Serial provider</label>
+      <select id="serial-provider"></select>
       <button id="connect" type="button" disabled>Connect</button>
       <button id="disconnect" type="button" disabled>Disconnect</button>
       <p id="status" role="status">Serial disconnected.</p>
@@ -128,6 +130,10 @@
         <a href="#terminal">Open CLI transcript and commands</a>
       </div>
       <p id="routing-status" role="status"></p>
+      <label id="routing-confirm-label" hidden>
+        <input id="routing-confirm" type="checkbox">
+        I confirm this is the router I want to edit.
+      </label>
       <p id="routing-edit-status" role="status"></p>
       <div id="routing-snapshot" hidden>
         <p id="routing-revision"></p>
@@ -142,8 +148,6 @@
     </section>
     <section id="midi-connection" hidden aria-labelledby="midi-connection-title">
       <h2 id="midi-connection-title">MIDI connection</h2>
-      <label for="local-midi-provider">MIDI provider</label>
-      <select id="local-midi-provider"></select>
       <button id="local-midi-access" type="button" hidden>Enable Web MIDI</button>
       <p id="midi-access-status" role="status" hidden></p>
     </section>
@@ -151,6 +155,8 @@
       <h2 id="midi-signals-title">Signals</h2>
       <div id="monitor-binding" data-receiver>
         <h3>Monitor</h3>
+        <label for="monitor-provider">Monitor provider</label>
+        <select id="monitor-provider"></select>
         <label for="monitor-port">Monitor input</label>
         <div class="command-row">
           <input id="monitor-port" type="number" min="1" max="65535" step="1" required>
@@ -177,6 +183,8 @@
       </details>
       <div id="log-binding" data-receiver>
         <h3>MIDI Log</h3>
+        <label for="log-provider">MIDI Log provider</label>
+        <select id="log-provider"></select>
         <label for="log-port">MIDI Log input</label>
         <div class="command-row">
           <input id="log-port" type="number" min="1" max="65535" step="1" required>
@@ -197,6 +205,8 @@
     </section>
     <section id="local-midi" hidden aria-labelledby="local-midi-title">
       <h2 id="local-midi-title">APC LED messages</h2>
+      <label for="local-midi-provider">LED Sequence provider</label>
+      <select id="local-midi-provider"></select>
       <div id="local-midi-web-midi" hidden>
         <label for="local-midi-os-port">System MIDI output</label>
         <select id="local-midi-os-port" required></select>
@@ -257,7 +267,9 @@
   <script>
     "use strict";
 
-    const serial = location.protocol === "https:" ? undefined : navigator.serial;
+    const localPage = location.protocol === "file:" ||
+      (location.protocol === "http:" && location.hostname === "127.0.0.1");
+    const serial = localPage ? navigator.serial : undefined;
     const settings = {
       baudRate: 115200, dataBits: 8, parity: "none", stopBits: 1, flowControl: "none",
     };
@@ -266,6 +278,7 @@
     const localReplyLimit = 11 * 256; // Eight Routing records, header, terminator, echo and prompt.
     const localReplyTimeout = 5000;
     const encoder = new TextEncoder();
+    const serialProvider = document.querySelector("#serial-provider");
     const connectButton = document.querySelector("#connect");
     const disconnectButton = document.querySelector("#disconnect");
     const status = document.querySelector("#status");
@@ -279,14 +292,23 @@
     let pageGeneration = 0;
     let connection;
     let localSerial;
+    let serialNotice = "";
+
+    function available(active) {
+      return active?.ready && !active.closing && !active.pending;
+    }
+
+    function providerLabel(provider) {
+      return provider === "loopback" ? "Loopback CLI" : "Web Serial CDC";
+    }
 
     function updateControls() {
-      const connected = connection && !connection.closing &&
-        (!connection.local || (connection.ready && connection.prompt));
-      connectButton.disabled = (!serial && !localSerial) || connecting || Boolean(connection);
-      disconnectButton.disabled = !connection || connection.closing;
-      command.disabled = !connected;
-      sendButton.disabled = !connected || Boolean(connection?.writer);
+      const ready = available(connection) && (!connection.structured || connection.prompt);
+      connectButton.disabled = !serialProvider.value || connecting || Boolean(connection);
+      connectButton.textContent = serialProvider.value === "loopback" ? "Connect local CLI" : "Connect";
+      disconnectButton.disabled = !connecting && (!connection || connection.closing);
+      command.disabled = !ready;
+      sendButton.disabled = !ready;
       window.dispatchEvent(new Event("gridpico-local-cli-queue"));
     }
 
@@ -294,66 +316,143 @@
       window.dispatchEvent(new Event("gridpico-local-cli-binding"));
     }
 
-    function finishLocalCommand(active, reply, error) {
+    function finishCommand(active, error) {
       const pending = active.pending;
       if (!pending) return;
       active.pending = undefined;
       clearTimeout(pending.timer);
       if (error) pending.reject(error);
-      else pending.resolve(reply);
+      else pending.resolve(pending.reply);
+      updateControls();
     }
 
-    function readLocalReply(active, chunk) {
+    function completeCommand(active) {
+      const pending = active.pending;
+      if (pending?.written && (!pending.expectReply || pending.reply !== undefined)) finishCommand(active);
+    }
+
+    function readReply(active, chunk) {
+      if (connection !== active || active.closing) return;
       appendTranscript(chunk);
+      if (!active.structured && !active.pending?.expectReply) return;
       active.tail = (active.tail + chunk).slice(-localReplyLimit);
       if (active.tail !== "> " && !active.tail.endsWith("\r\n> ")) return;
+      if (active.tail === "> " && active.pending) {
+        // A CDC terminal can produce its first prompt after opening.
+        active.tail = "";
+        return;
+      }
       const initialPrompt = !active.prompt && !active.pending;
-      active.prompt = true;
-      finishLocalCommand(active, active.tail);
+      const reply = active.tail;
       active.tail = "";
+      active.prompt = true;
+      if (active.pending?.expectReply) {
+        active.pending.reply = reply;
+        completeCommand(active);
+      }
       updateControls();
       if (initialPrompt && active.ready && location.hash !== "#routing") command.focus();
     }
 
-    function sendLocalCommand(active, line) {
-      if (!active.ready || !active.prompt || active.closing) {
-        return Promise.reject(new Error("The local CLI is busy or disconnected. Try again."));
+    async function writeBytes(active, bytes) {
+      if (active.local) {
+        if (!active.handle.send(bytes)) throw new Error("The local CLI could not send this line.");
+        return;
+      }
+      const writer = active.port.writable.getWriter();
+      active.writer = writer;
+      try {
+        await writer.write(bytes);
+      } finally {
+        if (active.writer === writer) {
+          active.writer = undefined;
+          writer.releaseLock();
+        }
+      }
+    }
+
+    function exchange(active, line, expectReply = active.structured) {
+      if (!available(active) || (active.structured && !active.prompt)) {
+        return Promise.reject(new Error("The selected serial session is busy or disconnected. Try again."));
       }
       active.prompt = false;
       active.tail = "";
-      updateControls();
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(() => {
-          finishLocalCommand(active, undefined, new Error("The local CLI did not finish the command."));
-          void disconnect(active, "The local CLI did not finish the command.", true);
+        const request = { resolve, reject, expectReply };
+        request.timer = setTimeout(() => {
+          if (active.pending !== request) return;
+          const plainFallback = !active.local && !active.structured && request.written && request.expectReply;
+          const message = plainFallback ? "Web Serial did not finish the Routing check. The plain terminal remains available." :
+            "The serial session did not finish the command. Reconnect and read back any attempted edit.";
+          if (plainFallback) active.routingFailed = true;
+          finishCommand(active, new Error(message));
+          if (!plainFallback) void disconnect(active, message, true);
+          updateControls();
         }, localReplyTimeout);
-        active.pending = { resolve, reject, timer };
-        try {
-          if (active.handle.send(encoder.encode(line + "\n"))) return;
-        } catch {
-          finishLocalCommand(active, undefined, new Error("The local CLI could not send this line."));
-          void disconnect(active, "The local CLI connection failed.", true);
-          return;
-        }
-        finishLocalCommand(active, undefined, new Error("The local CLI could not send this line."));
-        active.prompt = !active.closing;
+        active.pending = request;
         updateControls();
+        void writeBytes(active, encoder.encode(line + "\n")).then(() => {
+          if (active.pending !== request || active.closing) return;
+          request.written = true;
+          completeCommand(active);
+        }, () => {
+          if (active.pending !== request || active.closing) return;
+          finishCommand(active, new Error("The selected serial session could not send this line."));
+          void disconnect(active, "Serial write failed.", true);
+        });
       });
     }
 
+    function newConnection(endpoint, local) {
+      text.data = "";
+      serialNotice = "";
+      const selected = { endpoint, local, structured: local, ready: !local, closing: false, tail: "", prompt: false };
+      connection = selected;
+      notifyLocalCli();
+      updateControls();
+      return selected;
+    }
+
+    async function readCommand(active, line) {
+      const response = await exchange(active, line, true);
+      if (active !== connection || active.closing) throw new Error("The serial session disconnected.");
+      return response;
+    }
+
     window.gridpicoDiagnosticsCli = Object.freeze({
-      get attached() { return Boolean(connection?.local); },
-      get ready() { return Boolean(connection?.local && connection.ready && connection.prompt && !connection.closing); },
-      get supported() { return Boolean(localSerial); },
-      connectLocal() { if (localSerial) void connect(); },
-      async routingCommand(line) {
-        if (!/^routing(?: [1-9][0-9]* [0-9]+)?$|^route [1-9][0-9]* [1-9][0-9]* (?:managed|raw) (?:on|off)$/.test(line) ||
-            line.length > commandLimit) throw new Error("Invalid Routing command.");
+      get attached() { return Boolean(connection); },
+      get loopback() { return Boolean(connection?.local); },
+      get ready() {
+        return Boolean(available(connection) && !connection.routingFailed &&
+          (!connection.structured || connection.prompt));
+      },
+      get supported() { return Boolean(serialProvider.value); },
+      get selected() { return serialProvider.value; },
+      get endpoint() { return connection?.endpoint; },
+      get notice() { return serialNotice; },
+      get structured() { return Boolean(connection?.structured); },
+      connect() { void connect(); },
+      confirmRoutingCapability() {
+        if (available(connection) && !connection.local && !connection.routingFailed && connection.prompt) {
+          connection.structured = true;
+        }
+      },
+      keepPlainTerminal() {
+        if (connection && !connection.local && !connection.structured) {
+          connection.routingFailed = true;
+          updateControls();
+        }
+      },
+      async routingCommand(line, confirmed = false) {
+        const readOnly = /^routing(?: [1-9][0-9]* [0-9]+)?$/.test(line);
+        const edit = /^route [1-9][0-9]* [1-9][0-9]* (?:managed|raw) (?:on|off)$/.test(line);
+        if (!(readOnly || edit) || line.length > commandLimit) throw new Error("Invalid Routing command.");
         const active = connection;
-        if (!active?.local) throw new Error("Connect the local CLI before using Routing.");
-        const reply = await sendLocalCommand(active, line);
-        if (active !== connection || active.closing) throw new Error("The local CLI disconnected.");
-        return reply;
+        if (!active || active.routingFailed) throw new Error("Routing is unavailable on this serial session.");
+        if (edit && !active.local && !(active.structured && confirmed)) {
+          throw new Error("Confirm the selected Web Serial router before editing.");
+        }
+        return readCommand(active, line);
       },
       async checkRawRoute(source, destination) {
         const validId = (value) => Number.isInteger(value) && value > 0 && value <= 65535;
@@ -361,8 +460,7 @@
         const active = connection;
         if (!active?.local) throw new Error("The local CLI is disconnected.");
         const cmd = `route ${source} ${destination} raw`;
-        const reply = await sendLocalCommand(active, cmd);
-        if (connection !== active || active.closing) throw new Error("The local CLI disconnected during the check.");
+        const reply = await readCommand(active, cmd);
         const prefix = `${cmd}\r\nROUTE ${source} ${destination} RAW `;
         for (const state of ["OFF", "PENDING", "ACTIVE"]) {
           if (reply === `${prefix}${state}\r\nOK\r\n> `) return state;
@@ -401,40 +499,39 @@
       if (follow) transcript.scrollTop = transcript.scrollHeight;
     }
 
-    async function readTranscript(reader) {
+    async function readTranscript(active) {
       const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
       try {
-        while (true) {
-          const { value, done } = await reader.read();
+        while (!active.closing) {
+          const { value, done } = await active.reader.read();
           if (done) break;
-          appendTranscript(decoder.decode(value, { stream: true }));
+          readReply(active, decoder.decode(value, { stream: true }));
         }
       } finally {
-        appendTranscript(decoder.decode());
-        reader.releaseLock();
+        readReply(active, decoder.decode());
+        active.reader.releaseLock();
       }
-    }
-
-    function releaseWriter(active) {
-      if (!active.writer) return;
-      active.writer.releaseLock();
-      active.writer = undefined;
     }
 
     async function disconnect(active, message = "Serial disconnected.", error = false) {
       if (active.closing) return;
       active.closing = true;
+      serialNotice = error ? message : "";
       showStatus("Disconnecting…");
+      finishCommand(active, new Error("The selected serial session disconnected."));
+      notifyLocalCli();
       updateControls();
       if (active.local) {
-        finishLocalCommand(active, undefined, new Error("The local CLI disconnected."));
+        active.closeStatus = message === "Serial disconnected." ? undefined : { message, error };
         active.handle.close();
         return;
       }
 
-      // Unlock the writer even when a write is outstanding so port.close() can
-      // shut down the stream. Cancel the pending read before closing the port.
-      releaseWriter(active);
+      if (active.writer) {
+        const writer = active.writer;
+        active.writer = undefined;
+        writer.releaseLock();
+      }
       await Promise.allSettled([active.reader.cancel(), active.reading]);
       try {
         await active.port.close();
@@ -442,35 +539,34 @@
         message = `${message} Port close failed: ${failure.message}`;
         error = true;
       }
-
+      if (connection !== active) return;
       connection = undefined;
       showStatus(message, error);
+      notifyLocalCli();
       updateControls();
     }
 
     function connectLocal() {
-      const active = { local: true, ready: false, closing: false, tail: "", prompt: false };
+      const active = newConnection(`Loopback CLI · ${location.origin}`, true);
       const decoder = new TextDecoder("utf-8", { ignoreBOM: true });
-      connection = active;
-      inputError.textContent = "";
-      showStatus("Connecting to the local CLI…");
-      updateControls();
-      notifyLocalCli();
+      showStatus(`Connecting to ${active.endpoint}…`);
       try {
         active.handle = localSerial({
           onData(bytes) {
-            if (connection === active) readLocalReply(active, decoder.decode(bytes, { stream: true }));
+            readReply(active, decoder.decode(bytes, { stream: true }));
           },
           onState(state, reason) {
             if (connection !== active) return;
             if (state === "connected" && !active.closing) {
               active.ready = true;
-              showStatus("Local CLI connected.");
+              showStatus(`Local CLI connected · ${location.origin}`);
             } else if (state === "disconnected") {
-              appendTranscript(decoder.decode());
-              finishLocalCommand(active, undefined, new Error("The local CLI disconnected."));
+              readReply(active, decoder.decode());
+              finishCommand(active, new Error("The local CLI disconnected."));
               connection = undefined;
-              showStatus(reason || "Local CLI disconnected.", Boolean(reason));
+              const final = active.closeStatus;
+              if (reason) serialNotice = reason;
+              showStatus(reason || final?.message || "Local CLI disconnected.", Boolean(reason || final?.error));
               notifyLocalCli();
             }
             updateControls();
@@ -480,24 +576,32 @@
       } catch (error) {
         connection = undefined;
         showStatus(`Could not connect to the local CLI: ${error.message}`, true);
-        updateControls();
         notifyLocalCli();
+        updateControls();
       }
     }
 
+    function cdcEndpoint(port) {
+      const info = port.getInfo?.();
+      const hex = value => value.toString(16).padStart(4, "0").toUpperCase();
+      if (Number.isInteger(info?.usbVendorId) && Number.isInteger(info?.usbProductId)) {
+        return `Web Serial CDC · USB ${hex(info.usbVendorId)}:${hex(info.usbProductId)}`;
+      }
+      return "Web Serial CDC · selected port";
+    }
+
     async function connect() {
-      if (connecting || connection) return;
-      if (localSerial) {
+      if (connecting || connection || !serialProvider.value) return;
+      if (serialProvider.value === "loopback") {
         connectLocal();
         return;
       }
-      if (!serial) return;
       const generation = pageGeneration;
       let port;
       let opened = false;
       connecting = true;
       inputError.textContent = "";
-      showStatus("Choose a serial port…");
+      showStatus("Choose a Web Serial port…");
       updateControls();
 
       try {
@@ -512,8 +616,10 @@
         }
 
         const reader = port.readable.getReader();
-        const active = { port, reader, reading: readTranscript(reader), closing: false };
-        connection = active;
+        const active = newConnection(cdcEndpoint(port), false);
+        active.port = port;
+        active.reader = reader;
+        active.reading = readTranscript(active);
         active.reading.then(
           () => {
             if (!active.closing) void disconnect(active, "Serial stream ended.", true);
@@ -522,9 +628,8 @@
             if (!active.closing) void disconnect(active, `Serial read failed: ${error.message}`, true);
           },
         );
-        showStatus("Serial connected · 115200 8N1");
-        updateControls();
-        command.focus();
+        showStatus(`Serial connected · 115200 8N1 · ${active.endpoint}`);
+        if (location.hash !== "#routing") command.focus();
       } catch (error) {
         const canceled = !port && error.name === "NotFoundError";
         let message = canceled ? "No serial port selected." : `Could not connect: ${error.message}`;
@@ -538,7 +643,7 @@
         if (generation === pageGeneration) showStatus(message, !canceled);
       } finally {
         connecting = false;
-        if (generation !== pageGeneration && !connection) showStatus("Serial disconnected.");
+        if (generation !== pageGeneration && !connection) showStatus(`${providerLabel(serialProvider.value)} disconnected.`);
         updateControls();
       }
     }
@@ -555,34 +660,33 @@
         return;
       }
 
-      if (active.local) {
-        try {
-          if (active.prompt && active.ready) window.dispatchEvent(new Event("gridpico-local-cli-terminal"));
-          await sendLocalCommand(active, line);
-          if (connection === active && command.value === line) command.value = "";
-        } catch (error) {
-          inputError.textContent = error.message;
-        }
-        return;
-      }
-
-      const bytes = encoder.encode(line + "\n");
       try {
-        active.writer = active.port.writable.getWriter();
-        updateControls();
-        await active.writer.write(bytes);
-        if (connection === active && !active.closing && command.value === line) command.value = "";
+        if (available(active)) window.dispatchEvent(new Event("gridpico-local-cli-terminal"));
+        await exchange(active, line);
+        if (connection === active && command.value === line) command.value = "";
       } catch (error) {
-        if (!active.closing) await disconnect(active, `Serial write failed: ${error.message}`, true);
-      } finally {
-        releaseWriter(active);
-        updateControls();
+        if (connection === active && !active.closing) inputError.textContent = error.message;
       }
     }
 
     connectButton.addEventListener("click", connect);
     disconnectButton.addEventListener("click", () => {
       if (connection) void disconnect(connection);
+      else if (connecting) {
+        pageGeneration++;
+        showStatus("Serial selection canceled. Close the chooser to continue.");
+      }
+    });
+    serialProvider.addEventListener("change", () => {
+      pageGeneration++;
+      text.data = "";
+      serialNotice = "";
+      inputError.textContent = "";
+      if (connection) void disconnect(connection, `${providerLabel(serialProvider.value)} selected. Connect to continue.`);
+      else showStatus(connecting ? "Serial selection canceled. Close the chooser to continue." :
+        `${providerLabel(serialProvider.value)} selected. Connect to continue.`);
+      notifyLocalCli();
+      updateControls();
     });
     form.addEventListener("submit", sendCommand);
     command.addEventListener("input", () => { inputError.textContent = ""; });
@@ -606,20 +710,22 @@
     });
 
     window.addEventListener("DOMContentLoaded", () => {
-      if (!window.gridpicoLocal || location.protocol === "file:") return;
-      localSerial = window.gridpicoLocal.openSerial;
-      if (!localSerial) {
+      localSerial = window.gridpicoLocal?.openSerial;
+      if (localSerial) serialProvider.add(new Option("Loopback CLI", "loopback"));
+      if (serial) serialProvider.add(new Option("Web Serial CDC", "cdc"));
+      if (!localPage) {
         for (const controls of document.querySelectorAll("[data-serial-controls]")) controls.hidden = true;
         document.querySelector("#local-midi-only").hidden = false;
-        return;
+      } else if (serialProvider.value === "loopback") {
+        showStatus("Local CLI disconnected.");
+      } else if (serialProvider.value) {
+        showStatus("Web Serial CDC disconnected.");
+      } else {
+        showStatus("Web Serial is unavailable in this browser or context.", true);
       }
-      connectButton.textContent = "Connect local CLI";
-      showStatus("Local CLI disconnected.");
       updateControls();
     });
 
-    if (!serial) showStatus("Web Serial is unavailable in this browser or context.", true);
-    updateControls();
   </script>
 </body>
 </html>
