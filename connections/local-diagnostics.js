@@ -1,10 +1,12 @@
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   "use strict";
 
   const adapter = window.gridpicoLocal;
-  if (!adapter) return;
+  if (!adapter || location.pathname === "/routing/") return;
+  await adapter.ready;
+  const capabilities = adapter.capabilities;
   const localTool = location.protocol === "http:" && location.hostname === "127.0.0.1";
-  if (localTool) {
+  if (localTool || adapter.trustedLan && capabilities) {
     const handoff = () => {
       if (location.hash === "#routing") location.replace("/routing/");
     };
@@ -67,6 +69,23 @@ window.addEventListener("DOMContentLoaded", () => {
 
   adapter.mountServerSelection(connection, "/diagnostics/");
   connection.hidden = false;
+  if (adapter.capabilityStatus === "unavailable") {
+    const notice = document.querySelector("#discovery-status");
+    const retry = document.querySelector("#discovery-retry");
+    notice.textContent = "Couldn’t load capabilities from " + location.origin + ".";
+    notice.hidden = retry.hidden = false;
+    retry.addEventListener("click", () => location.reload());
+  }
+  if (adapter.trustedLan && capabilities) {
+    const status = document.querySelector("#local-midi-only");
+    status.textContent = "The CLI and LED test are unavailable on this connection. Use the router’s SSH loopback connection.";
+    if (!capabilities.roles.monitor && !capabilities.roles.log) {
+      const unavailable = document.createElement("p");
+      unavailable.textContent = "Monitor and MIDI Log are unavailable on this connection.";
+      status.after(unavailable);
+    }
+    return;
+  }
   if (!adapter.midiProviders.length) {
     provider.disabled = true;
     accessStatus.hidden = false;
@@ -356,10 +375,8 @@ window.addEventListener("DOMContentLoaded", () => {
     }),
   ];
   document.querySelector("#log-clear").addEventListener("click", () => log.replaceChildren());
-  if (adapter.startupPorts) {
-    port.value = adapter.startupPorts.sequence;
-    destination.value = adapter.startupPorts.led;
-  }
+  port.value = capabilities?.roles.sequence?.port ?? adapter.startupPorts?.sequence ?? "";
+  destination.value = capabilities?.roles.led?.port ?? adapter.startupPorts?.led ?? "";
 
   function updateMidiAccess() {
     access.hidden = accessStatus.hidden = !directMidi() && !receivers.some(receiver => receiver.isWebMidi());

@@ -525,7 +525,7 @@ static int run(linux_router *router)
     }
     fprintf(stderr, "Linux router PID %ld; SIGHUP rechecks ALSA bindings\n", (long)getpid());
     const local_router_service service = {router, next_event, SERVICE_INTERVAL_MS};
-    return local_router_run(&runtime, &service);
+    return local_router_run(&runtime, &service, false);
 }
 
 int main(int argc, char **argv)

@@ -118,7 +118,7 @@ browser audio on the `/demo/midi` connection.
 
 Run `./scripts/web-ui.sh` from the repository root. Open the
 [Gridpico home](http://127.0.0.1:8767/) and choose **Web APC**,
-**Diagnostics**, or **FM Instrument** when available. The launcher uses the
+**Diagnostics**, **Routing**, or **FM Instrument** when available. The launcher uses the
 running Docker Compose `dev` service and Python 3 on the host or WSL. Run
 `./scripts/web-ui.sh --help` for launcher usage.
 
@@ -137,6 +137,31 @@ in Monitor. The keybed can send as soon as its own binding connects. Each
 receiver starts with the next fresh note after it connects. MIDI Log shows
 what its own binding receives. Diagnostics LED Sequence TX `4` and FM use
 manual connections.
+
+### Served browser release
+
+The canonical launcher builds one browser release under `build/web-ui/bundle`.
+The Home download at `/web-ui.zip` contains the same static tools and
+`SHA256SUMS` served at `/web-ui/SHA256SUMS`. The same-origin
+`/ui-capabilities.json` is separate from the download. It reports which roles
+and actions the current listener publishes. A MIDI binding still needs a
+successful connection, and Routing still reads the actual CLI.
+
+For a prepared runner, build the browser release once with
+`python3 connections/build-web-ui.py` from the release checkout. Ship the
+whole bundle directory with that release. For example, start a prepared
+loopback desktop with:
+
+```sh
+./scripts/web-ui.sh --runner build/local-router/gridpico_local_router --web-ui --port 8767 --no-open
+```
+
+On a trusted-LAN bundle listener, Web APC uses the published controller
+bindings, while Diagnostics and Routing show the local or SSH loopback path
+for CLI work. Recordings appears on Home when configured.
+[Shared bundle contract](../api/browser-midi.md#shared-bundle-and-endpoint-selection)
+
+### Manual profile
 
 To start the manual profile directly:
 

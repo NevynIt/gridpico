@@ -352,6 +352,7 @@
     .patch-devices { grid-template-columns: 1fr; }
   }
 </style>
+<script defer src="/local-transport.js"></script>
 </head>
 <body>
 <main>
@@ -393,6 +394,7 @@
       <button type="button" id="local-midi-access">Allow Web MIDI</button>
     </div>
     <div id="local-midi-server"></div>
+    <p class="patch-status" id="local-capability-error" hidden>Could not load capabilities from this MIDI server. <button type="button" aria-label="Retry loading router capabilities">Retry</button></p>
     <p class="patch-status" id="local-midi-transport-status" role="status"></p>
     <p class="patch-status" id="local-midi-access-status" role="status" hidden></p>
     <p class="patch-status" id="local-port-guide">Use the port IDs from Diagnostics inventory. Bind each direction separately.</p>
@@ -1985,9 +1987,11 @@ function mountLocalMidi(adapter) {
   const home = nav.querySelector('a[href="/"]');
   const diagnostics = nav.querySelector('a[href="/diagnostics/"]');
   const diagnosticsHelp = document.querySelector("#local-diagnostics-help");
+  const capabilities = adapter?.capabilities;
   const trustedLan = adapter?.trustedLan === true;
   home.hidden = location.protocol === "https:";
-  diagnostics.hidden = diagnosticsHelp.hidden = trustedLan;
+  diagnostics.hidden = trustedLan && !capabilities;
+  diagnosticsHelp.hidden = trustedLan;
   if (fileProductPage) {
     home.href = "HOME.HTM";
     diagnostics.href = "DIAG.HTM";
@@ -2006,6 +2010,11 @@ function mountLocalMidi(adapter) {
   let accessGranted = false;
   const providers = adapter.midiProviders;
   adapter.mountServerSelection?.(document.querySelector("#local-midi-server"), "/apc/");
+  if (adapter.capabilityStatus === "unavailable") {
+    const error = document.querySelector("#local-capability-error");
+    error.hidden = false;
+    error.querySelector("button").addEventListener("click", () => location.reload());
+  }
   if (!providers.length) {
     guide.textContent = "No MIDI transport is available here. Open a served Gridpico controller or use a browser with Web MIDI.";
     return null;
@@ -2167,11 +2176,15 @@ function mountLocalMidi(adapter) {
     accessControls.hidden = accessStatus.hidden = !webMidiSelected;
   }
 
-  guide.textContent = trustedLan
-    ? "This trusted-LAN server provides WebSocket MIDI for Keybed TX, Panel TX and LED RX. To use another trusted-LAN server, open its APC URL in your browser’s address bar."
-    : providers.includes("websocket")
-      ? "Choose a transport for each role. Find router port IDs in Diagnostics inventory."
-      : "Choose system MIDI outputs for TX and an input for LED RX.";
+  if (trustedLan) {
+    guide.textContent = "This trusted-LAN server provides WebSocket MIDI for Keybed TX, Panel TX and LED RX. To use another trusted-LAN server, open its APC URL in your browser’s address bar.";
+  } else if (!providers.includes("websocket")) {
+    guide.textContent = "Choose system MIDI outputs for TX and an input for LED RX.";
+  } else if (capabilities?.actions.cli === false || adapter.capabilityStatus === "unavailable") {
+    guide.textContent = "Choose a transport for each role. Use the suggested router port or enter an authorized port ID.";
+  } else {
+    guide.textContent = "Choose a transport for each role. Find router port IDs in Diagnostics inventory.";
+  }
   const container = document.querySelector("#local-bindings");
   for (const [role, name, direction] of definitions) {
     const id = `local-${role}-port`;
@@ -2197,6 +2210,9 @@ function mountLocalMidi(adapter) {
     field.maxLength = 5;
     field.placeholder = "Port ID";
     field.required = true;
+    const offered = capabilities?.roles[role];
+    const portPublished = offered?.direction === direction;
+    if (portPublished) field.value = String(offered.port);
     field.addEventListener("input", () => field.setCustomValidity(""));
     const ports = document.createElement("select");
     ports.id = `${id}-web`;
@@ -2213,7 +2229,9 @@ function mountLocalMidi(adapter) {
     ports.addEventListener("change", () => { submit.disabled = !ports.value; });
     const choice = { name, status, disconnect, direction, field, ports, submit, label, provider };
     choices.set(role, choice);
-    setBindingStatus(role, "disconnected", "Disconnected");
+    setBindingStatus(role, "disconnected", capabilities && !portPublished
+      ? "No published binding for this role."
+      : "Disconnected");
     form.append(label, providerLabel, actions, status);
     form.addEventListener("submit", event => {
       event.preventDefault();
@@ -2268,8 +2286,10 @@ function mountLocalMidi(adapter) {
 }
 
 if (localPage) {
-  window.addEventListener("DOMContentLoaded", () => {
-    localClient = mountLocalMidi(window.gridpicoLocal);
+  window.addEventListener("DOMContentLoaded", async () => {
+    const adapter = window.gridpicoLocal;
+    await adapter?.ready;
+    localClient = mountLocalMidi(adapter);
   }, { once: true });
 }
 

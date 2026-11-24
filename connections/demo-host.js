@@ -32,6 +32,8 @@ try {
 const standalonePage = readFileSync(path.join(__dirname, "../web/apc/index.html"), "utf8");
 if (!standalonePage.includes("</head>")) throw new Error("Web APC page is missing </head>");
 const connectedPage = standalonePage.replace(
+  '<script defer src="/local-transport.js"></script>', ""
+).replace(
   "</head>", '<script defer src="/demo/midi.js"></script>\n</head>'
 );
 const browserAdapter = readFileSync(path.join(__dirname, "demo-browser.js"));

@@ -32,5 +32,6 @@ typedef struct {
 bool local_profile_load(const char *path, local_router_profile *profile);
 bool local_profile_supports_web_ui(const local_router_profile *profile);
 gridpico_port_id local_profile_role(const local_router_profile *profile, local_port_role role);
+const char *local_profile_role_token(local_port_role role);
 
 #endif

@@ -10,6 +10,7 @@ const { createWssListener } = require("./wss-listener");
 const { createTrustedLanListener } = require("./trusted-lan-listener");
 const { createRecorder, recorderPort } = require("./recording");
 const { createRecordingsHttp } = require("./recordings-http");
+const { loadWebUiBundle } = require("./web-ui-bundle");
 
 const address = "127.0.0.1";
 const maxSerialChunk = 256;
@@ -19,6 +20,7 @@ const heartbeatMs = 5000;
 
 const args = process.argv.slice(2);
 let webUi = false;
+let uiDescriptor = false;
 let wssConfig;
 let profile;
 let lanConfig;
@@ -27,6 +29,7 @@ let invalidOptions = false;
 while (args[0]?.startsWith("--")) {
   const flag = args.shift();
   if (flag === "--web-ui" && !webUi) webUi = true;
+  else if (flag === "--ui-descriptor" && !uiDescriptor) uiDescriptor = true;
   else if (flag === "--wss-config" && wssConfig === undefined && args[0] && !args[0].startsWith("--")) {
     wssConfig = args.shift();
   } else if (flag === "--profile" && profile === undefined && args[0] && !args[0].startsWith("--")) {
@@ -43,7 +46,7 @@ while (args[0]?.startsWith("--")) {
 const [runnerArg, portArg = "8767"] = args;
 const port = Number(portArg);
 if (invalidOptions || !runnerArg || !/^\d+$/.test(portArg) || port > 65535 || args.length > 2) {
-  console.error("Usage: node connections/local-host.js [--web-ui] [--profile <file>] [--wss-config <file>] [--trusted-lan-config <file>] [--recorder-config <file>] <local-router> [port]");
+  console.error("Usage: node connections/local-host.js [--web-ui] [--ui-descriptor] [--profile <file>] [--wss-config <file>] [--trusted-lan-config <file>] [--recorder-config <file>] <local-router> [port]");
   process.exit(1);
 }
 const runnerPath = path.resolve(runnerArg);
@@ -55,63 +58,84 @@ try {
 }
 
 const script = '<script defer src="/local-transport.js"></script>';
-function page(file, extra = "") {
-  const html = readFileSync(path.join(__dirname, file), "utf8");
-  if (!html.includes("</head>")) throw new Error("Local router HTML is missing </head>");
-  return html.replace("</head>", script + extra + "\n</head>");
-}
-const diagnosticsPage = "diagnostics/index.html";
-const routingPage = page(diagnosticsPage, '<script defer src="/local-routing.js"></script>')
-  .replace("<title>Gridpico Diagnostics</title>", "<title>Gridpico Routing</title>")
-  .replace("<body>", '<body data-tool="routing">')
-  .replace("<h1>Gridpico Diagnostics</h1>", "<h1>Routing</h1>");
-const assets = new Map([
-  ["/apc/", ["text/html; charset=utf-8", page("../web/apc/index.html")]],
-  ["/diagnostics/", ["text/html; charset=utf-8", page(diagnosticsPage,
-    '<script defer src="/local-diagnostics.js"></script><script defer src="/local-routing.js"></script>')]],
-  ["/local-transport.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-transport.js"))]],
-  ["/local-diagnostics.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-diagnostics.js"))]],
-  ["/local-routing.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-routing.js"))]],
-]);
-const loopbackRouting = ["text/html; charset=utf-8", routingPage];
-const startupAssets = new Map();
-if (webUi) {
-  for (const url of ["/apc/", "/diagnostics/"]) {
-    const [type, html] = assets.get(url);
-    const ledTest = url === "/diagnostics/" ? '<script defer src="/local-led-test.js"></script>' : "";
-    const marked = html.replace(script, '<script defer src="/local-transport.js" data-gridpico-profile="web-ui"></script>');
-    startupAssets.set(url, [type, marked.replace("</head>", ledTest + "</head>")]);
-  }
-  startupAssets.set("/local-led-test.js", ["text/javascript; charset=utf-8",
-    readFileSync(path.join(__dirname, "local-led-test.js"))]);
-}
-const fmPage = "../web/fm/index.html";
-if (existsSync(path.join(__dirname, fmPage))) {
-  assets.set("/fm/", ["text/html; charset=utf-8", page(fmPage)]);
-}
-const homePage = readFileSync(path.join(__dirname, "home.html"), "utf8");
 let recorder;
 let lan;
+let bundle;
 try {
+  if (uiDescriptor) bundle = loadWebUiBundle();
   if (lanConfig !== undefined) lan = createTrustedLanListener(lanConfig);
   if (recorderConfig !== undefined) recorder = createRecorder(recorderConfig);
 } catch (error) {
-  console.error(`Invalid recorder or trusted LAN setup: ${error.message}`);
+  console.error(`Invalid browser bundle, recorder or trusted LAN setup: ${error.message}`);
   process.exit(1);
 }
-const recordings = recorder && createRecordingsHttp(recorder, matchesHeader);
+const recordings = recorder && createRecordingsHttp(recorder, matchesHeader, bundle?.assets.get("/recordings/")[1]);
+const wssPages = new Set(["/apc/", "/diagnostics/", "/fm/", "/local-transport.js",
+  "/local-diagnostics.js", "/local-routing.js", "/local-led-test.js"]);
 const recordingsLink = '<li><a href="/recordings/"><strong>Recordings</strong><span>Record a take and download the WAV.</span></a></li>';
-// The offline asset builder removes the legacy Routing link from the shared template.
-const hostedHome = homePage.replace('href="/diagnostics/#routing"', 'href="/routing/"');
-const localHome = assets.has("/fm/") ? hostedHome : hostedHome.replace(/^ *<li data-optional-tool="fm">.*<\/li>\n/m, "");
-const home = ["text/html; charset=utf-8", recorder ? localHome.replace("</ul>", `${recordingsLink}\n</ul>`) : localHome];
-const lanAssets = lan && new Map([
-  ["/", ["text/html; charset=utf-8", homePage.replace(/<ul>[\s\S]*?<\/ul>/,
-    `<ul><li><a href="/apc/"><strong>Web APC</strong><span>Play the keybed and use the APC controls.</span></a></li>${recorder ? recordingsLink : ""}</ul>`)]],
-  ["/apc/", ["text/html; charset=utf-8", assets.get("/apc/")[1].replace(script,
-    '<script defer src="/local-transport.js" data-gridpico-connection="trusted-lan"></script>')]],
-  ["/local-transport.js", assets.get("/local-transport.js")],
-]);
+function legacyAssets() {
+  const read = file => readFileSync(path.join(__dirname, file), "utf8");
+  const html = body => ["text/html; charset=utf-8", body];
+  const common = new Map([
+    ["/apc/", html(read("../web/apc/index.html"))],
+    ["/diagnostics/", html(read("diagnostics/index.html"))],
+  ]);
+  if (existsSync(path.join(__dirname, "../web/fm/index.html"))) common.set("/fm/", html(read("../web/fm/index.html")));
+  for (const url of ["/local-transport.js", "/local-diagnostics.js", "/local-routing.js", "/local-led-test.js"]) {
+    common.set(url, ["text/javascript; charset=utf-8", read(url.slice(1))]);
+  }
+  const sourceHome = read("home.html").replace(/^.*<script defer .*<\/script>\n/gm, "")
+    .replace(/^.*data-bundle-(?:only|download).*\n/gm, "");
+  const hostedHome = sourceHome.replace('href="/diagnostics/#routing"', 'href="/routing/"');
+  const localHome = common.has("/fm/") ? hostedHome : hostedHome.replace(/^ *<li data-optional-tool="fm">.*<\/li>\n/m, "");
+  const local = new Map(common);
+  local.set("/", html(recorder ? localHome.replace("</ul>", `${recordingsLink}\n</ul>`) : localHome));
+  local.set("/routing/", common.get("/diagnostics/"));
+  if (webUi) {
+    for (const url of ["/apc/", "/diagnostics/"]) {
+      local.set(url, html(common.get(url)[1].replace(script,
+        '<script defer src="/local-transport.js" data-gridpico-profile="web-ui"></script>')));
+    }
+  }
+  const lanPages = new Map([
+    ["/", html(sourceHome.replace(/<ul>[\s\S]*?<\/ul>/,
+      `<ul><li><a href="/apc/"><strong>Web APC</strong><span>Play the keybed and use the APC controls.</span></a></li>${recorder ? recordingsLink : ""}</ul>`))],
+    ["/apc/", html(common.get("/apc/")[1].replace(script,
+      '<script defer src="/local-transport.js" data-gridpico-connection="trusted-lan"></script>'))],
+    ["/local-transport.js", common.get("/local-transport.js")],
+  ]);
+  return { local, wss: common, lan: lanPages };
+}
+const legacy = bundle ? undefined : legacyAssets();
+const capabilityBodies = new Map();
+
+function prepareCapabilities(runtimeRoles) {
+  const instance = randomBytes(16).toString("hex");
+  if (lan) {
+    for (const [role, port, direction] of [["keybed", 1, "in"], ["panel", 2, "in"], ["led", 3, "out"]]) {
+      const published = runtimeRoles.get(role);
+      if (published?.port !== port || published.direction !== direction) {
+        throw new Error(`Trusted LAN needs registered UI role ${role} at port ${port} (${direction})`);
+      }
+    }
+  }
+  for (const listener of [undefined, ...[lan, network].filter(Boolean)]) {
+    const roles = Object.fromEntries([...runtimeRoles].filter(([, { port, direction }]) =>
+      !listener || listener.ports.get(port) === direction).map(([role, { port, direction }]) =>
+      [role, { port, direction: direction === "in" ? "send" : "receive" }]));
+    const autoBind = (listener?.trustedLan ? ["keybed", "panel", "led"] :
+      !listener && webUi ? ["keybed", "panel", "led", "monitor", "log"] : [])
+      .filter(role => Object.hasOwn(roles, role));
+    const actions = {
+      cli: !listener,
+      ledTest: !listener && webUi && roles.sequence?.port === 4 && roles.led?.port === 3,
+      recording: Boolean(recorder && (!listener || listener.trustedLan)),
+    };
+    const body = Buffer.from(JSON.stringify({ version: 1, release: bundle.release, instance, roles, autoBind, actions }));
+    if (body.length > 2048) throw new Error("Browser capability descriptor exceeds its bound");
+    capabilityBodies.set(listener, body);
+  }
+}
 
 const server = createServer();
 let loopbackPort;
@@ -135,9 +159,6 @@ function matchesHeader(request, name, expected) {
 
 function serve(request, response, listener) {
   const host = listener?.host ?? `${address}:${request.socket.localPort}`;
-  const asset = listener?.trustedLan ? lanAssets.get(request.url) : listener ? assets.get(request.url) :
-    request.url === "/" ? home : request.url === "/routing/" ? loopbackRouting :
-      startupAssets.get(request.url) ?? assets.get(request.url);
   const identity = listener?.identity(request.socket);
   if (listener && (!identity || !matchesHeader(request, "host", host))) {
     response.writeHead(403).end();
@@ -156,12 +177,34 @@ function serve(request, response, listener) {
     response.writeHead(403).end();
     return;
   }
+  const capability = request.url === "/ui-capabilities.json" && capabilityBodies.get(listener);
+  if (capability) {
+    const site = request.headers["sec-fetch-site"];
+    if (!matchesHeader(request, "host", host) ||
+        (request.headers.origin !== undefined && !matchesHeader(request, "origin", origin)) ||
+        (site !== undefined && !["same-origin", "none"].some(value => matchesHeader(request, "sec-fetch-site", value)))) {
+      response.writeHead(403).end();
+      return;
+    }
+    if (request.method !== "GET") {
+      response.writeHead(405, { Allow: "GET" }).end();
+      return;
+    }
+    response.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8", "Content-Length": capability.length,
+      "Cache-Control": "no-store", "Cross-Origin-Resource-Policy": "same-origin", "X-Content-Type-Options": "nosniff",
+    }).end(capability);
+    return;
+  }
   if (recordings && !listener && request.url.startsWith("/recordings/") && !matchesHeader(request, "host", host)) {
     response.writeHead(403).end();
     return;
   }
   if ((!listener || listener.trustedLan) &&
       recordings?.(request, response, origin, origin, loopbackPort)) return;
+  const wss = listener && !listener.trustedLan;
+  const asset = bundle ? (!wss || wssPages.has(request.url)) && bundle.assets.get(request.url) :
+    (listener?.trustedLan ? legacy.lan : listener ? legacy.wss : legacy.local).get(request.url);
   if (!asset) {
     response.writeHead(404).end();
     return;
@@ -171,7 +214,9 @@ function serve(request, response, listener) {
     return;
   }
   const [type, body] = asset;
-  response.writeHead(200, { "Content-Type": type, "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store" });
+  const headers = { "Content-Type": type, "Content-Length": Buffer.byteLength(body), "Cache-Control": "no-store" };
+  if (request.url === "/web-ui.zip") headers["Content-Disposition"] = 'attachment; filename="gridpico-web-ui.zip"';
+  response.writeHead(200, headers);
   response.end(request.method === "HEAD" ? undefined : body);
 }
 const websockets = new WebSocketServer({
@@ -486,7 +531,8 @@ async function shutdown() {
 }
 
 const pipe = startLocalPipe(runnerPath, {
-  onReady(peerLimit) {
+  onReady(peerLimit, runtimeRoles) {
+    if (bundle) prepareCapabilities(runtimeRoles);
     midiPeerLimit = peerLimit;
     server.listen(port, address, () => {
       loopbackPort = server.address().port;
@@ -514,7 +560,8 @@ const pipe = startLocalPipe(runnerPath, {
     process.exitCode = 1;
     shutdown();
   },
-}, [...(webUi ? ["--web-ui"] : []), ...(profile ? ["--profile", profile] : []), ...(recorder ? ["--recorder"] : [])]);
+}, [...(webUi ? ["--web-ui"] : []), ...(profile ? ["--profile", profile] : []),
+  ...(recorder ? ["--recorder"] : []), ...(uiDescriptor ? ["--ui-descriptor"] : [])], uiDescriptor);
 
 server.on("error", (error) => {
   console.error(error.message);

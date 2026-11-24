@@ -10,6 +10,6 @@ typedef struct {
     int interval_ms;
 } local_router_service;
 
-int local_router_run(local_runtime *runtime, const local_router_service *service);
+int local_router_run(local_runtime *runtime, const local_router_service *service, bool ui_descriptor);
 
 #endif

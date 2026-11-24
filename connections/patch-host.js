@@ -219,6 +219,8 @@ const page = readFileSync(path.join(__dirname, "../web/apc/index.html"), "utf8")
 if (!page.includes("</head>")) throw new Error("Web APC page is missing </head>");
 const monitorAttribute = monitorProfile ? " data-monitor" : "";
 const connectedPage = page.replace(
+  '<script defer src="/local-transport.js"></script>', ""
+).replace(
   "</head>", `<script defer src="/patch/midi.js"${monitorAttribute}></script>\n</head>`,
 );
 const adapter = readFileSync(path.join(__dirname, "patch-browser.js"));

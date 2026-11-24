@@ -5,24 +5,105 @@
   const hasSocketMidi = protocol === "http:" || protocol === "https:";
   const profiles = document.currentScript?.dataset;
   const loopback = protocol === "http:" && window.location.hostname === "127.0.0.1";
-  const trustedLan = protocol === "http:" && window.location.host === "192.168.0.223:18768" &&
+  const legacyLan = protocol === "http:" && window.location.host === "192.168.0.223:18768" &&
     profiles?.gridpicoConnection === "trusted-lan";
-  const startupPorts = trustedLan ? Object.freeze({ keybed: 1, panel: 2, led: 3 }) :
+  const legacyPorts = legacyLan ? Object.freeze({ keybed: 1, panel: 2, led: 3 }) :
     loopback && profiles?.gridpicoProfile === "web-ui" ?
       Object.freeze({ keybed: 1, panel: 2, led: 3, sequence: 4, monitor: 5, log: 6 }) : undefined;
   const midi = window.navigator;
-  const hasWebMidi = !trustedLan && typeof midi?.requestMIDIAccess === "function";
-  const midiProviders = Object.freeze([
+  const roleDirection = new Map([["keybed", "send"], ["panel", "send"], ["led", "receive"],
+    ["sequence", "send"], ["monitor", "receive"], ["log", "receive"]]);
+  let capabilityStatus = hasSocketMidi ? "loading" : "offline";
+  let capabilities;
+  let startupPorts;
+  let trustedLan = false;
+  const hasWebMidi = () => !trustedLan && typeof midi?.requestMIDIAccess === "function";
+  const availableMidiProviders = () => [
     ...(hasSocketMidi ? ["websocket"] : []),
-    ...(hasWebMidi ? ["web-midi"] : []),
-  ]);
+    ...(hasWebMidi() ? ["web-midi"] : []),
+  ];
   const boundPorts = new Set();
   const socketBindings = new Set();
   let midiAccess;
   let requestingAccess;
 
+  function keysOf(value, names) {
+    return value && typeof value === "object" && !Array.isArray(value) &&
+      Object.keys(value).length === names.length && names.every(name => Object.hasOwn(value, name));
+  }
+
+  function validateCapabilities(value) {
+    function requireValid(ok) { if (!ok) throw new Error("Invalid router capabilities"); }
+    requireValid(keysOf(value, ["version", "release", "instance", "roles", "autoBind", "actions"]));
+    const { version, release, instance, roles, autoBind, actions } = value;
+    requireValid(version === 1 && typeof release === "string" && /^[a-f0-9]{64}$/.test(release) &&
+      typeof instance === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(instance));
+    requireValid(roles && typeof roles === "object" && !Array.isArray(roles) &&
+      Object.keys(roles).length <= roleDirection.size);
+    const ports = new Set();
+    for (const [role, binding] of Object.entries(roles)) {
+      requireValid(roleDirection.has(role) && keysOf(binding, ["port", "direction"]) &&
+        roleDirection.get(role) === binding.direction && Number.isInteger(binding.port) &&
+        binding.port >= 1 && binding.port <= 65535 && !ports.has(binding.port));
+      ports.add(binding.port);
+      Object.freeze(binding);
+    }
+    requireValid(Array.isArray(autoBind) && autoBind.length <= 5 && new Set(autoBind).size === autoBind.length &&
+      autoBind.every(role => typeof role === "string" && role !== "sequence" && Object.hasOwn(roles, role)));
+    requireValid(keysOf(actions, ["cli", "ledTest", "recording"]) &&
+      Object.values(actions).every(available => typeof available === "boolean"));
+    Object.freeze(roles);
+    Object.freeze(autoBind);
+    Object.freeze(actions);
+    return Object.freeze(value);
+  }
+
+  async function discover() {
+    if (!hasSocketMidi) return;
+    try {
+      const response = await fetch("/ui-capabilities.json", { cache: "no-store",
+        mode: "same-origin", redirect: "error", signal: AbortSignal.timeout(5000) });
+      if (response.status === 404) {
+        capabilityStatus = "legacy";
+        trustedLan = legacyLan;
+        startupPorts = legacyPorts;
+        return;
+      }
+      if (!response.ok || !/^application\/json(?:\s*;|$)/i.test(response.headers.get("Content-Type"))) {
+        throw new Error("Router capabilities unavailable");
+      }
+      const decoder = new TextDecoder("utf-8", { fatal: true });
+      const reader = response.body.getReader();
+      let bytes = 0;
+      let json = "";
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          bytes += value.byteLength;
+          if (bytes > 2048) throw new Error("Router capabilities exceed their bound");
+          json += decoder.decode(value, { stream: true });
+        }
+      } catch (error) {
+        void reader.cancel().catch(() => {});
+        throw error;
+      } finally {
+        reader.releaseLock();
+      }
+      capabilities = validateCapabilities(JSON.parse(json + decoder.decode()));
+      capabilityStatus = "ready";
+      trustedLan = protocol === "http:" && !loopback && !capabilities.actions.cli &&
+        capabilities.autoBind.includes("panel");
+      if (capabilities.autoBind.length) {
+        startupPorts = Object.freeze(Object.fromEntries(capabilities.autoBind.map(role => [role, capabilities.roles[role].port])));
+      }
+    } catch {
+      capabilityStatus = "unavailable";
+    }
+  }
+
   async function requestMidiAccess() {
-    if (!hasWebMidi) throw new Error("Web MIDI is unavailable in this browser or context.");
+    if (!hasWebMidi()) throw new Error("Web MIDI is unavailable in this browser or context.");
     if (midiAccess) return;
     try {
       requestingAccess ??= midi.requestMIDIAccess({ sysex: false }).then((access) => {
@@ -264,9 +345,12 @@
   }
 
   const transport = {
-    midiProviders,
-    trustedLan,
-    startupPorts,
+    ready: discover(),
+    get capabilities() { return capabilities; },
+    get capabilityStatus() { return capabilityStatus; },
+    get trustedLan() { return trustedLan; },
+    get startupPorts() { return startupPorts; },
+    get midiProviders() { return availableMidiProviders(); },
     requestMidiAccess,
     listMidiPorts,
     mountServerSelection,
@@ -274,7 +358,7 @@
       if (options?.direction !== "send" && options?.direction !== "receive") {
         throw new TypeError("Choose a valid MIDI port and direction.");
       }
-      const provider = options.provider ?? midiProviders[0];
+      const provider = options.provider ?? availableMidiProviders()[0];
       if (provider === "web-midi") return openWebMidi(portId, options);
       if (provider !== "websocket" || !hasSocketMidi) throw new Error("The selected MIDI provider is unavailable.");
       if (!Number.isInteger(portId) || portId < 1 || portId > 65535) {
@@ -293,8 +377,11 @@
       return handle;
     },
   };
-  if (loopback) {
-    transport.openSerial = (options) => openBytes("/serial", options, (length) => length <= 256, 8192);
-  }
+  const serial = options => openBytes("/serial", options, length => length <= 256, 8192);
+  Object.defineProperty(transport, "openSerial", {
+    get() {
+      if (loopback && (capabilityStatus === "legacy" || capabilities?.actions.cli)) return serial;
+    },
+  });
   window.gridpicoLocal = Object.freeze(transport);
 })();

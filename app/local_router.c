@@ -310,9 +310,27 @@ static bool serve(local_runtime *runtime, const local_router_service *service)
     }
 }
 
-int local_router_run(local_runtime *runtime, const local_router_service *service)
+static bool write_ui_roles(const local_runtime *runtime)
 {
-    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
+    if (fputs("ui-roles", stdout) == EOF) return false;
+    for (local_port_role role = LOCAL_ROLE_KEYBED; role < LOCAL_ROLE_COUNT; ++role) {
+        const gridpico_port_id id = local_profile_role(runtime->profile, role);
+        local_port_state state;
+        if (local_runtime_port(runtime, id, &state) != GRIDPICO_OK || !state.socket ||
+            state.adapter_owned || state.generation == UINT32_MAX) {
+            continue;
+        }
+        const char *direction = state.direction == GRIDPICO_PATCH_INPUT ? "in" : "out";
+        if (printf(" %s %u %s", local_profile_role_token(role), (unsigned)id, direction) < 0) {
+            return false;
+        }
+    }
+    return putchar('\n') != EOF;
+}
+
+int local_router_run(local_runtime *runtime, const local_router_service *service, bool ui_descriptor)
+{
+    if (signal(SIGPIPE, SIG_IGN) == SIG_ERR || (ui_descriptor && !write_ui_roles(runtime))) {
         return EXIT_FAILURE;
     }
     const int ready = runtime->configured
@@ -334,17 +352,21 @@ int main(int argc, char **argv)
 {
     bool web_ui = false;
     bool recorder = false;
+    bool ui_descriptor = false;
     const char *path = NULL;
     for (int i = 1; i < argc; ++i) {
         if (!web_ui && strcmp(argv[i], "--web-ui") == 0) {
             web_ui = true;
         } else if (!recorder && strcmp(argv[i], "--recorder") == 0) {
             recorder = true;
+        } else if (!ui_descriptor && strcmp(argv[i], "--ui-descriptor") == 0) {
+            ui_descriptor = true;
         } else if (path == NULL && i + 1 < argc && strcmp(argv[i], "--profile") == 0 &&
                    strncmp(argv[i + 1], "--", 2) != 0) {
             path = argv[++i];
         } else {
-            fputs("Usage: gridpico_local_router [--web-ui] [--profile FILE] [--recorder]\n", stderr);
+            fputs("Usage: gridpico_local_router [--web-ui] [--profile FILE] [--recorder] "
+                  "[--ui-descriptor]\n", stderr);
             return EXIT_FAILURE;
         }
     }
@@ -370,6 +392,6 @@ int main(int argc, char **argv)
         fputs("Recorder requires a profile with a usable managed socket route 1 to 12\n", stderr);
         return EXIT_FAILURE;
     }
-    return local_router_run(&runtime, NULL);
+    return local_router_run(&runtime, NULL, ui_descriptor);
 }
 #endif

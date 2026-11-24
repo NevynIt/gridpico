@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gridpico</title>
+  <script defer src="/local-transport.js"></script>
+  <script defer src="/local-home.js"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -37,19 +39,27 @@
     a:focus-visible { outline: 2px solid #8fe0b6; outline-offset: 3px; }
     a strong { display: block; margin-bottom: .25rem; font-size: 1.125rem; }
     a span { color: #b8c8c1; }
+    #home-router { color: #b8c8c1; margin-bottom: 1.2rem; }
+    a[data-bundle-download] { display: inline-block; height: auto; margin-top: 1.2rem; }
+    [hidden] { display: none !important; }
   </style>
 </head>
 <body>
   <main>
     <h1>Gridpico</h1>
+    <p id="home-router" hidden></p>
+    <p id="home-capability-status" role="status" hidden></p>
+    <button id="home-capability-retry" type="button" hidden>Retry</button>
     <nav aria-label="Gridpico tools">
       <ul>
         <li><a href="/apc/"><strong>Web APC</strong><span>Play the keybed and use the APC controls.</span></a></li>
-        <li><a href="/diagnostics/"><strong>Diagnostics</strong><span>Open the CLI, monitor MIDI, and test APC LEDs.</span></a></li>
-        <li><a href="/diagnostics/#routing"><strong>Routing</strong><span>See named ports and edit their routes.</span></a></li>
+        <li><a href="/diagnostics/"><strong>Diagnostics</strong><span id="home-diagnostics">Open the CLI, monitor MIDI, and test APC LEDs.</span></a></li>
+        <li><a href="/diagnostics/#routing"><strong>Routing</strong><span id="home-routing">See named ports and edit their routes.</span></a></li>
         <li data-optional-tool="fm"><a href="/fm/"><strong>FM Instrument</strong><span>Play an FM voice from a selected MIDI input.</span></a></li>
+        <li data-bundle-only hidden><a href="/recordings/"><strong>Recordings</strong><span>Record a take and download the WAV.</span></a></li>
       </ul>
     </nav>
+    <a href="/web-ui.zip" data-bundle-download hidden>Download browser bundle</a>
   </main>
 </body>
 </html>

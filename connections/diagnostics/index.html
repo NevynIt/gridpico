@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Gridpico Diagnostics</title>
+  <script defer src="/local-transport.js"></script>
+  <script defer src="/local-diagnostics.js"></script>
+  <script defer src="/local-routing.js"></script>
+  <script defer src="/local-led-test.js"></script>
   <style>
     :root {
       color-scheme: dark;
@@ -130,6 +134,8 @@
 <body>
   <main>
     <h1>Gridpico Diagnostics</h1>
+    <p id="discovery-status" role="status" hidden></p>
+    <button id="discovery-retry" type="button" hidden>Retry</button>
     <nav id="routing-tools" aria-label="Gridpico tools" hidden>
       <a href="/">Home</a>
       <a href="/apc/">Web APC</a>
@@ -344,7 +350,12 @@
 
     const localPage = location.protocol === "file:" ||
       (location.protocol === "http:" && location.hostname === "127.0.0.1");
-    const routingView = document.body.dataset.tool === "routing";
+    const routingView = location.pathname === "/routing/";
+    if (routingView) {
+      document.body.dataset.tool = "routing";
+      document.title = "Gridpico Routing";
+      document.querySelector("h1").textContent = "Routing";
+    }
     const serial = localPage ? navigator.serial : undefined;
     const settings = {
       baudRate: 115200, dataBits: 8, parity: "none", stopBits: 1, flowControl: "none",
@@ -826,13 +837,14 @@
       if (connection) void disconnect(connection);
     });
 
-    window.addEventListener("DOMContentLoaded", () => {
+    window.addEventListener("DOMContentLoaded", async () => {
+      await window.gridpicoLocal?.ready;
       localSerial = window.gridpicoLocal?.openSerial;
       if (localSerial) serialProvider.add(new Option("Loopback CLI", "loopback"));
       if (serial) serialProvider.add(new Option("Web Serial CDC", "cdc"));
       if (!localPage) {
         for (const controls of document.querySelectorAll("[data-serial-controls]")) controls.hidden = true;
-        document.querySelector("#local-midi-only").hidden = false;
+        document.querySelector("#local-midi-only").hidden = routingView;
       } else if (serialProvider.value === "loopback") {
         showStatus("Local CLI disconnected.");
       } else if (serialProvider.value) {

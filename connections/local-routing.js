@@ -1,8 +1,10 @@
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   "use strict";
 
   const dedicated = document.body.dataset.tool === "routing";
   if (!dedicated && location.protocol === "http:" && location.hostname === "127.0.0.1") return;
+  const adapter = window.gridpicoLocal;
+  await adapter?.ready;
   const cli = window.gridpicoDiagnosticsCli;
   const view = document.querySelector("#routing");
   const link = document.querySelector("#routing-navigation");
@@ -38,6 +40,12 @@ window.addEventListener("DOMContentLoaded", () => {
       document.querySelector("#terminal"));
     view.after(terminal);
     if (location.hash === "#terminal") terminal.open = true;
+    if (!cli?.supported) terminal.hidden = true;
+    if (adapter?.capabilityStatus === "unavailable") {
+      const retry = document.querySelector("#discovery-retry");
+      retry.hidden = false;
+      retry.addEventListener("click", () => location.reload());
+    }
   }
 
   // The CLI projection backing is 8 devices, 18 ports and 13 enabled routes.
@@ -324,6 +332,7 @@ window.addEventListener("DOMContentLoaded", () => {
     connect.hidden = dedicated || !cli?.supported;
     connect.textContent = cli?.selected === "cdc" ? "Connect Web Serial CDC" : "Connect local CLI";
     connect.disabled = Boolean(cli?.attached);
+    refresh.hidden = dedicated && !cli?.supported;
     refresh.textContent = cli?.attached && !cli.structured ? "Check Routing" : "Refresh routing";
     refresh.disabled = !cli?.ready || Boolean(work);
     confirmLabel.hidden = !cli?.attached || cli.loopback || !cli.structured || !snapshot;
@@ -337,7 +346,8 @@ window.addEventListener("DOMContentLoaded", () => {
     if (!dedicated) link.hidden = !cli?.supported;
     router.textContent = cli?.endpoint ? `Selected router endpoint · ${cli.endpoint}` :
       cli?.selected === "loopback" ? `Selected router ${location.origin} · Loopback CLI` :
-        cli?.selected === "cdc" ? "Web Serial CDC · Choose the router’s port." : "Routing needs a local serial provider.";
+        cli?.selected === "cdc" ? "Web Serial CDC · Choose the router’s port." :
+          dedicated ? `Router · ${location.origin}` : "Routing needs a local serial provider.";
     if (snapshot) {
       if (work) revision.textContent = `Reading current state · showing confirmed revision ${snapshot.revision}.`;
       else if (stale) revision.textContent = `Stale snapshot · revision ${snapshot.revision}. Refresh before editing.`;
@@ -449,7 +459,12 @@ window.addEventListener("DOMContentLoaded", () => {
   function onHash() {
     view.hidden = !dedicated && location.hash !== "#routing";
     if (!view.hidden) {
-      if (!cli?.supported) status.textContent = "Routing unavailable. Open it from the router’s loopback Home or connect the device through Web Serial CDC in a supported browser.";
+      if (dedicated && adapter?.capabilityStatus === "unavailable") {
+        status.textContent = "Couldn’t load capabilities from " + location.origin + ".";
+      } else if (!cli?.supported) {
+        status.textContent = dedicated && adapter?.capabilities ? "Routing unavailable on this connection. Use the router’s local CLI or SSH loopback connection." :
+          "Routing unavailable. Open it from the router’s loopback Home or connect the device through Web Serial CDC in a supported browser.";
+      }
       else if (!cli.attached) status.textContent = cli.notice || "Routing unavailable. Connect a serial provider to read this router.";
       onQueue();
       if (!dedicated) view.scrollIntoView();

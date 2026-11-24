@@ -1,9 +1,13 @@
-window.addEventListener("DOMContentLoaded", () => {
+window.addEventListener("DOMContentLoaded", async () => {
   "use strict";
 
   const midi = window.gridpicoLocal;
-  if (location.protocol !== "http:" || location.hostname !== "127.0.0.1" ||
-      midi?.startupPorts.led !== 3 || midi.startupPorts.sequence !== 4) return;
+  if (!midi || location.protocol !== "http:" || location.hostname !== "127.0.0.1" ||
+      location.pathname !== "/diagnostics/" || location.hash === "#routing") return;
+  await midi.ready;
+  const available = midi.capabilities ? midi.capabilities.actions.ledTest :
+    midi.startupPorts?.led === 3 && midi.startupPorts.sequence === 4;
+  if (!available) return;
 
   const cli = window.gridpicoDiagnosticsCli;
   const test = document.querySelector("#led-test");

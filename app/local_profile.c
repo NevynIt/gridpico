@@ -82,6 +82,11 @@ gridpico_port_id local_profile_role(const local_router_profile *profile, local_p
     return 0;
 }
 
+const char *local_profile_role_token(local_port_role role)
+{
+    return roles[role].token;
+}
+
 static bool read_device(local_router_profile *profile, char *rest)
 {
     gridpico_patch_inventory *inventory = &profile->registry.inventory;

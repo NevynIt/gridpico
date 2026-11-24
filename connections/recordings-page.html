@@ -8,6 +8,7 @@
     :root { color-scheme: dark; font: 1rem/1.55 system-ui, sans-serif; background: #121617; color: #eef1ef; }
     main { max-width: 38rem; margin: 2rem auto; padding: 0 1.25rem; }
     nav, .actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+    [hidden] { display: none !important; }
     a, button { color: inherit; }
     button { font: inherit; padding: .45rem .8rem; border: 1px solid #66726e;
       border-radius: .4rem; background: #242b2a; }
@@ -22,7 +23,7 @@
   <h1>Recordings</h1>
   <p>Start a take, then play the Web APC keybed. A take lasts up to 60 seconds.
     Stop to finalize the WAV. People with access to this router share the recorder and its latest download.</p>
-  <div class="actions">
+  <div class="actions" hidden>
     <button type="button" id="start" disabled>Start</button>
     <button type="button" id="stop" disabled>Stop</button>
     <a id="download" hidden>Download latest WAV</a>
@@ -33,6 +34,7 @@
 <script>
 (() => {
   const start = document.querySelector("#start");
+  const actions = document.querySelector(".actions");
   const stop = document.querySelector("#stop");
   const download = document.querySelector("#download");
   const status = document.querySelector("#status");
@@ -55,17 +57,25 @@
 
   async function refresh() {
     const currentGeneration = ++generation;
+    let unavailable = false;
     try {
       const response = await fetch("/recordings/status", { cache: "no-store", signal: AbortSignal.timeout(5000) });
+      unavailable = response.status === 404;
       if (!response.ok) throw new Error();
       const received = await response.json();
-      if (currentGeneration === generation) current = received;
+      if (currentGeneration === generation) {
+        current = received;
+        actions.hidden = false;
+      }
     } catch {
       if (currentGeneration === generation) current = undefined;
     } finally {
       if (currentGeneration === generation) {
         render();
-        if (!busy) refreshTimer = setTimeout(refresh, 1000);
+        if (unavailable) {
+          actions.hidden = true;
+          status.textContent = "Recording is unavailable on this connection.";
+        } else if (!busy) refreshTimer = setTimeout(refresh, 1000);
       }
     }
   }

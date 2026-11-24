@@ -83,12 +83,14 @@ else:
 cmake -S . -B build/web-ui -DGRIDPICO_ENABLE_ALSA=OFF
 cmake --build build/web-ui --target gridpico_local_router
 npm --prefix connections ci --ignore-scripts --no-audit --no-fund
+python3 connections/build-web-ui.py
 """
-    HOST_ARGS = ("connections/local-host.js", "--web-ui", *configured_profile(sys.argv[5]),
+    HOST_ARGS = ("connections/local-host.js", "--ui-descriptor", "--web-ui",
+                 *configured_profile(sys.argv[5]),
                  "build/web-ui/gridpico_local_router", str(ADDRESS[1]))
     READY = f"Gridpico local router listening at {URL}\n"
-    BUILD_MESSAGE = "Building the production local router and installing locked dependencies in dev."
-    BUILD_FAILURE = "Local router build or npm install failed in dev."
+    BUILD_MESSAGE = "Building the production local router and UI bundle in dev."
+    BUILD_FAILURE = "Local router build, npm install or UI bundle build failed in dev."
     HOST_LABEL = "Local host"
 
 # The exec stdin is a lifetime pipe. Signal only the demo child we started.

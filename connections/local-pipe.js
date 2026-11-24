@@ -8,6 +8,10 @@ const errorCodes = new Set(["INVALID", "CAPACITY", "UNAVAILABLE"]);
 const maxGeneration = 0xffffffff;
 const defaultMidiPeers = 6;
 const maxMidiPeers = 65535; // Directional port ID space.
+const uiDirections = new Map([
+  ["keybed", "in"], ["panel", "in"], ["led", "out"],
+  ["sequence", "in"], ["monitor", "out"], ["log", "out"],
+]);
 
 function unsigned(text, maximum) {
   if (!/^[1-9][0-9]*$/.test(text) || Number(text) > maximum) {
@@ -48,9 +52,33 @@ function recordFrom(line) {
   throw new Error("Unknown runner record");
 }
 
-function startLocalPipe(executable, handlers, args = []) {
+function uiRolesFrom(line) {
+  const fields = line.split(" ").slice(1);
+  if (fields.length % 3 !== 0 || fields.length > uiDirections.size * 3) {
+    throw new Error("Invalid router UI role advertisement");
+  }
+  const roles = new Map();
+  const ports = new Set();
+  const order = [...uiDirections.keys()];
+  let previous = -1;
+  for (let index = 0; index < fields.length; index += 3) {
+    const [role, id, direction] = fields.slice(index, index + 3);
+    const port = unsigned(id, 65535);
+    const position = order.indexOf(role);
+    if (uiDirections.get(role) !== direction || position <= previous || ports.has(port)) {
+      throw new Error("Invalid router UI role advertisement");
+    }
+    previous = position;
+    roles.set(role, { port, direction });
+    ports.add(port);
+  }
+  return roles;
+}
+
+function startLocalPipe(executable, handlers, args = [], expectUiRoles = false) {
   const runner = spawn(executable, args, { stdio: ["pipe", "pipe", "inherit"], detached: process.platform !== "win32" });
   let ready = false;
+  let uiRoles;
   let stopped = false;
   let response;
   let inEvent = false;
@@ -74,14 +102,27 @@ function startLocalPipe(executable, handlers, args = []) {
 
   function readLine(line) {
     if (line.length > maxLineBytes) throw new Error("Router line too long");
+    if (line === "ui-roles" || line.startsWith("ui-roles ")) {
+      if (!expectUiRoles || ready || uiRoles) throw new Error("Unexpected router UI role advertisement");
+      uiRoles = uiRolesFrom(line);
+      return;
+    }
     if (!ready) {
       const match = /^ready ([1-9][0-9]*)$/.exec(line);
       if (line !== "ready" && (!match || Number(match[1]) > maxMidiPeers)) {
         throw new Error("Invalid router readiness");
       }
+      if (expectUiRoles && !uiRoles) throw new Error("Router did not advertise UI roles");
       ready = true;
       clearTimeout(timer);
-      handlers.onReady(match ? Number(match[1]) : defaultMidiPeers);
+      const limit = match ? Number(match[1]) : defaultMidiPeers;
+      if (expectUiRoles) {
+        // Parse the entire startup chunk before accepting a listener, including any late metadata.
+        setImmediate(() => {
+          if (stopped) return;
+          try { handlers.onReady(limit, uiRoles); } catch (error) { fail(error.message); }
+        });
+      } else handlers.onReady(limit);
       return;
     }
     if (line === "event" && !inEvent && !replyStarted) {

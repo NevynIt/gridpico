@@ -5,8 +5,8 @@ const { pipeline } = require("node:stream");
 const { createHash, randomBytes, timingSafeEqual } = require("node:crypto");
 const path = require("node:path");
 
-function createRecordingsHttp(recorder, matchesHeader) {
-  const html = readFileSync(path.join(__dirname, "recordings-page.html"), "utf8");
+function createRecordingsHttp(recorder, matchesHeader, frozenPage) {
+  const html = frozenPage?.toString("utf8") ?? readFileSync(path.join(__dirname, "recordings-page.html"), "utf8");
   const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
   const hash = createHash("sha256").update(script).digest("base64");
   const tokens = new Map();
