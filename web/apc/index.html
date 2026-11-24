@@ -60,7 +60,23 @@
     min-width: 0; max-width: 100%; padding: .32rem; border: 1px solid var(--line); border-radius: .35rem; font: inherit;
   }
   #local-provider-controls:not([hidden]) { display: flex; align-items: center; flex-wrap: wrap; gap: .35rem; }
-  .local-log td:nth-child(3) { white-space: nowrap; }
+  #local-midi-server { margin-top: .55rem; font-size: .875rem; }
+  #local-midi-server label { display: inline-block; margin-bottom: .25rem; }
+  #local-midi-server .midi-server-actions { display: flex; flex-wrap: wrap; gap: .35rem; }
+  #local-midi-server input {
+    width: 20rem; max-width: 100%; min-width: 0; font: inherit; padding: .35rem;
+    border: 1px solid var(--line); border-radius: .35rem;
+  }
+  #local-midi-server button { padding: .35rem .55rem; border: 1px solid var(--line); border-radius: .35rem; background: #f2ebf8; }
+  #midi-server-status[data-error] { margin-top: .25rem; color: #8b3d2b; }
+  .local-binding [data-state="connected"], #local-midi-transport-status[data-connected] {
+    color: #21613f; font-weight: 650;
+  }
+  [data-apc-product] main { max-width: 59rem; }
+  [data-apc-product] .workspace { grid-template-columns: minmax(0, 1fr); }
+  [data-apc-product] .fixture,
+  [data-apc-product] .capture,
+  [data-apc-product] #legacy-face-help { display: none; }
   .control[data-local-led], .control[data-local-led][data-held] { background: var(--local-led-color); }
   .control[data-local-led][data-held] { box-shadow: inset 0 0 0 3px var(--accent); }
   .patch-assignments > div, .patch-device { min-width: 0; margin-top: .65rem; }
@@ -340,7 +356,7 @@
     <h1>Web APC</h1>
     <nav class="local-nav" id="local-nav" aria-label="Gridpico" hidden>
       <a href="/">Gridpico home</a>
-      <a href="/diagnostics/">Diagnostics</a>
+      <a href="/diagnostics/" target="_blank" rel="noopener" aria-label="Diagnostics (opens in a new tab)">Diagnostics</a>
     </nav>
   </header>
 
@@ -374,6 +390,8 @@
       <select id="local-midi-provider"></select>
       <button type="button" id="local-midi-access" hidden>Allow Web MIDI</button>
     </div>
+    <div id="local-midi-server"></div>
+    <p class="patch-status" id="local-midi-transport-status" role="status"></p>
     <p class="patch-status" id="local-midi-access-status" role="status" hidden></p>
     <p class="patch-status" id="local-port-guide">Use the port IDs from Diagnostics inventory. Bind each direction separately.</p>
     <div class="local-bindings" id="local-bindings"></div>
@@ -400,14 +418,14 @@
         <small id="range"></small>
       </div>
       <p class="playing-help" id="playing-help">Play with a mouse or by touch, or use the letters and numbers shown on the keys.</p>
-      <p class="mapping-note"><span class="route-annotation">Gridpico Route</span> uses the bottom-left pad. Open <strong>Protocol</strong> to inspect the other panel controls and knob detents.</p>
+      <p class="mapping-note" id="legacy-face-help"><span class="route-annotation">Gridpico Route</span> uses the bottom-left pad. Open <strong>Protocol</strong> to inspect the other panel controls and knob detents.</p>
       <div id="patch-face-help" hidden>
         <div class="patch-legend" aria-label="Route LED states">
           <span data-patch-route="off">Off</span><span data-patch-route="pending">Pending</span><span data-patch-route="active">Active</span>
         </div>
         <p class="playing-help">Source rows run top to bottom. Destination columns run left to right.</p>
       </div>
-      <p class="mapping-note" id="local-face-help" hidden>Keybed sends on Port 0. Panel buttons send on Port 1. The LEDs show received Port 1 feedback.</p>
+      <p class="mapping-note" id="local-face-help" hidden>Keybed sends on Port 0. Panel buttons send on Port 1. The LEDs show received Port 1 feedback. <a href="/diagnostics/" target="_blank" rel="noopener" aria-label="Diagnostics (opens in a new tab)">Diagnostics</a> opens in a separate tab for audio and MIDI messages.</p>
       <section class="patch-section patch-inventory" id="patch-color" aria-labelledby="patch-color-title" hidden>
         <div class="patch-heading">
           <h2 id="patch-color-title">Device colors</h2>
@@ -443,16 +461,6 @@
             <thead><tr><th scope="col">Event</th><th scope="col">Ch</th><th scope="col">Note</th><th scope="col">Vel</th><th scope="col" id="capture-destination" hidden>Destination</th></tr></thead>
             <tbody id="capture-rows"></tbody>
           </table>
-        </div>
-        <div id="local-log-view" hidden>
-          <h2>MIDI Log</h2>
-          <p class="patch-status">Receipt time is measured from page load.</p>
-          <div class="capture-results local-log">
-            <table aria-label="Received MIDI messages">
-              <thead><tr><th scope="col">Port</th><th scope="col">ms</th><th scope="col">Hex</th><th scope="col">Message</th></tr></thead>
-              <tbody id="local-log-rows"></tbody>
-            </table>
-          </div>
         </div>
       </div>
       <div class="activity-panel" id="monitor-panel" role="tabpanel" aria-labelledby="monitor-tab" hidden>
@@ -536,7 +544,9 @@
 const panel = document.querySelector("#panel");
 const patchMode = /^\/patch(?:\/|$)/.test(location.pathname);
 const servedLocalPage = /^https?:$/.test(location.protocol) && /^\/apc(?:\/|$)/.test(location.pathname);
-const localPage = servedLocalPage || (location.protocol === "file:" && window.gridpicoLocal?.midiProviders?.includes("web-midi"));
+const fileProductPage = location.protocol === "file:" && Boolean(window.gridpicoLocal);
+const localPage = servedLocalPage || fileProductPage;
+document.documentElement.toggleAttribute("data-apc-product", localPage);
 const transport = document.querySelector("#transport");
 const knobs = document.querySelector(".knobs");
 const keys = document.querySelector("#keys");
@@ -1065,6 +1075,7 @@ function describeFrame({ direction, port, bytes }) {
 const manualFrames = document.querySelector("#manual-frames");
 
 function recordManual(control, direction, port, bytes) {
+  if (localPage) return;
   const row = manualFrames.insertRow(0);
   row.insertCell().textContent = control;
   row.insertCell().textContent = describeFrame({ direction, port, bytes });
@@ -1965,55 +1976,67 @@ function updatePatchMonitor(active, frame) {
 
 // Each role owns an independent binding through the selected browser MIDI provider.
 function mountLocalMidi(adapter) {
-  document.querySelector(".fixture").hidden = true;
-  document.querySelector(".mapping-note").hidden = true;
   document.querySelector("#local-port-view").hidden = false;
   document.querySelector("#local-face-help").hidden = false;
-  document.querySelector("#connection").hidden = true;
-  document.querySelector("#capture-tab").textContent = "MIDI Log";
-  document.querySelector("#capture-title").hidden = true;
-  empty.hidden = true;
-  document.querySelector("#local-log-view").hidden = false;
-  document.querySelector("#manual-binding-note").textContent =
-    "Bound keybed notes and panel buttons send MIDI. Sustain and fixture detents stay in the Protocol Lab.";
+  document.querySelector(".capture").remove();
+  const nav = document.querySelector("#local-nav");
+  const home = nav.querySelector('a[href="/"]');
+  home.hidden = location.protocol === "https:";
+  if (fileProductPage) {
+    home.href = "HOME.HTM";
+    nav.querySelector('a[href="/diagnostics/"]').href = "DIAG.HTM";
+    document.querySelector("#local-face-help a").href = "DIAG.HTM";
+  }
+  nav.hidden = false;
   if (typeof adapter?.openMidi !== "function") {
     document.querySelector("#local-port-guide").textContent = "The local MIDI adapter is unavailable.";
     return null;
   }
-  document.querySelector("#local-nav").hidden = !servedLocalPage;
   const provider = document.querySelector("#local-midi-provider");
   const access = document.querySelector("#local-midi-access");
   const accessStatus = document.querySelector("#local-midi-access-status");
   const guide = document.querySelector("#local-port-guide");
+  const transportStatus = document.querySelector("#local-midi-transport-status");
   let accessGranted = false;
   const providers = adapter.midiProviders;
+  adapter.mountServerSelection?.(document.querySelector("#local-midi-server"), "/apc/");
   for (const id of providers) provider.add(new Option(id === "websocket" ? "Gridpico WebSocket" : "Web MIDI", id));
   if (!providers.length) {
-    guide.textContent = "No MIDI transport is available in this browser.";
+    guide.textContent = "No MIDI transport is available here. Open a served Gridpico controller or use a browser with Web MIDI.";
     return null;
   }
   document.querySelector("#local-provider-controls").hidden = false;
 
   const definitions = [
-    ["keybed", "Port 0 keybed TX", "send"],
-    ["panel", "Port 1 panel TX", "send"],
-    ["led", "Port 1 LED RX", "receive"],
-    ["monitor", "Monitor RX", "receive"],
-    ["log", "MIDI Log RX", "receive"],
+    ["keybed", "Keybed TX", "send"],
+    ["panel", "Panel TX", "send"],
+    ["led", "LED RX", "receive"],
   ];
   const choices = new Map();
   const bindings = new Map();
-  const ledger = document.querySelector("#local-log-rows");
   const controls = new Map(
     Array.from(surface.querySelectorAll("button[data-apc-note]"), button => [Number(button.dataset.apcNote), button])
   );
 
+  function renderConnection() {
+    const activeCount = [...bindings.values()].filter(binding => binding.state === "connected").length;
+    const opening = [...bindings.values()].some(binding => binding.state === "connecting");
+    const transportName = provider.value === "websocket" ? "Gridpico WebSocket" : "Web MIDI";
+    const serverName = provider.value === "websocket" ? ` · ${location.origin}` : "";
+    const activity = activeCount ? `${activeCount} of ${definitions.length} roles connected` : "No roles connected";
+    transportStatus.textContent = `${transportName}${serverName} · ${activity}${opening ? " · Connecting…" : ""}`;
+    transportStatus.toggleAttribute("data-connected", activeCount > 0);
+  }
+
   function setBindingStatus(role, state, message) {
-    const { status, disconnect } = choices.get(role);
+    const { name, status, submit, disconnect } = choices.get(role);
     status.textContent = message;
     status.dataset.state = state;
     status.toggleAttribute("data-error", state === "error");
+    submit.textContent = state === "error" ? "Retry" : "Connect";
+    submit.setAttribute("aria-label", `${submit.textContent} ${name}`);
     disconnect.disabled = !bindings.has(role);
+    renderConnection();
   }
 
   function clearLocalOutput(role, transmit) {
@@ -2024,7 +2047,6 @@ function mountLocalMidi(adapter) {
 
   function clearBindingState(role) {
     clearLocalOutput(role, false);
-    if (role === "monitor") silenceMonitor();
     if (role === "led") {
       for (const button of controls.values()) {
         cancelLedAnimation(button);
@@ -2057,15 +2079,6 @@ function mountLocalMidi(adapter) {
     if (!accepted) retire(role, binding, false, "Could not send MIDI. Bind the port again.");
   }
 
-  function noteMessage(bytes) {
-    const kind = bytes[0] & 0xf0;
-    if (kind !== 0x80 && kind !== 0x90) return null;
-    return {
-      type: kind === 0x80 || bytes[2] === 0 ? "note-off" : "note-on",
-      channel: (bytes[0] & 0x0f) + 1, note: bytes[1], velocity: bytes[2],
-    };
-  }
-
   function showLocalLed(bytes) {
     const led = decodeLed(bytes);
     // The production restore covers RGB pads only.
@@ -2079,36 +2092,12 @@ function mountLocalMidi(adapter) {
     if (led.period) startLedAnimation(button, led);
   }
 
-  function logReceipt(binding, bytes, note) {
-    const row = ledger.insertRow();
-    const summary = note ? `${note.type === "note-on" ? "Note On" : "Note Off"} · Ch ${note.channel} · ${note.note} · Vel ${note.velocity}`
-      : (bytes[0] & 0xf0) === 0xb0 ? `CC ${bytes[1]} · Ch ${(bytes[0] & 0x0f) + 1} · ${bytes[2]}` : "MIDI";
-    for (const value of [binding.label, performance.now().toFixed(1), hexBytes(Array.from(bytes)), summary]) {
-      row.insertCell().textContent = value;
-    }
-    if (ledger.rows.length > 100) ledger.deleteRow(0);
-    const scroller = ledger.closest(".capture-results");
-    scroller.scrollTop = scroller.scrollHeight;
-  }
-
   function receive(role, binding, bytes) {
-    if (bindings.get(role) !== binding || binding.state !== "connected" ||
+    if (role !== "led" || bindings.get(role) !== binding || binding.state !== "connected" ||
         !(bytes instanceof Uint8Array) || bytes.length !== 3 ||
         ![0x80, 0x90, 0xa0, 0xb0, 0xe0].includes(bytes[0] & 0xf0) ||
         bytes[1] > 127 || bytes[2] > 127) return;
-    if (role === "led") {
-      showLocalLed(bytes);
-      return;
-    }
-    const note = noteMessage(bytes);
-    if (role === "log") logReceipt(binding, bytes, note);
-    else if (role === "monitor" && note) {
-      try {
-        monitorDelivery(note, binding);
-      } catch {
-        disableAudio("Audio unavailable");
-      }
-    }
+    showLocalLed(bytes);
   }
 
   function bind(role, direction, field, ports) {
@@ -2120,13 +2109,13 @@ function mountLocalMidi(adapter) {
       field.reportValidity();
       return;
     }
-    const label = webMidi ? ports.selectedOptions[0].textContent : id;
+    const label = webMidi ? ports.selectedOptions[0].textContent : `Port ${id}`;
     const previous = bindings.get(role);
     if (previous?.id === id) return;
     if (previous) retire(role, previous, true);
-    const binding = { id, label, state: "connecting", handle: null };
+    const binding = { id, state: "connecting", handle: null };
     bindings.set(role, binding);
-    setBindingStatus(role, "connecting", `Binding port ${label}…`);
+    setBindingStatus(role, "connecting", `Connecting · ${label}`);
     try {
       binding.handle = adapter.openMidi(id, {
         direction,
@@ -2136,7 +2125,7 @@ function mountLocalMidi(adapter) {
           if (bindings.get(role) !== binding) return;
           if (state === "connected") {
             binding.state = state;
-            setBindingStatus(role, state, `Port ${label} bound`);
+            setBindingStatus(role, state, `Connected · ${label}`);
           } else if (state === "disconnected") {
             retire(role, binding, false, typeof reason === "string" ? reason : "");
           }
@@ -2144,7 +2133,7 @@ function mountLocalMidi(adapter) {
       });
       if (bindings.get(role) !== binding) binding.handle.close();
     } catch (error) {
-      retire(role, binding, false, error instanceof Error ? error.message : `Could not bind port ${label}.`);
+      retire(role, binding, false, error instanceof Error ? error.message : `Could not connect to ${label}.`);
     }
   }
 
@@ -2165,11 +2154,15 @@ function mountLocalMidi(adapter) {
       }
       const selected = ports.value;
       const available = adapter.listMidiPorts(direction);
-      ports.replaceChildren(new Option("Select a MIDI port", ""));
+      const kind = direction === "send" ? "output" : "input";
+      const prompt = available.length ? `Select a MIDI ${kind}`
+        : accessGranted ? `No system MIDI ${kind}s available` : "Allow Web MIDI to list ports";
+      ports.replaceChildren(new Option(prompt, ""));
       for (const { id, name } of available) ports.add(new Option(name, id));
       ports.value = available.some(port => port.id === selected) ? selected : "";
       submit.disabled = !ports.value;
     }
+    renderConnection();
   }
 
   const container = document.querySelector("#local-bindings");
@@ -2194,7 +2187,7 @@ function mountLocalMidi(adapter) {
     const ports = document.createElement("select");
     ports.id = `${id}-web`;
     actions.append(field, ports);
-    const submit = addButton(actions, "Bind", "", `Bind ${name}`);
+    const submit = addButton(actions, "Connect", "", `Connect ${name}`);
     submit.type = "submit";
     const disconnect = addButton(actions, "Disconnect", "", `Disconnect ${name}`);
     const status = document.createElement("p");
@@ -2204,7 +2197,7 @@ function mountLocalMidi(adapter) {
     field.setAttribute("aria-describedby", status.id);
     ports.setAttribute("aria-describedby", status.id);
     ports.addEventListener("change", () => { submit.disabled = !ports.value; });
-    choices.set(role, { status, disconnect, direction, field, ports, submit, label });
+    choices.set(role, { name, status, disconnect, direction, field, ports, submit, label });
     setBindingStatus(role, "disconnected", "Disconnected");
     form.append(label, actions, status);
     form.addEventListener("submit", event => {
@@ -2238,6 +2231,14 @@ function mountLocalMidi(adapter) {
     }
   });
   showPorts();
+  if (provider.value === "websocket" && adapter.startupPorts) {
+    for (const [role, { direction, field, ports }] of choices) {
+      const id = adapter.startupPorts[role];
+      if (!Number.isInteger(id) || id < 1 || id > 65535) continue;
+      field.value = String(id);
+      bind(role, direction, field, ports);
+    }
+  }
 
   window.addEventListener("pagehide", () => {
     for (const [role, binding] of bindings) retire(role, binding, true);

@@ -10,6 +10,29 @@ For the read-only `GRIDPICO` image, stage a self-contained `HOME.HTM` with relat
 
 The production home needs the local router and its existing browser host. Cross-host hosting can serve the same links under the opt-in authenticated origin. It uses the published WSS contract. Native RTP-MIDI, opt-in WSS and optional instruments each have their own acceptance and availability.
 
+## Production startup and page roles
+
+The canonical launcher selects `--web-ui` in the Connections host and persistent local runner. The loopback host marks the served pages for that profile with `data-gridpico-profile="web-ui"` on the shared transport script. The marked profile identifies the default bindings below. Keep the role defaults in one shared browser definition. The host still obtains the actual direction and limit from each accepted private runtime binding. [Starter routes](local-router.md#production-web-ui-startup).
+
+| Production tool | Role | Page direction | Default port | Starter bind |
+| --- | --- | --- | --- | --- |
+| Web APC | Keybed TX | Send | `1` | Once |
+| Web APC | Panel TX | Send | `2` | Once |
+| Web APC | LED RX | Receive | `3` | Once |
+| Diagnostics | LED Sequence TX | Send | `4` | Operator connects and enables Raw through CLI |
+| Diagnostics | Monitor RX | Receive | `5` | Once |
+| Diagnostics | MIDI Log RX | Receive | `6` | Once |
+
+The marker enables a single auto-bind attempt for each listed starter role when the page opens. Status and manual Connect/Retry stay available for each binding. A configured alternate is eligible only when the same role, direction and existing route intent are established by an explicit mapping. Try at most one such alternate when the match is unambiguous. The default profile supplies one candidate per role. Numeric adjacency, name similarity and direction alone do not establish role compatibility. Pages without the marker use explicit port selection. Direct-file launch offers Web MIDI by default and can navigate to a chosen served origin. Web MIDI permission starts with a user gesture and an explicit OS port choice for each role.
+
+Web APC owns the production controller and LED rendering. Diagnostics owns routed LED replay, Monitor playback and MIDI Log. Monitor connects as its own sink and starts audio only after explicit user enablement. MIDI Log records its own received bytes. Keybed readiness depends on its own binding. Link to Diagnostics for sound and log; the router begins delivery to each destination once that destination is attached and active. A later attachment waits for a fresh press. The separate FM page and the published demo surfaces retain their own roles.
+
+## Server selection and status
+
+The server field accepts an origin with an optional trailing slash. Accept `http://` or `ws://` on `127.0.0.1`, and `https://` or `wss://` for the configured authenticated listener. Convert `ws` to `http` and `wss` to `https` for navigation, preserving the explicit host and port. Reject credentials, non-root paths, queries, fragments and plaintext remote addresses. Applying the field navigates to the current tool's path on the chosen origin (`/apc/`, `/diagnostics/` or `/fm/`). A file launch uses its corresponding tool path. The page then opens its own same-origin sockets. The established Host, Origin, TLS and publication rules apply. Serial stays on its local binding or the direct-file Web Serial path. [WSS admission](websocket-midi.md#cross-host-deployment-and-admission).
+
+Reserve the exact provider, port and direction while a page binding is opening or active. Report **Busy** when that page already holds the reservation. Report **Unavailable** for a known missing or disconnected Web MIDI port. Distinguish a denied Web MIDI grant from an unsupported browser or context. If a WebSocket upgrade fails before `open`, show the selected port and say it may be busy or unavailable. The browser cannot read the HTTP rejection status. Use the existing binding lifecycle and per-role retry controls. A separate preflight would report a snapshot of occupancy, while the runtime alone grants the binding. This profile uses the binding result directly. [Browser WebSocket failure behavior](https://websockets.spec.whatwg.org/#feedback-from-the-protocol).
+
 ## Shared in-page adapter
 
 Connections owns one browser MIDI layer. Web APC, Diagnostics, Monitor, MIDI Log and the optional FM page choose a provider and a port explicitly. Pages own their controls and presentation. The layer uses the existing `openMidi(portId, { direction, onData, onState })` shape for either provider. This JavaScript boundary is within the page. A WebSocket peer still sends or receives binary MIDI only.
@@ -29,3 +52,5 @@ Report failure on the selected provider. The user chooses any replacement. Brows
 ## Bounded acceptance
 
 Use the canonical launcher on the nominated user setup. Open both links, then use Diagnostics to send the solid/off pair and one Timed RGB Replay through the production router to the live Web APC receiver. Check exact bytes, green/dark and timed behavior, and committed restore. Exercise the staged home and its relative links with Internet access off. Keep direct mounted-drive, OS-presented RTP and authenticated cross-host WebSocket results separate. For shared binding behavior, verify a real selected send and receive port, direction rejection, and disconnect cleanup on each provider being accepted. [Timed replay](local-router.md#timed-diagnostics-replay).
+
+For starter behavior, open both production tools on a fresh canonical launch. Confirm the named directional bindings, enable Monitor audio in Diagnostics and press/release one APC key. Verify actual receipt by both Diagnostics sinks and silence on release. Exercise one occupied default with clear per-role feedback, one Web MIDI permission denial and an explicit retry or corrected selection. Check that entering a remote origin loads its tool page before binding. Confirm independent serial access and real Web MIDI port selection. Keep browser certificate and remote-receipt evidence scoped to the tested origin.

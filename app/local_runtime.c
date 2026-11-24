@@ -2,7 +2,12 @@
 
 #include <string.h>
 
-enum { APC_FEEDBACK_PORT = 3 };
+enum {
+    APC_KEYBED_PORT = 1,
+    APC_FEEDBACK_PORT = 3,
+    WEB_MONITOR_PORT = 5,
+    MIDI_LOG_PORT = 6,
+};
 
 static const gridpico_local_registry registry = {
     .inventory = {
@@ -15,12 +20,12 @@ static const gridpico_local_registry registry = {
             {4, "MIDI Log", GRIDPICO_PATCH_DISCONNECTED},
         },
         .ports = {
-            {1, 1, "Keybed", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+            {APC_KEYBED_PORT, 1, "Keybed", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, true},
             {2, 1, "Panel", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, false},
             {APC_FEEDBACK_PORT, 1, "LED feedback", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, false},
             {4, 2, "LED Sequence", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, false},
-            {5, 3, "Monitor", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
-            {6, 4, "Log", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+            {WEB_MONITOR_PORT, 3, "Monitor", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+            {MIDI_LOG_PORT, 4, "Log", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
         },
     },
     .port_capabilities = {
@@ -310,6 +315,20 @@ gridpico_result local_runtime_init(local_runtime *runtime)
                                             gridpico_patch_graph_read_local_route);
     reset_panel(runtime);
     return GRIDPICO_OK;
+}
+
+gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime)
+{
+    gridpico_local_route_request request = {
+        .route = {APC_KEYBED_PORT, WEB_MONITOR_PORT, GRIDPICO_LOCAL_MANAGED},
+        .enabled = true,
+    };
+    const gridpico_result result = set_local_route(runtime, &request);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+    request.route.destination = MIDI_LOG_PORT;
+    return set_local_route(runtime, &request);
 }
 
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms)

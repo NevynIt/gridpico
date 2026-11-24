@@ -29,6 +29,7 @@ typedef struct {
     gridpico_read_diagnostic_log_fn read_logs;
     CLI_UINT library_storage[BYTES_TO_CLI_UINTS(GRIDPICO_CLI_LIBRARY_BYTES)];
     EmbeddedCli *terminal;
+    bool help_bindings_registered;
     gridpico_cli_write_fn terminal_write;
     void *terminal_write_context;
 } gridpico_cli_frontend;

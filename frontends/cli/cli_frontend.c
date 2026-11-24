@@ -53,6 +53,55 @@ static bool write_record(gridpico_cli_write_fn write, void *context,
            write_bytes(write, context, "\r\n", 2);
 }
 
+typedef struct {
+    const char *name;
+    const char *detail;
+} cli_help_entry;
+
+static const cli_help_entry help_inventory = {
+    "inventory", "inventory -- list devices and ports"};
+static const cli_help_entry help_status = {
+    "status", "status -- show the current Patch status"};
+static const cli_help_entry help_logs = {
+    "logs", "logs -- read retained diagnostic records"};
+static const cli_help_entry help_color = {
+    "color", "color get <device> | color set <device> #RRGGBB -- read or set a device color"};
+static const cli_help_entry help_color_readonly = {
+    "color", "color get <device> -- read a device color"};
+static const cli_help_entry help_route = {
+    "route", "route <src> <dst> managed|raw [on|off] -- read or set a route, then read back its state"};
+
+static size_t help_entries(const gridpico_cli_frontend *frontend,
+                          const cli_help_entry **entries, size_t capacity)
+{
+    size_t count = 0;
+    if (capacity < 2) return 0;
+    entries[count++] = &help_inventory;
+    entries[count++] = &help_status;
+    if (frontend->read_logs != NULL && count < capacity) entries[count++] = &help_logs;
+    if (frontend->read_device_color != NULL && count < capacity) {
+        entries[count++] = frontend->set_device_color != NULL
+                               ? &help_color : &help_color_readonly;
+    }
+    if (frontend->set_local_route != NULL && frontend->read_local_route != NULL &&
+        count < capacity) entries[count++] = &help_route;
+    return count;
+}
+
+static gridpico_result execute_help(gridpico_cli_frontend *frontend,
+                                    gridpico_cli_write_fn write, void *context)
+{
+    const cli_help_entry *entries[5];
+    const size_t count = help_entries(frontend, entries, sizeof entries / sizeof entries[0]);
+    for (size_t i = 0; i < count; ++i) {
+        char record[GRIDPICO_CLI_RECORD_BYTES];
+        const int size = snprintf(record, sizeof record, "COMMAND %s", entries[i]->detail);
+        if (size < 0 || (size_t)size >= sizeof record) return GRIDPICO_CAPACITY;
+        if (!write_record(write, context, record, (size_t)size)) return GRIDPICO_UNAVAILABLE;
+    }
+    return GRIDPICO_OK;
+}
+
 static bool write_quoted_name(gridpico_cli_write_fn write, void *context,
                               const char name[GRIDPICO_PATCH_NAME_BYTES])
 {
@@ -539,6 +588,48 @@ static const char *error_record(gridpico_result result)
     return "ERR INVALID";
 }
 
+static void terminal_response(void *context, const char *bytes, size_t size);
+
+static void terminal_application_command(EmbeddedCli *cli, char *args, void *context)
+{
+    gridpico_cli_frontend *frontend = cli->appContext;
+    const cli_help_entry *entry = context;
+    char line[GRIDPICO_CLI_LINE_BYTES];
+    const size_t name_size = strlen(entry->name);
+    const size_t args_size = args == NULL ? 0 : strlen(args);
+    if (name_size + (args_size == 0 ? 0 : args_size + 1) >= sizeof line) {
+        (void)write_record(terminal_response, cli, "ERR CAPACITY", sizeof("ERR CAPACITY") - 1);
+        return;
+    }
+    memcpy(line, entry->name, name_size);
+    size_t offset = name_size;
+    if (args_size != 0) {
+        line[offset++] = ' ';
+        memcpy(line + offset, args, args_size);
+        offset += args_size;
+    }
+    line[offset] = '\0';
+    (void)gridpico_cli_execute_line(frontend, line, terminal_response, cli);
+}
+
+static bool register_help_bindings(gridpico_cli_frontend *frontend)
+{
+    const cli_help_entry *entries[5];
+    const size_t count = help_entries(frontend, entries, sizeof entries / sizeof entries[0]);
+    for (size_t i = 0; i < count; ++i) {
+        if (!embeddedCliAddBinding(frontend->terminal, (CliCommandBinding){
+                .name = entries[i]->name,
+                .help = entries[i]->detail,
+                .tokenizeArgs = false,
+                .context = (void *)entries[i],
+                .binding = terminal_application_command,
+            })) {
+            return false;
+        }
+    }
+    return true;
+}
+
 gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
                                          const char *line,
                                          gridpico_cli_write_fn write,
@@ -550,6 +641,8 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
     bool inventory = false;
     gridpico_result result = parse_command(line, &inventory);
     if (result == GRIDPICO_OK && inventory) result = write_inventory(frontend, write, write_context);
+    else if (result == GRIDPICO_INVALID && strcmp(line, "help") == 0)
+        result = execute_help(frontend, write, write_context);
     else if (result == GRIDPICO_INVALID && strcmp(line, "status") == 0)
         result = execute_status(frontend, write, write_context);
     else if (result == GRIDPICO_INVALID && strcmp(line, "logs") == 0)
@@ -631,7 +724,7 @@ gridpico_result gridpico_cli_init(gridpico_cli_frontend *frontend,
     /* embedded-cli reserves two bytes in the command buffer. */
     config.cmdBufferSize = GRIDPICO_CLI_LINE_BYTES + 2;
     config.historyBufferSize = GRIDPICO_CLI_HISTORY_BYTES;
-    config.maxBindingCount = 1;
+    config.maxBindingCount = 6;
     config.cliBuffer = frontend->library_storage;
     config.cliBufferSize = GRIDPICO_CLI_LIBRARY_BYTES;
     config.enableAutoComplete = false;
@@ -661,6 +754,14 @@ void gridpico_cli_receive(gridpico_cli_frontend *frontend, const char *bytes, si
 void gridpico_cli_process(gridpico_cli_frontend *frontend)
 {
     if (frontend != NULL && frontend->terminal != NULL) {
+        if (!frontend->help_bindings_registered) {
+            if (!register_help_bindings(frontend)) {
+                (void)write_record(terminal_response, frontend->terminal,
+                                   "ERR CAPACITY", sizeof("ERR CAPACITY") - 1);
+                return;
+            }
+            frontend->help_bindings_registered = true;
+        }
         embeddedCliProcess(frontend->terminal);
     }
 }

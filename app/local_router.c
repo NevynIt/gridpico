@@ -325,11 +325,20 @@ int local_router_run(local_runtime *runtime, const local_router_service *service
 }
 
 #ifndef GRIDPICO_LOCAL_ROUTER_RUNNER_ONLY
-int main(void)
+int main(int argc, char **argv)
 {
+    const bool web_ui = argc == 2 && strcmp(argv[1], "--web-ui") == 0;
+    if (argc != 1 && !web_ui) {
+        fputs("Usage: gridpico_local_router [--web-ui]\n", stderr);
+        return EXIT_FAILURE;
+    }
     local_runtime runtime;
     if (local_runtime_init(&runtime) != GRIDPICO_OK) {
         fputs("Local router could not initialize the production graph\n", stderr);
+        return EXIT_FAILURE;
+    }
+    if (web_ui && local_runtime_enable_web_ui_routes(&runtime) != GRIDPICO_OK) {
+        fputs("Local router could not configure the Web UI starter routes\n", stderr);
         return EXIT_FAILURE;
     }
     return local_router_run(&runtime, NULL);

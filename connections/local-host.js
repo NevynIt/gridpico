@@ -16,12 +16,23 @@ const stallMs = 5000;
 const heartbeatMs = 5000;
 
 const args = process.argv.slice(2);
-const hasWssConfig = args[0] === "--wss-config";
-const wssConfig = hasWssConfig ? args.splice(0, 2)[1] : undefined;
+let webUi = false;
+let wssConfig;
+let invalidOptions = false;
+while (args[0]?.startsWith("--")) {
+  const flag = args.shift();
+  if (flag === "--web-ui" && !webUi) webUi = true;
+  else if (flag === "--wss-config" && wssConfig === undefined && args[0] && !args[0].startsWith("--")) {
+    wssConfig = args.shift();
+  } else {
+    invalidOptions = true;
+    break;
+  }
+}
 const [runnerArg, portArg = "8767"] = args;
 const port = Number(portArg);
-if (!runnerArg || !/^\d+$/.test(portArg) || port > 65535 || args.length > 2) {
-  console.error("Usage: node connections/local-host.js [--wss-config <file>] <local-router> [port]");
+if (invalidOptions || !runnerArg || !/^\d+$/.test(portArg) || port > 65535 || args.length > 2) {
+  console.error("Usage: node connections/local-host.js [--web-ui] [--wss-config <file>] <local-router> [port]");
   process.exit(1);
 }
 const runnerPath = path.resolve(runnerArg);
@@ -45,6 +56,13 @@ const assets = new Map([
   ["/local-transport.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-transport.js"))]],
   ["/local-diagnostics.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-diagnostics.js"))]],
 ]);
+const startupAssets = new Map();
+if (webUi) {
+  for (const url of ["/apc/", "/diagnostics/"]) {
+    const [type, html] = assets.get(url);
+    startupAssets.set(url, [type, html.replace(script, '<script defer src="/local-transport.js" data-gridpico-profile="web-ui"></script>')]);
+  }
+}
 const fmPage = "../web/fm/index.html";
 if (existsSync(path.join(__dirname, fmPage))) {
   assets.set("/fm/", ["text/html; charset=utf-8", page(fmPage)]);
@@ -55,7 +73,7 @@ const home = ["text/html; charset=utf-8", assets.has("/fm/") ? homePage :
 
 const server = createServer();
 let network;
-if (hasWssConfig) {
+if (wssConfig !== undefined) {
   try {
     network = createWssListener(wssConfig);
   } catch (error) {
@@ -74,7 +92,8 @@ function matchesHeader(request, name, expected) {
 
 function serve(request, response, listener) {
   const host = listener?.host ?? `${address}:${request.socket.localPort}`;
-  const asset = !listener && request.url === "/" ? home : assets.get(request.url);
+  const asset = listener ? assets.get(request.url) :
+    request.url === "/" ? home : startupAssets.get(request.url) ?? assets.get(request.url);
   if (listener && (!listener.authorize(request.socket) || !matchesHeader(request, "host", host))) {
     response.writeHead(403).end();
     return;
@@ -395,7 +414,7 @@ const pipe = startLocalPipe(runnerPath, {
     process.exitCode = 1;
     shutdown();
   },
-});
+}, webUi ? ["--web-ui"] : []);
 
 server.on("error", (error) => {
   console.error(error.message);

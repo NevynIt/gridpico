@@ -46,8 +46,8 @@ function recordFrom(line) {
   throw new Error("Unknown runner record");
 }
 
-function startLocalPipe(executable, handlers) {
-  const runner = spawn(executable, [], { stdio: ["pipe", "pipe", "inherit"], detached: process.platform !== "win32" });
+function startLocalPipe(executable, handlers, args = []) {
+  const runner = spawn(executable, args, { stdio: ["pipe", "pipe", "inherit"], detached: process.platform !== "win32" });
   let ready = false;
   let stopped = false;
   let response;

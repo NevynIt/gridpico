@@ -1,8 +1,11 @@
 # Gridpico Web APC
 
-Open [index.html](index.html) in a browser. The page is self-contained and works
-from disk. To serve it locally, run this from the repository root, then open
-[the local preview](http://127.0.0.1:8000/).
+Run `./scripts/web-ui.sh` from the repository root and choose **Web APC** on
+Gridpico home. In the packed offline tools, open `HOME.HTM` and choose
+**Web APC** for system MIDI.
+
+For the separate legacy preview, open [index.html](index.html) directly or
+serve it from the repository root and open [the preview](http://127.0.0.1:8000/).
 
 ```sh
 python3 -m http.server 8000 --bind 127.0.0.1 --directory web/apc
@@ -22,7 +25,7 @@ Gridpico Route is annotated separately below the controller face. The octave
 buttons adjust the keybed locally. The display uses 1-based MIDI channels.
 The initial note range 48–72 and fixed press velocity 96 are simulator defaults.
 
-## Listen to routed MIDI
+## Listen in the legacy Route view
 
 Open the [connected Web APC application](../../connections/README.md), select
 **Monitor**, and choose **Enable audio**. With the default +12 Route active,
@@ -124,42 +127,39 @@ audio off and clears voices. Route view retains its original capture feed.
 
 ## Local router
 
-Open Web APC at the local router host's `/apc/` page. Read the port IDs
-and directions with `inventory` in Diagnostics. Bind each field to its
-own port. Browser TX binds a router input and browser RX binds a router
-output. The first local application uses the following defaults. Enter
-the IDs reported by the running router.
+The production `/apc/` page shows the selected transport, server and
+connection state of each controller role. The canonical loopback launcher
+attempts each of these default connections once. For a manual connection,
+read the port IDs with `inventory` in Diagnostics. Browser TX binds a router
+input and browser RX binds a router output.
 
 | Web APC control | Default router port |
 | --- | --- |
-| Port 0 keybed TX | `1` Keybed |
-| Port 1 panel TX | `2` Panel |
-| Port 1 LED RX | `3` LED feedback |
-| Monitor RX | `5` Monitor |
-| MIDI Log RX | `6` Log |
+| Keybed TX | `1` Keybed |
+| Panel TX | `2` Panel |
+| LED RX | `3` LED feedback |
 
-Set managed routes in Diagnostics before playing. For the default ports,
-`route 1 5 managed on` feeds Monitor and `route 1 6 managed on` separately
-feeds MIDI Log. Both read their own received MIDI messages. Enable audio
-explicitly and use the existing channel filter or per-channel mute.
-MIDI Log records its own port, elapsed page time, exact hex and decoded
-note or CC when applicable.
+For sound and MIDI receipts, open **Diagnostics**. Its Monitor plays when
+you select **Enable audio**. The canonical launcher sets up the starter routes
+to Monitor and MIDI Log.
+
+Use **Open server** to load the controller at another Gridpico origin. For
+system MIDI, choose **Web MIDI**, click **Allow Web MIDI**, then choose the
+system outputs for Keybed and Panel TX and the system input for LED RX.
 
 Keybed notes and panel button pairs use separate TX links. Rebinding sends
 releases on the old available link. A lost link clears its held controls.
-Changing LED RX clears its display until fresh feedback arrives. Changing
-Monitor RX clears its voices and waits for fresh notes. Other bindings
-stay active when one link changes. Bind again explicitly after a loss.
+Changing LED RX clears its display until fresh feedback arrives. Other
+bindings stay active when one link changes. Connect again explicitly
+after a loss.
 
-Bind the LED RX port to see production feedback. For a solid/off
-Diagnostics run, bind the Diagnostics LED Sequence port and enable the
-compatible Raw route, `route 4 3 raw on` with the default IDs. Verify the
-received green `96 00 15` and dark `96 00 00` on pad 00. This view displays
-solid feedback and uses the production restore after Raw ownership ends.
-The standalone Protocol Lab still provides its isolated timed preview.
+With LED RX connected, use Diagnostics to run a solid/off or Timed RGB LED
+sequence over the compatible Raw route, `route 4 3 raw on` for the default
+IDs. Web APC shows the actual received feedback and the restored production
+page after Raw ownership ends.
 [Local production router contract](../../api/local-router.md)
 
-## Protocol lab
+## Legacy Protocol Lab
 
 **Protocol** shows direction, logical port, and exact hex for manual input.
 In the connected Route view, the keybed and Route pad use the live adapter.

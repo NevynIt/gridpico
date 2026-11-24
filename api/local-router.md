@@ -21,6 +21,12 @@ The IDs identify the first application's configured bindings. The Graph works fr
 
 Graph starts MIDI generations at dormant `1`. Connections supplies `2` at first bind and a strictly newer nonzero `uint32_t` for each replacement. Never wrap. Assembly serializes readiness, detach and replacement through `gridpico_patch_port_update`. Only one live binding is allowed per direction. A detach applies to its exact generation. Reject conflicting, unknown or ambiguous bindings and preserve the current binding. A detached managed route retains desired state and is Pending when unavailable. Only verified replacement generations may reconcile release debt. A stale event leaves the current binding and route unchanged.
 
+## Production Web UI startup
+
+`scripts/web-ui.sh` passes `--web-ui` to the Connections host. The host forwards it to the persistent local runner. Before `ready`, Assembly enables the two managed identity routes from Keybed to Monitor and MIDI Log through the existing typed Session/control setter. They are `1 → 5` and `1 → 6` in the default registry. Setup failure prevents readiness. The routes start Pending while their peers are absent and become Active through ordinary attachment. Explicit CLI route commands can read and change them. Raw starts Off. The no-argument runner, native ALSA and legacy demo profiles start with their existing defaults.
+
+Connections applies the Web UI auto-bind marker only to the marked runtime's served loopback tools. An optional WSS listener sharing the runtime sees its actual route state and requires explicit port selection. The starter routes introduce no additional transport messages or separate ready state between the browser tools. [Page roles and binding](browser-midi.md#production-startup-and-page-roles).
+
 ## Serial CLI route control
 
 Reuse `inventory`, `status`, `logs` and their existing records. `status` continues to count the managed Patch page. The raw branch has typed readback through `route`.

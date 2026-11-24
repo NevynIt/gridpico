@@ -68,6 +68,7 @@ typedef struct {
 } local_runtime;
 
 gridpico_result local_runtime_init(local_runtime *runtime);
+gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime);
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms);
 gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result result);
 gridpico_result local_runtime_bind(local_runtime *runtime, gridpico_connection connection,

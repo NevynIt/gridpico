@@ -58,7 +58,8 @@ cmake -S . -B build/web-ui -DGRIDPICO_ENABLE_ALSA=OFF
 cmake --build build/web-ui --target gridpico_local_router
 npm --prefix connections ci --ignore-scripts --no-audit --no-fund
 """
-    HOST_ARGS = ("connections/local-host.js", "build/web-ui/gridpico_local_router", str(ADDRESS[1]))
+    HOST_ARGS = ("connections/local-host.js", "--web-ui", "build/web-ui/gridpico_local_router",
+                 str(ADDRESS[1]))
     READY = f"Gridpico local router listening at {URL}\n"
     BUILD_MESSAGE = "Building the production local router and installing locked dependencies in dev."
     BUILD_FAILURE = "Local router build or npm install failed in dev."

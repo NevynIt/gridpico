@@ -2,10 +2,14 @@ window.addEventListener("DOMContentLoaded", () => {
   "use strict";
 
   const adapter = window.gridpicoLocal;
-  if (!adapter?.midiProviders?.length) return;
+  if (!adapter) return;
+  if (location.protocol === "file:") document.querySelector("#diagnostics-apc").href = "INDEX.HTM";
+  document.querySelector("#diagnostics-navigation").hidden = false;
   const section = document.querySelector("#local-midi");
+  const connection = document.querySelector("#midi-connection");
   const provider = document.querySelector("#local-midi-provider");
   const access = document.querySelector("#local-midi-access");
+  const accessStatus = document.querySelector("#midi-access-status");
   const osPort = document.querySelector("#local-midi-os-port");
   const osControls = document.querySelector("#local-midi-web-midi");
   const routerPort = document.querySelector("#local-midi-router-port");
@@ -38,7 +42,16 @@ window.addEventListener("DOMContentLoaded", () => {
   let run;
   let position = 0;
   let requesting = false;
+  let accessGranted = false;
 
+  adapter.mountServerSelection(connection, "/diagnostics/");
+  connection.hidden = false;
+  if (!adapter.midiProviders.length) {
+    provider.disabled = true;
+    accessStatus.hidden = false;
+    accessStatus.textContent = "No MIDI provider is available in this browser or context.";
+    return;
+  }
   for (const id of adapter.midiProviders) {
     provider.add(new Option(id === "web-midi" ? "Web MIDI" : "WebSocket", id));
   }
@@ -57,11 +70,261 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   function hex(bytes) {
-    return bytes.map((byte) => byte.toString(16).toUpperCase().padStart(2, "0")).join(" ");
+    return Array.from(bytes, (byte) => byte.toString(16).toUpperCase().padStart(2, "0")).join(" ");
   }
 
   function validPort(field) {
     return field.validity.valid && Number.isInteger(field.valueAsNumber);
+  }
+
+  function noteMessage(bytes) {
+    const kind = bytes[0] & 0xf0;
+    if (bytes.length !== 3 || (kind !== 0x80 && kind !== 0x90) || bytes[1] > 127 || bytes[2] > 127) return;
+    return { on: kind === 0x90 && bytes[2] !== 0, channel: (bytes[0] & 0x0f) + 1, note: bytes[1], velocity: bytes[2] };
+  }
+
+  function mountMonitor() {
+    const toggle = document.querySelector("#monitor-audio");
+    const state = document.querySelector("#monitor-audio-status");
+    const volume = document.querySelector("#monitor-volume");
+    const filter = document.querySelector("#monitor-channel-filter");
+    const choices = document.querySelector("#monitor-channels");
+    const sounds = Array(16).fill("sine");
+    const voices = new Set();
+    const maxVoices = 25;
+    let audio;
+
+    function remove(voice) {
+      if (!voices.delete(voice)) return;
+      voice.oscillator.disconnect();
+      voice.envelope.disconnect();
+    }
+
+    function stopVoice(voice) {
+      remove(voice);
+      voice.oscillator.stop();
+    }
+
+    function release(voice) {
+      if (voice.releasing) return;
+      voice.releasing = true;
+      const now = audio.context.currentTime;
+      voice.envelope.gain.setTargetAtTime(0, now, 0.006);
+      voice.oscillator.stop(now + 0.035);
+    }
+
+    function silence() {
+      for (const voice of voices) stopVoice(voice);
+    }
+
+    function audioState(on, message) {
+      toggle.textContent = on ? "Disable audio" : "Enable audio";
+      state.textContent = message;
+    }
+
+    function disable(message = "Audio off.") {
+      silence();
+      const context = audio?.context;
+      audio = undefined;
+      if (context && context.state !== "closed") void context.close().catch(() => {});
+      audioState(false, message);
+    }
+
+    toggle.addEventListener("click", async () => {
+      if (audio) {
+        disable();
+        return;
+      }
+      let context;
+      try {
+        context = new AudioContext();
+        const active = { context, master: undefined, ready: false };
+        audio = active;
+        active.master = context.createGain();
+        active.master.gain.value = Number(volume.value) / 100;
+        active.master.connect(context.destination);
+        audioState(true, "Starting audio…");
+        await context.resume();
+        if (audio !== active) return;
+        active.ready = true;
+        context.addEventListener("statechange", () => {
+          if (audio === active && context.state !== "running") silence();
+        });
+        audioState(true, "Audio on.");
+      } catch {
+        if (audio?.context === context) disable("Audio unavailable.");
+        else if (context && context.state !== "closed") void context.close().catch(() => {});
+      }
+    });
+    volume.addEventListener("input", () => {
+      document.querySelector("#monitor-volume-display").textContent = `${volume.value}%`;
+      if (audio) audio.master.gain.setTargetAtTime(Number(volume.value) / 100, audio.context.currentTime, 0.01);
+    });
+    filter.addEventListener("change", () => {
+      if (!filter.value) return;
+      for (const voice of voices) {
+        if (voice.channel !== Number(filter.value)) stopVoice(voice);
+      }
+    });
+
+    for (let channel = 1; channel <= sounds.length; channel++) {
+      filter.add(new Option(`MIDI ${channel}`, String(channel)));
+      const label = document.createElement("label");
+      const choice = document.createElement("select");
+      choice.setAttribute("aria-label", `Channel ${channel} sound`);
+      for (const [name, value] of [["Sine", "sine"], ["Triangle", "triangle"], ["Square", "square"], ["Mute", "mute"]]) {
+        choice.add(new Option(name, value));
+      }
+      choice.addEventListener("change", () => {
+        sounds[channel - 1] = choice.value;
+        if (choice.value === "mute") {
+          for (const voice of voices) {
+            if (voice.channel === channel) release(voice);
+          }
+        }
+      });
+      label.append(String(channel).padStart(2, "0"), choice);
+      choices.append(label);
+    }
+
+    function receive(bytes) {
+      const message = noteMessage(bytes);
+      if (!message || !audio?.ready || (filter.value && Number(filter.value) !== message.channel)) return;
+      const { on, channel, note, velocity } = message;
+      const held = [...voices].find(voice => !voice.releasing && voice.channel === channel && voice.note === note);
+      if (!on) {
+        if (held) release(held);
+        return;
+      }
+      const { context, master } = audio;
+      const sound = sounds[channel - 1];
+      if (context.state !== "running" || sound === "mute") return;
+      if (held) stopVoice(held);
+      if (voices.size === maxVoices) stopVoice([...voices].find(voice => voice.releasing) ?? voices.values().next().value);
+      const oscillator = context.createOscillator();
+      const envelope = context.createGain();
+      const voice = { channel, note, oscillator, envelope, releasing: false };
+      oscillator.type = sound;
+      oscillator.frequency.value = 440 * 2 ** ((note - 69) / 12);
+      envelope.gain.value = 0;
+      oscillator.connect(envelope);
+      envelope.connect(master);
+      oscillator.onended = () => remove(voice);
+      oscillator.start();
+      voices.add(voice);
+      envelope.gain.setTargetAtTime(0.04 * velocity / 127, context.currentTime, 0.004);
+    }
+    return { receive, silence, disable };
+  }
+
+  function mountReceiver(role, receive, lost) {
+    const root = document.querySelector(`#${role}-binding`);
+    const field = root.querySelector("input");
+    const ports = root.querySelector("select");
+    const label = root.querySelector("label");
+    const bind = root.querySelector("[data-bind]");
+    const unbind = root.querySelector("[data-disconnect]");
+    const indicator = root.querySelector("[role=status]");
+    let currentBinding;
+
+    function report(state, message) {
+      indicator.dataset.state = state;
+      indicator.textContent = message;
+      indicator.toggleAttribute("data-error", state === "error");
+      bind.textContent = state === "error" ? "Retry" : "Connect MIDI";
+    }
+
+    function refresh() {
+      const direct = directMidi();
+      const previous = ports.value;
+      const inputs = direct ? adapter.listMidiPorts("receive") : [];
+      if (direct) {
+        ports.replaceChildren(new Option(accessGranted && !inputs.length ? "No eligible MIDI inputs" : "Choose a MIDI input", ""));
+        for (const { id, name } of inputs) ports.add(new Option(name, id));
+        if (inputs.some(({ id }) => id === previous)) ports.value = previous;
+      }
+      label.htmlFor = direct ? ports.id : field.id;
+      field.hidden = direct;
+      ports.hidden = !direct;
+      field.disabled = ports.disabled = Boolean(currentBinding);
+      bind.disabled = Boolean(currentBinding || (direct && (!ports.value || requesting)));
+      unbind.disabled = !currentBinding;
+    }
+
+    function retire(reason) {
+      if (!currentBinding) return;
+      const previous = currentBinding;
+      currentBinding = undefined;
+      previous.handle?.close();
+      lost?.();
+      report(reason ? "error" : "disconnected", reason || "Disconnected.");
+      refresh();
+    }
+
+    function open() {
+      const direct = directMidi();
+      if (currentBinding || (direct ? !ports.value : !field.reportValidity())) return;
+      const id = direct ? ports.value : field.valueAsNumber;
+      const name = direct ? ports.selectedOptions[0].text : `MIDI port ${id}`;
+      const active = { ready: false };
+      currentBinding = active;
+      report("connecting", `Connecting to ${name}…`);
+      try {
+        active.handle = adapter.openMidi(id, {
+          provider: provider.value,
+          direction: "receive",
+          onData(bytes) {
+            if (currentBinding === active && active.ready) receive(bytes, name);
+          },
+          onState(state, reason) {
+            if (currentBinding !== active) return;
+            if (state === "connected") {
+              active.ready = true;
+              report("connected", `${name} connected.`);
+            } else if (state === "disconnected") {
+              retire(reason);
+            }
+          },
+        });
+      } catch (error) {
+        retire(error.message);
+      }
+      refresh();
+    }
+
+    bind.addEventListener("click", open);
+    unbind.addEventListener("click", () => retire());
+    ports.addEventListener("change", () => { bind.disabled = !ports.value; });
+    const defaultPort = adapter.startupPorts?.[role];
+    if (defaultPort) {
+      field.value = defaultPort;
+      open();
+    }
+    refresh();
+    return { refresh, retire };
+  }
+
+  const monitor = mountMonitor();
+  const log = document.querySelector("#log-rows");
+  const receivers = [
+    mountReceiver("monitor", (bytes) => {
+      try { monitor.receive(bytes); } catch { monitor.disable("Audio unavailable."); }
+    }, monitor.silence),
+    mountReceiver("log", (bytes, source) => {
+      const note = noteMessage(bytes);
+      const summary = note ? `${note.on ? "Note On" : "Note Off"} · Ch ${note.channel} · ${note.note} · Vel ${note.velocity}` :
+        (bytes[0] & 0xf0) === 0xb0 && bytes.length === 3 ? `CC ${bytes[1]} · Ch ${(bytes[0] & 0x0f) + 1} · ${bytes[2]}` : "MIDI";
+      const row = log.insertRow();
+      for (const cell of [source, performance.now().toFixed(1), hex(bytes), summary]) row.insertCell().textContent = cell;
+      if (log.rows.length > 100) log.deleteRow(0);
+      const scroller = log.closest(".receipts");
+      scroller.scrollTop = scroller.scrollHeight;
+    }),
+  ];
+  document.querySelector("#log-clear").addEventListener("click", () => log.replaceChildren());
+  if (adapter.startupPorts) {
+    port.value = adapter.startupPorts.sequence;
+    destination.value = adapter.startupPorts.led;
   }
 
   function renderSteps() {
@@ -85,6 +348,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   function updateControls() {
     const direct = directMidi();
+    access.hidden = accessStatus.hidden = !direct;
     osControls.hidden = !direct;
     routerPort.hidden = direct;
     lease.hidden = direct;
@@ -124,6 +388,10 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   provider.addEventListener("change", () => {
+    for (const receiver of receivers) {
+      receiver.retire();
+      receiver.refresh();
+    }
     if (directMidi()) refreshPorts();
     status.textContent = "MIDI disconnected.";
     renderSteps();
@@ -131,15 +399,21 @@ window.addEventListener("DOMContentLoaded", () => {
   });
   access.addEventListener("click", async () => {
     requesting = true;
+    accessStatus.textContent = "Requesting Web MIDI permission…";
     updateControls();
     try {
       await adapter.requestMidiAccess();
-      access.textContent = "Refresh MIDI outputs";
-      status.textContent = refreshPorts() ? "Choose a MIDI output." : "No connected MIDI outputs.";
+      accessGranted = true;
+      access.textContent = "Refresh Web MIDI ports";
+      const outputs = refreshPorts();
+      const inputs = adapter.listMidiPorts("receive").length;
+      accessStatus.textContent = inputs || outputs ? "Choose a compatible MIDI port." : "No eligible MIDI ports are connected.";
+      status.textContent = outputs ? "Choose a MIDI output." : "No eligible MIDI outputs are connected.";
     } catch (error) {
-      status.textContent = `Could not access Web MIDI: ${error.message}`;
+      accessStatus.textContent = error.message;
     } finally {
       requesting = false;
+      for (const receiver of receivers) receiver.refresh();
       renderSteps();
       updateControls();
     }
@@ -242,9 +516,14 @@ window.addEventListener("DOMContentLoaded", () => {
     if (document.hidden && run) finish("Sequence stopped when Diagnostics was hidden.");
     updateControls();
   });
-  window.addEventListener("pagehide", () => finish("MIDI disconnected."));
+  window.addEventListener("pagehide", () => {
+    finish("MIDI disconnected.");
+    for (const receiver of receivers) receiver.retire();
+    monitor.disable();
+  });
 
   renderSteps();
   updateControls();
+  document.querySelector("#midi-signals").hidden = false;
   section.hidden = false;
 });

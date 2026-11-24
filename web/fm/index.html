@@ -26,19 +26,22 @@
   input, select { width: 100%; }
   :focus-visible { outline: 2px solid #a3efbd; outline-offset: 2px; }
   .actions { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .7rem; }
+  .midi-server-actions { display: flex; flex-wrap: wrap; gap: .45rem; }
+  .midi-server-actions input { flex: 1 1 14rem; width: auto; min-width: 0; }
   .status { min-height: 1.5em; margin-bottom: 0; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
 <main>
   <nav id="navigation" aria-label="Gridpico" hidden>
-    <a href="/">Gridpico home</a>
+    <a href="/" id="home-link">Gridpico home</a>
     <a href="/diagnostics/">Diagnostics</a>
   </nav>
   <h1>FM Instrument</h1>
   <p>One velocity-sensitive FM voice with a bright attack and a soft, sustained tone.</p>
   <section aria-labelledby="input-title">
     <h2 id="input-title">MIDI input</h2>
+    <div id="midi-server"></div>
     <form id="midi-form" hidden>
       <label for="provider">Transport</label>
       <select id="provider"></select>
@@ -232,6 +235,8 @@ function showChoice(adapter) {
 window.addEventListener("DOMContentLoaded", () => {
   const adapter = window.gridpicoLocal;
   byId("navigation").hidden = !/^https?:$/.test(location.protocol);
+  byId("home-link").hidden = location.protocol === "https:";
+  if (adapter) adapter.mountServerSelection(byId("midi-server"), "/fm/");
   if (!adapter?.midiProviders?.length) {
     midiStatus.textContent = "No MIDI transport is available. Open the served or packaged FM Instrument in a compatible browser.";
     return;

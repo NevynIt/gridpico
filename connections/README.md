@@ -128,10 +128,15 @@ node connections/local-host.js build/local-router/gridpico_local_router
 
 An optional port argument overrides 8767.
 
-Use the CLI's `inventory` command to identify the configured MIDI bindings.
-For the default fixture, Web APC can bind Keybed TX to port 1, Panel TX to
-port 2 and LED RX to port 3. Monitor and MIDI Log can receive on ports 5 and
-6. To enable their independent keybed routes:
+With `./scripts/web-ui.sh`, Web APC attempts Keybed TX on port 1, Panel TX
+on 2 and LED RX on 3 once when it opens. Diagnostics attempts Monitor RX on
+5 and MIDI Log RX on 6. To hear the keybed, open Diagnostics and choose
+**Enable audio**. Each receiver starts with the next note after it connects.
+The MIDI Log records the bytes received by its own binding.
+
+The direct host command above uses manual selection. Use the CLI's
+`inventory` command to identify the configured MIDI bindings. For the
+default router, enable the independent keybed routes with:
 
 ```text
 route 1 5 managed on
@@ -158,6 +163,12 @@ OS MIDI port. Enable Web MIDI in the page, select the named system output
 for sending or input for receiving, then connect. Refresh the list after
 adding or replacing a port. A lost port needs a fresh selection. The
 offline pages use Web MIDI where the browser grants access.
+
+Use **MIDI server origin** and **Open server** to open the same tool at a
+different origin. Use HTTP or WS for `127.0.0.1`, or the configured HTTPS or
+WSS origin for a remote server. Enter only the scheme, host and port.
+The browser applies the remote server's TLS and client-certificate rules.
+Use Back to return to the previous page.
 
 ### Timed RGB pads
 

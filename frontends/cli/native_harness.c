@@ -222,6 +222,12 @@ static void test_local_route_cli(transcript *terminal)
     cli.read_local_route = gridpico_patch_session_read_local_route;
 
     clear(terminal);
+    gridpico_cli_receive(&cli, "help\n", sizeof("help\n") - 1);
+    gridpico_cli_process(&cli);
+    assert(contains(terminal, " * route\r\n\troute <src> <dst> managed|raw [on|off]"));
+    assert(!contains(terminal, " * logs"));
+
+    clear(terminal);
     assert(gridpico_cli_execute_line(&cli, "route 1 2 managed", capture, terminal) == GRIDPICO_OK);
     assert(strcmp(terminal->output, "ROUTE 1 2 MANAGED OFF\r\nOK\r\n") == 0);
     clear(terminal);
@@ -262,6 +268,13 @@ int main(void)
     assert(gridpico_cli_execute_line(&cli, "route 1 2 managed", capture, &terminal) ==
            GRIDPICO_INVALID);
     assert(strcmp(terminal.output, "ERR INVALID\r\n") == 0);
+    clear(&terminal);
+    assert(gridpico_cli_execute_line(&cli, "help", capture, &terminal) == GRIDPICO_OK);
+    assert(contains(&terminal, "COMMAND inventory -- list devices and ports\r\n"));
+    assert(contains(&terminal, "COMMAND color get <device> | color set <device> #RRGGBB"));
+    assert(contains(&terminal, "COMMAND logs -- read retained diagnostic records\r\n"));
+    assert(contains(&terminal, "OK\r\n"));
+    assert(!contains(&terminal, "COMMAND route"));
 
     const gridpico_patch_route_request route = {
         .source = 1,
@@ -324,6 +337,15 @@ int main(void)
     compare_terminal_reply(&cli, &terminal, "logs", GRIDPICO_OK);
     compare_terminal_reply(&cli, &terminal, "color get 2", GRIDPICO_OK);
     compare_terminal_reply(&cli, &terminal, "color set 2 #FF00A2", GRIDPICO_OK);
+
+    clear(&terminal);
+    gridpico_cli_receive(&cli, "help\r\ninventory\r\n",
+                         sizeof("help\r\ninventory\r\n") - 1);
+    gridpico_cli_process(&cli);
+    assert(contains(&terminal, " * inventory\r\n\tinventory -- list devices and ports\r\n"));
+    assert(!contains(&terminal, " * route"));
+    assert(contains(&terminal, "DEVICE 2 connected #FF00A2"));
+    assert(contains(&terminal, "OK\r\n"));
 
     clear(&terminal);
     gridpico_cli_receive(&cli, "inventory\r\n", sizeof("inventory\r\n") - 1);

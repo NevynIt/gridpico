@@ -15,7 +15,7 @@ The planned embedded deployment uses RP2040. Native USB connects to the computer
 
 The first proof runs in a Linux x86_64 container. It exercises production Session/control, MIDI graph and transpose against deterministic in-process MIDI services. The [proof contract](api/README.md#linux-x86_64-route-and-transpose-proof) defines the scope of that evidence. The standalone rehearsal and RP2040 acceptance depend on access to hardware.
 
-The portable kernel, platform backends and firmware handle MIDI. Tracks target MIDI destinations. Optional Web APC monitoring and standalone instrument peers generate sound at the receiving end.
+The portable kernel, platform backends and firmware handle MIDI. Tracks target MIDI destinations. Browser Monitor and standalone instrument peers generate sound at the receiving end.
 
 CodeZero/GridZero, miniMIDI and rpico-bridge are references and experimental evidence only. There is no legacy code, configuration, wire-protocol or storage compatibility requirement. Reusing the development-container recipe is tooling reuse, not adoption of another product's implementation.
 
@@ -113,7 +113,7 @@ Connections shares one in-page browser MIDI layer for provider and port selectio
 
 ### Browser Monitor
 
-In the shared production router, Monitor and the visible MIDI Log bind independently to selectable MIDI inputs. Monitor starts audio from live Note On and releases voices on the corresponding Note Off for its binding. MIDI Log shows its own received bytes. Monitor audio starts after explicit enablement. Master volume, per-channel sound or mute, lightweight presets and bounded voice state belong to Web APC. Monitor settings are local to the browser. The earlier Route and Patch demos retain their verified Capture paths. [Local router](api/local-router.md)
+Diagnostics hosts Monitor, MIDI Log and routed LED replay in the production web tools. Web APC owns the controller surface. Monitor and MIDI Log bind independently to selectable MIDI inputs. Monitor starts audio from live Note On and releases voices on the corresponding Note Off for its binding. MIDI Log shows its own received bytes. Monitor audio starts after explicit enablement. Master volume, per-channel sound or mute, lightweight presets and bounded voice state belong to the local Monitor. The earlier Route and Patch demos retain their verified Capture paths. [Browser roles](api/browser-midi.md#production-startup-and-page-roles)
 
 Track voices by destination, MIDI channel and key so two channels using the same key can sound and release independently. Muting a channel releases its voices. Disabling audio or losing the connection releases all browser voices. The graph continues to own MIDI cleanup, including releases that occur after the browser has disconnected. The Monitor uses the existing routed MIDI delivery path and runs independently of its timing and acceptance.
 
