@@ -1,5 +1,29 @@
 #include "tusb.h"
 
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+#include "flash_startup.h"
+#include "hardware/flash.h"
+
+enum { FLASH_SERIAL_INDEX = 5, FLASH_SERIAL_LENGTH = 2 * FLASH_UNIQUE_ID_SIZE_BYTES };
+static uint16_t serial_descriptor[FLASH_SERIAL_LENGTH + 1];
+
+bool gridpico_flash_init_usb_serial(void)
+{
+    uint8_t id[FLASH_UNIQUE_ID_SIZE_BYTES];
+    static const char hex[] = "0123456789ABCDEF";
+    flash_get_unique_id(id);
+    uint8_t any_set = 0, all_set = UINT8_MAX;
+    for (size_t i = 0; i < sizeof(id); ++i) {
+        any_set |= id[i];
+        all_set &= id[i];
+        serial_descriptor[2 * i + 1] = (uint16_t)hex[id[i] >> 4];
+        serial_descriptor[2 * i + 2] = (uint16_t)hex[id[i] & 15u];
+    }
+    serial_descriptor[0] = (TUSB_DESC_STRING << 8) | (2 * (FLASH_SERIAL_LENGTH + 1));
+    return any_set != 0 && all_set != UINT8_MAX;
+}
+#endif
+
 enum {
     CABLES = 2,
     CONFIG_SIZE = TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_MIDI_DESC_HEAD_LEN +
@@ -16,7 +40,12 @@ static const tusb_desc_device_t device = {
     .bMaxPacketSize0 = CFG_TUD_ENDPOINT0_SIZE,
     .idVendor = 0x1209,
     .idProduct = 0x0001,
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+    .bcdDevice = 0x0104,
+    .iSerialNumber = FLASH_SERIAL_INDEX,
+#else
     .bcdDevice = 0x0103,
+#endif
     .iManufacturer = 1,
     .iProduct = 2,
     .bNumConfigurations = 1,
@@ -53,6 +82,9 @@ const uint16_t *tud_descriptor_string_cb(uint8_t index, uint16_t language)
         descriptor[1] = 0x0409;
         return descriptor;
     }
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+    if (index == FLASH_SERIAL_INDEX && language == 0x0409) return serial_descriptor;
+#endif
     if (language != 0x0409 || index > sizeof(strings) / sizeof(strings[0])) return NULL;
     const char *text = strings[index - 1];
     uint8_t length = 0;

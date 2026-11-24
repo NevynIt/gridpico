@@ -9,19 +9,34 @@
 #include "tusb.h"
 #include "device/usbd_pvt.h"
 
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+#include "flash_startup.h"
+#include "hardware/structs/watchdog.h"
+#include "hardware/sync.h"
+#include "device/dcd.h"
+#endif
 #ifdef GRIDPICO_RP2040_BENCH_TRACE
 #include <stdio.h>
 #endif
 #ifdef GRIDPICO_RP2040_PIO_DIAGNOSTICS
 #include "hardware/gpio.h"
+#endif
+#if defined(GRIDPICO_RP2040_PIO_DIAGNOSTICS) || defined(GRIDPICO_RP2040_FLASH_ROUTER)
 #include "host/hcd.h"
 #endif
 #ifdef GRIDPICO_RP2040_HUB_TRACE
 #include "hub_trace.h"
 #endif
 
-#if !PICO_NO_FLASH || TUSB_VERSION_NUMBER != 2100
-#error "Build the initial router as no_flash with TinyUSB 0.21.0"
+#if TUSB_VERSION_NUMBER != 2100
+#error "Build the router with TinyUSB 0.21.0"
+#endif
+#if defined(GRIDPICO_RP2040_FLASH_ROUTER)
+#if PICO_NO_FLASH || !PICO_COPY_TO_RAM
+#error "Build the flash router as copy_to_ram"
+#endif
+#elif !PICO_NO_FLASH
+#error "The default router build is no_flash"
 #endif
 
 _Static_assert(GRIDPICO_APC_VID >= 0 && GRIDPICO_APC_VID <= UINT16_MAX &&
@@ -192,6 +207,58 @@ static bool write_cdc(const char *message, uint32_t length)
     return true;
 }
 
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+enum { FLASH_START_DEADLINE_US = 4000000 };
+static volatile bool native_bus_activity;
+
+void tud_event_hook_cb(uint8_t root, uint32_t event, bool in_isr)
+{
+    (void)in_isr;
+    if (root == DEVICE_ROOT && (event == DCD_EVENT_BUS_RESET || event == DCD_EVENT_SETUP_RECEIVED)) {
+        native_bus_activity = true;
+    }
+}
+
+static _Noreturn void enter_rom(void)
+{
+    gridpico_flash_start_clear(watchdog_hw->scratch);
+    watchdog_disable();
+    reset_usb_boot(0, 0);
+}
+
+static bool check_flash_start(uint64_t deadline, bool host_serviced, bool cdc_ready)
+{
+    /* Serialize declaring standalone readiness with native bus activity from the DCD IRQ. */
+    const uint32_t interrupts = save_and_disable_interrupts();
+    const gridpico_flash_start_state state = gridpico_flash_start_poll(
+        time_us_64(), deadline, host_serviced, native_bus_activity, cdc_ready);
+    if (state == GRIDPICO_FLASH_START_READY) gridpico_flash_start_clear(watchdog_hw->scratch);
+    restore_interrupts(interrupts);
+    if (state == GRIDPICO_FLASH_START_EXPIRED) enter_rom();
+    return state == GRIDPICO_FLASH_START_READY;
+}
+
+#ifdef GRIDPICO_RP2040_FLASH_STARTUP_FAULT
+static _Noreturn void show_startup_fault(uint64_t deadline)
+{
+    uint64_t stop_at = deadline;
+    for (;;) {
+        tud_task_ext(0, false);
+        const uint64_t now = time_us_64();
+        if (stop_at == deadline && tud_cdc_n_ready(0) && now + 250000u < deadline) {
+            stop_at = now + 250000u;
+        }
+        if (now >= stop_at) {
+            for (;;) tight_loop_contents();
+        }
+        watchdog_update();
+    }
+}
+#endif
+#else
+#define enter_rom() reset_usb_boot(0, 0)
+#endif
+
 static _Noreturn void request_bootsel(void)
 {
     static const char reply[] = "OK BOOTSEL\n";
@@ -201,7 +268,7 @@ static _Noreturn void request_bootsel(void)
         if (!replied) replied = write_cdc(reply, sizeof(reply) - 1);
         tud_task_ext(0, false);
     } while (time_us_64() < deadline);
-    reset_usb_boot(0, 0);
+    enter_rom();
 }
 
 void tud_cdc_line_state_cb(uint8_t index, bool dtr, bool rts)
@@ -580,28 +647,63 @@ static bool start_host(void)
 
 int main(void)
 {
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+    const bool previous_watchdog = watchdog_enable_caused_reboot();
+    const uint32_t previous_tag = watchdog_hw->scratch[0];
+    const uint32_t previous_complement = watchdog_hw->scratch[1];
+    if (gridpico_flash_previous_start_failed(previous_watchdog, previous_tag, previous_complement)) {
+        enter_rom();
+    }
+    gridpico_flash_start_mark(watchdog_hw->scratch);
+#endif
     watchdog_enable(WATCHDOG_MS, false);
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+    const uint64_t boot_deadline = time_us_64() + FLASH_START_DEADLINE_US;
+    if (!gridpico_flash_init_usb_serial()) enter_rom();
+    bool startup_ready = false;
+    bool cdc_ready_seen = false;
+    uint32_t host_frame_at_start = 0;
+#endif
     const tusb_rhport_init_t device = {.role = TUSB_ROLE_DEVICE, .speed = TUSB_SPEED_FULL};
     if (!tusb_init(DEVICE_ROOT, &device) || gridpico_pico_router_init(&router) != GRIDPICO_OK) {
-        reset_usb_boot(0, 0);
+        enter_rom();
     }
+#ifdef GRIDPICO_RP2040_FLASH_STARTUP_FAULT
+    show_startup_fault(boot_deadline);
+#endif
 
     const uint64_t native_first_until = time_us_64() + NATIVE_WINDOW_US;
     bool host_attempted = false;
     bool host_ready = false;
     for (;;) {
         tud_task_ext(0, false);
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+        if (!startup_ready && tud_cdc_n_ready(0)) cdc_ready_seen = true;
+#endif
         service_cdc();
         if (!host_attempted && time_us_64() >= native_first_until) {
             host_attempted = true;
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+            if (time_us_64() >= boot_deadline) enter_rom();
+#endif
             watchdog_update();
             host_ready = start_host();
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+            if (!host_ready) enter_rom();
+            host_frame_at_start = hcd_frame_number(HOST_ROOT);
+#endif
         }
         if (host_ready) {
             tuh_task_ext(0, false);
             service_host();
         }
         service_native_midi();
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+        if (!startup_ready) {
+            const bool host_running = host_ready && hcd_frame_number(HOST_ROOT) != host_frame_at_start;
+            startup_ready = check_flash_start(boot_deadline, host_running, cdc_ready_seen);
+        }
+#endif
         watchdog_update();
     }
 }
