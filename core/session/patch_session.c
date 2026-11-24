@@ -1,5 +1,7 @@
 #include "core/session/patch_session.h"
 
+#include <string.h>
+
 void gridpico_patch_session_init(gridpico_patch_session *session, void *graph_context,
                                 gridpico_patch_read_graph_fn read_graph,
                                 gridpico_patch_set_route_fn set_graph_route)
@@ -17,6 +19,16 @@ void gridpico_patch_session_bind_local_routes(gridpico_patch_session *session,
 {
     session->set_local_graph_route = set_route;
     session->read_local_graph_route = read_route;
+}
+
+void gridpico_patch_session_bind_local_routing(gridpico_patch_session *session,
+                                              gridpico_local_read_graph_fn read_graph,
+                                              gridpico_local_read_availability_fn read_availability,
+                                              void *availability_context)
+{
+    session->read_local_graph = read_graph;
+    session->read_availability = read_availability;
+    session->availability_context = availability_context;
 }
 
 static gridpico_result read_graph(const gridpico_patch_session *session,
@@ -70,11 +82,17 @@ gridpico_result gridpico_patch_session_read_snapshot(void *context, gridpico_pat
         }
         if (port->direction == GRIDPICO_PATCH_INPUT) {
             if (source_count == GRIDPICO_PATCH_SOURCE_ROWS) {
+                if (session->read_local_graph != NULL) {
+                    continue;
+                }
                 return GRIDPICO_CAPACITY;
             }
             snapshot.source_rows[source_count++] = port->id;
         } else if (port->direction == GRIDPICO_PATCH_OUTPUT) {
             if (destination_count == GRIDPICO_PATCH_DESTINATION_COLUMNS) {
+                if (session->read_local_graph != NULL) {
+                    continue;
+                }
                 return GRIDPICO_CAPACITY;
             }
             snapshot.destination_columns[destination_count++] = port->id;
@@ -171,6 +189,187 @@ gridpico_result gridpico_patch_session_read_local_route(void *context, const gri
     return result;
 }
 
+static gridpico_result read_local_graph(const gridpico_patch_session *session,
+                                       gridpico_local_graph_state *state)
+{
+    if (session->read_local_graph == NULL) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    const gridpico_result result = session->read_local_graph(session->graph_context, state);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+    if (state->registry.inventory.device_count > GRIDPICO_PATCH_MAX_DEVICES ||
+        state->registry.inventory.port_count > GRIDPICO_PATCH_MAX_PORTS ||
+        state->route_count > GRIDPICO_PATCH_MAX_BRANCHES) {
+        return GRIDPICO_CAPACITY;
+    }
+    return GRIDPICO_OK;
+}
+
+static gridpico_device_color color_at(const gridpico_patch_session *session, size_t slot)
+{
+    const gridpico_patch_color_preference *color = &session->colors[slot];
+    return (gridpico_device_color){
+        .revision = session->color_revision,
+        .is_set = color->is_set,
+        .rgb = color->rgb,
+    };
+}
+
+static bool route_precedes(gridpico_local_route left, gridpico_local_route right)
+{
+    if (left.source != right.source) {
+        return left.source < right.source;
+    }
+    if (left.destination != right.destination) {
+        return left.destination < right.destination;
+    }
+    return left.mode < right.mode;
+}
+
+static void sort_enabled_routes(gridpico_local_graph_state *graph)
+{
+    for (size_t i = 1; i < graph->route_count; ++i) {
+        const gridpico_local_enabled_route entry = graph->routes[i];
+        size_t slot = i;
+        while (slot > 0 && route_precedes(entry.route, graph->routes[slot - 1].route)) {
+            graph->routes[slot] = graph->routes[slot - 1];
+            --slot;
+        }
+        graph->routes[slot] = entry;
+    }
+}
+
+static gridpico_result publish_routing_revision(gridpico_patch_session *session,
+                                               gridpico_local_routing_snapshot *snapshot)
+{
+    const size_t port_count = snapshot->graph.registry.inventory.port_count;
+    /* Graph and color revisions cover their values. Availability is read separately. */
+    bool changed = session->routing_revision == 0 ||
+                   snapshot->graph.revision != session->routing_graph_revision ||
+                   session->color_revision != session->routing_color_revision ||
+                   port_count != session->routing_port_count;
+    for (size_t i = 0; i < port_count; ++i) {
+        const gridpico_local_port_availability availability = snapshot->availability[i];
+        if (availability != GRIDPICO_LOCAL_UNAVAILABLE && availability != GRIDPICO_LOCAL_FREE &&
+            availability != GRIDPICO_LOCAL_IN_USE) {
+            return GRIDPICO_INVALID;
+        }
+        changed = changed || availability != session->routing_availability[i];
+    }
+
+    if (changed) {
+        if (session->routing_revision == UINT64_MAX) {
+            return GRIDPICO_CAPACITY;
+        }
+        ++session->routing_revision;
+        session->routing_graph_revision = snapshot->graph.revision;
+        session->routing_color_revision = session->color_revision;
+        session->routing_port_count = port_count;
+        memcpy(session->routing_availability, snapshot->availability,
+               port_count * sizeof(snapshot->availability[0]));
+    }
+    snapshot->revision = session->routing_revision;
+    return GRIDPICO_OK;
+}
+
+gridpico_result gridpico_patch_session_read_local_routing(void *context,
+                                                         gridpico_local_routing_snapshot *out)
+{
+    gridpico_patch_session *session = context;
+    if (session == NULL || out == NULL) {
+        return GRIDPICO_INVALID;
+    }
+    if (session->read_availability == NULL) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+
+    gridpico_local_routing_snapshot snapshot = {0};
+    gridpico_result result = read_local_graph(session, &snapshot.graph);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+    result = session->read_availability(session->availability_context, &snapshot.graph.registry,
+                                        snapshot.availability);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+
+    for (size_t i = 0; i < snapshot.graph.registry.inventory.device_count; ++i) {
+        snapshot.colors[i] = color_at(session, i);
+    }
+    sort_enabled_routes(&snapshot.graph);
+    result = publish_routing_revision(session, &snapshot);
+    if (result == GRIDPICO_OK) {
+        *out = snapshot;
+    }
+    return result;
+}
+
+static size_t project_axis(const gridpico_port_id *ports, size_t count,
+                           gridpico_port_id *slots, size_t length, size_t *offset)
+{
+    const size_t max_offset = count > length ? count - length : 0;
+    if (*offset > max_offset) {
+        *offset = max_offset;
+    }
+    const size_t used = count < length ? count : length;
+    memcpy(slots, ports + *offset, used * sizeof(slots[0]));
+    return used;
+}
+
+gridpico_result gridpico_patch_session_read_local_patch_page(void *context,
+                                                            const gridpico_local_patch_viewport *request,
+                                                            gridpico_local_patch_page *out)
+{
+    const gridpico_patch_session *session = context;
+    if (session == NULL || request == NULL || out == NULL) {
+        return GRIDPICO_INVALID;
+    }
+
+    gridpico_local_graph_state graph;
+    const gridpico_result result = read_local_graph(session, &graph);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+
+    gridpico_local_patch_page page = {.revision = graph.revision, .viewport = *request};
+    gridpico_port_id sources[GRIDPICO_PATCH_MAX_PORTS];
+    gridpico_port_id destinations[GRIDPICO_PATCH_MAX_PORTS];
+    for (size_t i = 0; i < graph.registry.inventory.port_count; ++i) {
+        const gridpico_patch_port *port = &graph.registry.inventory.ports[i];
+        if (!port->patch_eligible || graph.registry.port_capabilities[i] != GRIDPICO_LOCAL_PORT_MANAGED) {
+            continue;
+        }
+        if (port->direction == GRIDPICO_PATCH_INPUT) {
+            sources[page.source_count++] = port->id;
+        } else if (port->direction == GRIDPICO_PATCH_OUTPUT) {
+            destinations[page.destination_count++] = port->id;
+        }
+    }
+    const size_t rows = project_axis(sources, page.source_count, page.source_rows,
+                                     GRIDPICO_PATCH_SOURCE_ROWS, &page.viewport.source_offset);
+    const size_t columns = project_axis(destinations, page.destination_count, page.destination_columns,
+                                        GRIDPICO_PATCH_DESTINATION_COLUMNS,
+                                        &page.viewport.destination_offset);
+
+    for (size_t i = 0; i < graph.route_count; ++i) {
+        const gridpico_local_enabled_route *entry = &graph.routes[i];
+        if (entry->route.mode != GRIDPICO_LOCAL_MANAGED) {
+            continue;
+        }
+        const size_t row = find_slot(page.source_rows, rows, entry->route.source);
+        const size_t column = find_slot(page.destination_columns, columns, entry->route.destination);
+        if (row < rows && column < columns) {
+            page.routes[row][column] = entry->state;
+        }
+    }
+
+    *out = page;
+    return GRIDPICO_OK;
+}
+
 static gridpico_result find_device_slot(const gridpico_patch_session *session,
                                        gridpico_device_id device, size_t *slot)
 {
@@ -207,12 +406,7 @@ gridpico_result gridpico_session_read_device_color(void *context, gridpico_devic
         return result;
     }
 
-    const gridpico_patch_color_preference *color = &session->colors[slot];
-    *out = (gridpico_device_color){
-        .revision = session->color_revision,
-        .is_set = color->is_set,
-        .rgb = color->rgb,
-    };
+    *out = color_at(session, slot);
     return GRIDPICO_OK;
 }
 

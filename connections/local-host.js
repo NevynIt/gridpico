@@ -11,19 +11,21 @@ const { createWssListener } = require("./wss-listener");
 const address = "127.0.0.1";
 const maxSerialChunk = 256;
 const serialQueueBytes = 8192;
-const midiPeerLimit = 6;
 const stallMs = 5000;
 const heartbeatMs = 5000;
 
 const args = process.argv.slice(2);
 let webUi = false;
 let wssConfig;
+let profile;
 let invalidOptions = false;
 while (args[0]?.startsWith("--")) {
   const flag = args.shift();
   if (flag === "--web-ui" && !webUi) webUi = true;
   else if (flag === "--wss-config" && wssConfig === undefined && args[0] && !args[0].startsWith("--")) {
     wssConfig = args.shift();
+  } else if (flag === "--profile" && profile === undefined && args[0] && !args[0].startsWith("--")) {
+    profile = args.shift();
   } else {
     invalidOptions = true;
     break;
@@ -32,7 +34,7 @@ while (args[0]?.startsWith("--")) {
 const [runnerArg, portArg = "8767"] = args;
 const port = Number(portArg);
 if (invalidOptions || !runnerArg || !/^\d+$/.test(portArg) || port > 65535 || args.length > 2) {
-  console.error("Usage: node connections/local-host.js [--web-ui] [--wss-config <file>] <local-router> [port]");
+  console.error("Usage: node connections/local-host.js [--web-ui] [--profile <file>] [--wss-config <file>] <local-router> [port]");
   process.exit(1);
 }
 const runnerPath = path.resolve(runnerArg);
@@ -52,9 +54,10 @@ function page(file, extra = "") {
 const assets = new Map([
   ["/apc/", ["text/html; charset=utf-8", page("../web/apc/index.html")]],
   ["/diagnostics/", ["text/html; charset=utf-8", page("diagnostics/index.html",
-    '<script defer src="/local-diagnostics.js"></script>')]],
+    '<script defer src="/local-diagnostics.js"></script><script defer src="/local-routing.js"></script>')]],
   ["/local-transport.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-transport.js"))]],
   ["/local-diagnostics.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-diagnostics.js"))]],
+  ["/local-routing.js", ["text/javascript; charset=utf-8", readFileSync(path.join(__dirname, "local-routing.js"))]],
 ]);
 const startupAssets = new Map();
 if (webUi) {
@@ -122,6 +125,7 @@ const websockets = new WebSocketServer({
 
 const peers = new Map();
 const generations = new Map();
+let midiPeerLimit;
 let busy;
 let shuttingDown = false;
 
@@ -397,7 +401,8 @@ function shutdown() {
 }
 
 const pipe = startLocalPipe(runnerPath, {
-  onReady() {
+  onReady(peerLimit) {
+    midiPeerLimit = peerLimit;
     server.listen(port, address, () => {
       const host = `${address}:${server.address().port}`;
       console.log(`Gridpico local router listening at http://${host}/`);
@@ -414,7 +419,7 @@ const pipe = startLocalPipe(runnerPath, {
     process.exitCode = 1;
     shutdown();
   },
-}, webUi ? ["--web-ui"] : []);
+}, [...(webUi ? ["--web-ui"] : []), ...(profile ? ["--profile", profile] : [])]);
 
 server.on("error", (error) => {
   console.error(error.message);

@@ -43,6 +43,7 @@ add_executable(gridpico_patch_runner app/patch_runner.c app/runner_io.c)
 target_link_libraries(gridpico_patch_runner PRIVATE gridpico_patch_runtime)
 
 add_library(gridpico_local_runtime STATIC
+    app/local_profile.c
     app/local_runtime.c
     core/midi/patch_graph.c
     core/session/patch_session.c

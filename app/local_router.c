@@ -312,7 +312,9 @@ int local_router_run(local_runtime *runtime, const local_router_service *service
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR) {
         return EXIT_FAILURE;
     }
-    const bool complete = puts("ready") != EOF && fflush(stdout) == 0 &&
+    const int ready = runtime->configured
+        ? printf("ready %zu\n", runtime->profile->limits.midi_peer_limit) : puts("ready");
+    const bool complete = ready >= 0 && fflush(stdout) == 0 &&
         (runtime->output_count == 0 || write_event(runtime)) && serve(runtime, service);
     local_runtime_begin(runtime, 0);
     const gridpico_result retired = local_runtime_retire(runtime);
@@ -327,13 +329,30 @@ int local_router_run(local_runtime *runtime, const local_router_service *service
 #ifndef GRIDPICO_LOCAL_ROUTER_RUNNER_ONLY
 int main(int argc, char **argv)
 {
-    const bool web_ui = argc == 2 && strcmp(argv[1], "--web-ui") == 0;
-    if (argc != 1 && !web_ui) {
-        fputs("Usage: gridpico_local_router [--web-ui]\n", stderr);
-        return EXIT_FAILURE;
+    bool web_ui = false;
+    const char *path = NULL;
+    for (int i = 1; i < argc; ++i) {
+        if (!web_ui && strcmp(argv[i], "--web-ui") == 0) {
+            web_ui = true;
+        } else if (path == NULL && i + 1 < argc && strcmp(argv[i], "--profile") == 0 &&
+                   strncmp(argv[i + 1], "--", 2) != 0) {
+            path = argv[++i];
+        } else {
+            fputs("Usage: gridpico_local_router [--web-ui] [--profile FILE]\n", stderr);
+            return EXIT_FAILURE;
+        }
+    }
+    local_router_profile profile;
+    if (path != NULL) {
+        if (!local_profile_load(path, &profile)) return EXIT_FAILURE;
+        if (web_ui && !local_profile_supports_web_ui(&profile)) {
+            fputs("Router profile must offer the six starter socket roles at ports 1–6 for --web-ui\n",
+                  stderr);
+            return EXIT_FAILURE;
+        }
     }
     local_runtime runtime;
-    if (local_runtime_init(&runtime) != GRIDPICO_OK) {
+    if (local_runtime_init_profile(&runtime, path != NULL ? &profile : NULL) != GRIDPICO_OK) {
         fputs("Local router could not initialize the production graph\n", stderr);
         return EXIT_FAILURE;
     }

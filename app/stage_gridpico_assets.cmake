@@ -1,5 +1,9 @@
 file(MAKE_DIRECTORY "${asset_dir}")
 file(READ "${source_dir}/connections/home.html" home)
+string(REGEX REPLACE "[ \t]*<li><a href=\"/diagnostics/#routing\">[^\n]*</li>\n" "" home "${home}")
+if(home MATCHES "href=\"/diagnostics/#routing\"")
+    message(FATAL_ERROR "The offline home still links to hosted Routing")
+endif()
 foreach(link IN ITEMS /apc/ /diagnostics/ /fm/)
     string(FIND "${home}" "href=\"${link}\"" link_position)
     if(link_position EQUAL -1)
@@ -31,8 +35,9 @@ endfunction()
 
 inline_script("connections/local-transport.js" midi)
 inline_script("connections/local-diagnostics.js" diagnostics)
+inline_script("connections/local-routing.js" routing)
 stage_tool("web/apc/index.html" "INDEX.HTM" "${midi}")
-stage_tool("connections/diagnostics/index.html" "DIAG.HTM" "${midi}${diagnostics}")
+stage_tool("connections/diagnostics/index.html" "DIAG.HTM" "${midi}${diagnostics}${routing}")
 stage_tool("web/fm/index.html" "FM.HTM" "${midi}")
 
 execute_process(

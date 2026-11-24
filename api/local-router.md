@@ -4,6 +4,8 @@
 
 MIDI and the serial CLI byte stream are the external product interfaces. Session and Graph own the internal registry, generations, route state, accepted-delivery traces and note-release accounting. One Assembly-owned router serves independent Connections peers. Each peer can leave while the runtime and other peers continue. The published Route, Patch and native proof runners retain their separate profiles and entry points.
 
+The limits here describe the existing default profile. The approved [configurable profile and Routing contract](routing.md) sets the extension and acceptance boundaries for larger targets.
+
 ## Registry and attachment
 
 Assembly passes one bounded `gridpico_local_registry` at startup. Its registered devices and ports stay stable for that runtime. Graph validates nonzero unique IDs within each record kind, valid device references, initial disconnected state, counts, direction and capability. Each capability is indexed in `inventory.ports` order. Session exposes the same inventory via the existing CLI. A newly bound transport selects a registered directional port. A browser can use CLI inventory or a configured set of named bindings to make that selection. It does not submit registry records or generations.
@@ -74,6 +76,12 @@ Label the renderer tempo **120 BPM fixture tempo**. A full pulse cycle for step 
 On the last successful submission, **Stop**, **Reset**, client timeout or send failure, cancel scheduled sends and close only the Diagnostics MIDI TX binding. Normal WebSocket close drains already submitted bytes before the router detaches that binding and restores committed feedback. Stop keeps the inspection position. Reset returns to step 1. Neither sends extra cleanup MIDI or writes to the serial CLI. An explicit CLI `route SRC DST raw off`, runtime expiry, or affected peer loss terminates the lease and closes the old source. Drop callbacks from that retired source. A new run explicitly connects a fresh source and uses a new CLI `on`. The serial attachment and other MIDI peers remain independent. [WebSocket closing behavior](https://websockets.spec.whatwg.org/#dom-websocket-close)
 
 For acceptance, compare the five literals in order at private router ingress and accepted egress, then at the actual APC binary receiver. Verify the pulse, blink, solid replacement and Off on the live surface. Test final-frame drain before restore, plus Stop, Reset, timeout, CLI Off and abrupt loss while an effect is running. Check the latest committed 40-pad restore, including an ordinary route LED changed during the lease, and verify fresh receiver attach with no delayed test frames. Rerun ordinary committed feedback and the published solid/off check.
+
+### Visible readiness and receipt
+
+Show the selected Diagnostics TX and intended APC LED RX. With the existing local CLI attached to the same selected router, read the exact pair with `route SRC DST raw` before the first submission of a sequence or a standalone Solid/Off action. Require matching Active readback for that operation. Report Off, Pending or query failure with the existing explicit setup command. Adding or renewing a lease remains an explicit operator action. An Active readback is a snapshot of that pair. Invalidate it on selection or binding changes. When the CLI belongs to a different router or is unavailable to this page, show route readiness as unverified and allow deliberate manual use with an external operator.
+
+Local submission means only that the provider queued the bytes. In the published baseline an Off Raw pair can accept ingress and emit zero egress. Confirm success at the actual bound receiver and its visible pad. The reported laptop failure remains open until tested on that setup. Direct Web MIDI selects an actual OS output and uses the physical receiver workflow independently of this Raw lease. [Local device access](browser-midi.md#local-device-access)
 
 ## Loopback transport
 

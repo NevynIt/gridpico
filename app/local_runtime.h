@@ -1,17 +1,19 @@
 #ifndef GRIDPICO_APP_LOCAL_RUNTIME_H
 #define GRIDPICO_APP_LOCAL_RUNTIME_H
 
+#include "app/local_profile.h"
 #include "core/midi/patch_graph.h"
 #include "core/session/patch_session.h"
 #include "frontends/apc/apc_patch.h"
 #include "frontends/cli/cli_frontend.h"
 
 enum {
-    LOCAL_MIDI_QUEUE = 64,
     LOCAL_SERIAL_QUEUE = 8192,
     LOCAL_SERIAL_CHUNK = 256,
     LOCAL_RAW_LEASE_MS = 30000,
-    LOCAL_PANEL_QUEUE = 128,
+    /* One dispatch can retire all credits, render feedback and stage faults. */
+    LOCAL_MIDI_STAGE_FRAMES = GRIDPICO_LOCAL_MAX_RELEASE_CREDITS +
+        2 * GRIDPICO_PATCH_LED_FRAMES + GRIDPICO_LOCAL_MAX_FANOUT + 1,
 };
 
 typedef struct {
@@ -27,6 +29,7 @@ typedef struct {
     uint32_t generation;
     bool attached;
     bool adapter_owned;
+    bool socket;
 } local_port_state;
 
 typedef struct {
@@ -34,6 +37,7 @@ typedef struct {
     size_t queued;
     bool attached;
     bool fault;
+    bool fault_staged;
     bool adapter_owned;
     local_midi_adapter adapter;
 } local_binding;
@@ -49,10 +53,16 @@ typedef struct {
     gridpico_patch_session session;
     gridpico_apc_patch apc;
     gridpico_cli_frontend cli;
-    local_binding bindings[GRIDPICO_LOCAL_PORTS];
+    const local_router_profile *profile;
+    gridpico_port_id feedback_port;
+    gridpico_port_id sequence_port;
+    bool configured;
+    bool routing_enabled;
+    local_binding bindings[GRIDPICO_PATCH_MAX_PORTS];
     local_binding serial;
-    local_output output[GRIDPICO_LOCAL_PORTS * (LOCAL_MIDI_QUEUE + 1)];
+    local_output output[LOCAL_MIDI_STAGE_FRAMES + GRIDPICO_PATCH_MAX_PORTS];
     size_t output_count;
+    size_t fault_count;
     char serial_bytes[LOCAL_SERIAL_QUEUE];
     size_t serial_count;
     gridpico_diagnostic_log_entry logs[GRIDPICO_DIAGNOSTIC_LOG_ROWS];
@@ -68,6 +78,8 @@ typedef struct {
 } local_runtime;
 
 gridpico_result local_runtime_init(local_runtime *runtime);
+/* A configured profile remains valid for the lifetime of the runtime. */
+gridpico_result local_runtime_init_profile(local_runtime *runtime, const local_router_profile *profile);
 gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime);
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms);
 gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result result);

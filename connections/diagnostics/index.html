@@ -74,6 +74,14 @@
     #monitor-channels { display: grid; grid-template-columns: repeat(auto-fit, minmax(8rem, 1fr)); gap: .4rem; }
     #monitor-channels label { display: flex; align-items: center; gap: .35rem; margin: 0; }
     #monitor-volume { flex: 0 1 12rem; }
+    #routing { margin: 1.5rem 0; }
+    #routing .matrix-wrap { overflow: auto; }
+    #routing .matrix th { min-width: 9rem; }
+    #routing .matrix button { width: 100%; }
+    #routing .port-name { display: block; font-weight: 600; }
+    #routing .port-role { font-size: .875rem; font-weight: normal; }
+    #routing [data-route-state="active"] { border-color: #8fe0b6; }
+    #routing [data-route-state="pending"] { border-color: #f5d18b; }
     [hidden] { display: none !important; }
   </style>
 </head>
@@ -82,6 +90,7 @@
     <h1>Gridpico Diagnostics</h1>
     <nav id="diagnostics-navigation" aria-label="Gridpico tools" hidden>
       <a id="diagnostics-apc" href="/apc/" target="_blank" rel="noopener">Open Web APC in another tab</a>
+      <span id="routing-navigation" hidden> · <a href="#routing">Routing</a></span>
     </nav>
     <p id="local-midi-only" hidden>Use the loopback CLI on the router host to configure routes.</p>
     <div class="connection" data-serial-controls>
@@ -110,6 +119,27 @@
         <code>color set &lt;device-id&gt; #RRGGBB</code>
       </p>
     </form>
+    <section id="routing" hidden aria-labelledby="routing-title">
+      <h2 id="routing-title">Routing</h2>
+      <p id="routing-router"></p>
+      <div class="command-row">
+        <button id="routing-connect" type="button">Connect local CLI</button>
+        <button id="routing-refresh" type="button" disabled>Refresh routing</button>
+        <a href="#terminal">Open CLI transcript and commands</a>
+      </div>
+      <p id="routing-status" role="status"></p>
+      <p id="routing-edit-status" role="status"></p>
+      <div id="routing-snapshot" hidden>
+        <p id="routing-revision"></p>
+        <h3>Managed routes</h3>
+        <div class="matrix-wrap"><table class="matrix" id="routing-managed"></table></div>
+        <h3>Raw routes</h3>
+        <div class="matrix-wrap"><table id="routing-raw"></table></div>
+        <h3>Port availability</h3>
+        <p>Availability describes this router. It can change after a snapshot is read.</p>
+        <table id="routing-inventory"></table>
+      </div>
+    </section>
     <section id="midi-connection" hidden aria-labelledby="midi-connection-title">
       <h2 id="midi-connection-title">MIDI connection</h2>
       <label for="local-midi-provider">MIDI provider</label>
@@ -233,7 +263,7 @@
     };
     const commandLimit = 63;
     const transcriptLimit = 16384;
-    const localReplyLimit = 512;
+    const localReplyLimit = 11 * 256; // Eight Routing records, header, terminator, echo and prompt.
     const localReplyTimeout = 5000;
     const encoder = new TextEncoder();
     const connectButton = document.querySelector("#connect");
@@ -257,6 +287,7 @@
       disconnectButton.disabled = !connection || connection.closing;
       command.disabled = !connected;
       sendButton.disabled = !connected || Boolean(connection?.writer);
+      window.dispatchEvent(new Event("gridpico-local-cli-queue"));
     }
 
     function notifyLocalCli() {
@@ -281,7 +312,7 @@
       finishLocalCommand(active, active.tail);
       active.tail = "";
       updateControls();
-      if (initialPrompt && active.ready) command.focus();
+      if (initialPrompt && active.ready && location.hash !== "#routing") command.focus();
     }
 
     function sendLocalCommand(active, line) {
@@ -312,6 +343,18 @@
 
     window.gridpicoDiagnosticsCli = Object.freeze({
       get attached() { return Boolean(connection?.local); },
+      get ready() { return Boolean(connection?.local && connection.ready && connection.prompt && !connection.closing); },
+      get supported() { return Boolean(localSerial); },
+      connectLocal() { if (localSerial) void connect(); },
+      async routingCommand(line) {
+        if (!/^routing(?: [1-9][0-9]* [0-9]+)?$|^route [1-9][0-9]* [1-9][0-9]* (?:managed|raw) (?:on|off)$/.test(line) ||
+            line.length > commandLimit) throw new Error("Invalid Routing command.");
+        const active = connection;
+        if (!active?.local) throw new Error("Connect the local CLI before using Routing.");
+        const reply = await sendLocalCommand(active, line);
+        if (active !== connection || active.closing) throw new Error("The local CLI disconnected.");
+        return reply;
+      },
       async checkRawRoute(source, destination) {
         const validId = (value) => Number.isInteger(value) && value > 0 && value <= 65535;
         if (!validId(source) || !validId(destination)) throw new Error("Choose the source and LED receiver port IDs.");
@@ -431,7 +474,7 @@
               notifyLocalCli();
             }
             updateControls();
-            if (state === "connected" && active.ready) command.focus();
+            if (state === "connected" && active.ready && location.hash !== "#routing") command.focus();
           },
         });
       } catch (error) {
@@ -514,6 +557,7 @@
 
       if (active.local) {
         try {
+          if (active.prompt && active.ready) window.dispatchEvent(new Event("gridpico-local-cli-terminal"));
           await sendLocalCommand(active, line);
           if (connection === active && command.value === line) command.value = "";
         } catch (error) {

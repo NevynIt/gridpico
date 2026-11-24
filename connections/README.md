@@ -177,6 +177,33 @@ The local host keeps one router running for all bindings. It accepts MIDI
 as three-byte binary frames at `/midi/<port-id>` and serial CLI bytes at
 `/serial`. The serial connection has its own input and output limits.
 
+### Routing
+
+On the local router host, open **Routing** from Gridpico Home. It opens
+`/diagnostics/#routing` and uses the same local CLI connection as Diagnostics.
+Connect the CLI to read the named inputs, outputs, and routes. Routing reads
+all pages before displaying a snapshot. Use **Refresh routing** to check
+current availability, which can change after a snapshot is read.
+The standard `./scripts/web-ui.sh` launch shows the six-port profile.
+
+The managed matrix shows Off, Pending, or Active for each compatible pair.
+Pending and Active both indicate an enabled route. Free, In use, and
+Unavailable describe each port separately. Use **Enable** or **Disable**
+to request an edit and see the router's readback. The Raw LED pair appears
+separately and still requires an explicit enable. The local CLI remains
+available for terminal commands in the same page.
+
+For the expanded desktop profile, run
+`./scripts/web-ui.sh --profile app/profiles/desktop.conf` on the launcher host.
+For a direct launch, pass `--profile app/profiles/desktop.conf` to
+`connections/local-host.js` before the runner path. The router controls
+the profile's admission and route limits. [Routing contract](../api/routing.md)
+
+To pan the desktop profile's passive APC matrix, focus the on-screen
+**Shift**, hold **Space**, and click a Clip Stop arrow. On touch, hold
+on-screen **Shift** and tap the arrow. Use the on-screen control to send
+the APC Shift message.
+
 ### MIDI provider selection
 
 Served pages default to **WebSocket**. Select the directional numeric port

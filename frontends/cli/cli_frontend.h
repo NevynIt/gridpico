@@ -4,6 +4,7 @@
 #include "api/patchbay.h"
 #include "api/patchbay_controls.h"
 #include "api/local_router.h"
+#include "api/routing.h"
 #include "third_party/embedded_cli.h"
 
 enum {
@@ -25,6 +26,8 @@ typedef struct {
      * assigned by the owning runtime after gridpico_cli_init. */
     gridpico_local_set_route_fn set_local_route;
     gridpico_local_read_route_fn read_local_route;
+    /* Optional full Routing projection, supplied by configured profiles. */
+    gridpico_local_read_routing_fn read_local_routing;
     void *log_context;
     gridpico_read_diagnostic_log_fn read_logs;
     CLI_UINT library_storage[BYTES_TO_CLI_UINTS(GRIDPICO_CLI_LIBRARY_BYTES)];

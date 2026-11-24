@@ -9,14 +9,23 @@ case ${1:-} in
 esac
 profile=$1
 shift
+profile_file=
+usage="Usage: ./scripts/$script"
+if [[ $profile == ui ]]; then
+  usage+=' [--profile CHECKOUT_FILE]'
+  if [[ $# == 2 && $1 == --profile && -n $2 ]]; then
+    profile_file=$2
+    shift 2
+  fi
+fi
 if [[ $# == 1 && $1 == --help ]]; then
-  printf '%s\n' "Usage: ./scripts/$script" \
+  printf '%s\n' "$usage" \
     "Use the running Compose dev service to serve http://127.0.0.1:$port/." \
     'Run from the host or WSL with Docker Compose and Python 3. Press Ctrl+C to stop.'
   exit 0
 fi
 if (( $# )); then
-  printf 'Usage: ./scripts/%s [--help]\n' "$script" >&2
+  printf '%s [--help]\n' "$usage" >&2
   exit 2
 fi
 for command in docker python3; do
@@ -26,9 +35,10 @@ for command in docker python3; do
   fi
 done
 
-exec python3 - "$root" "$profile" "$label" "$port" <<'PY'
+exec python3 - "$root" "$profile" "$label" "$port" "$profile_file" <<'PY'
 import asyncio
 import os
+from pathlib import Path
 import shutil
 import signal
 import socket
@@ -41,6 +51,22 @@ ADDRESS = ("127.0.0.1", int(sys.argv[4]))
 URL = f"http://{ADDRESS[0]}:{ADDRESS[1]}/"
 COMPOSE = ["docker", "compose", "-f", os.path.join(sys.argv[1], ".devcontainer/compose.yaml")]
 DEV_EXEC = COMPOSE + ["exec", "-T", "-w", "/workspace/gridpico", "dev"]
+
+
+def configured_profile(path):
+    if not path:
+        return ()
+    checkout = Path(sys.argv[1]).resolve()
+    try:
+        file = (checkout / path).resolve(strict=True)
+        relative = file.relative_to(checkout)
+        if not file.is_file():
+            raise ValueError
+    except (OSError, RuntimeError, ValueError):
+        sys.exit(f"{LABEL}: --profile needs a regular file inside this checkout.")
+    return "--profile", str(relative)
+
+
 if PROFILE == "apc":
     BUILD = """
 cmake -S . -B build/browser-demo
@@ -58,8 +84,8 @@ cmake -S . -B build/web-ui -DGRIDPICO_ENABLE_ALSA=OFF
 cmake --build build/web-ui --target gridpico_local_router
 npm --prefix connections ci --ignore-scripts --no-audit --no-fund
 """
-    HOST_ARGS = ("connections/local-host.js", "--web-ui", "build/web-ui/gridpico_local_router",
-                 str(ADDRESS[1]))
+    HOST_ARGS = ("connections/local-host.js", "--web-ui", *configured_profile(sys.argv[5]),
+                 "build/web-ui/gridpico_local_router", str(ADDRESS[1]))
     READY = f"Gridpico local router listening at {URL}\n"
     BUILD_MESSAGE = "Building the production local router and installing locked dependencies in dev."
     BUILD_FAILURE = "Local router build or npm install failed in dev."

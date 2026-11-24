@@ -6,6 +6,8 @@ const deadlineMs = 5000;
 const maxLineBytes = 544;
 const errorCodes = new Set(["INVALID", "CAPACITY", "UNAVAILABLE"]);
 const maxGeneration = 0xffffffff;
+const defaultMidiPeers = 6;
+const maxMidiPeers = 65535; // Directional port ID space.
 
 function unsigned(text, maximum) {
   if (!/^[1-9][0-9]*$/.test(text) || Number(text) > maximum) {
@@ -73,10 +75,13 @@ function startLocalPipe(executable, handlers, args = []) {
   function readLine(line) {
     if (line.length > maxLineBytes) throw new Error("Router line too long");
     if (!ready) {
-      if (line !== "ready") throw new Error("Expected router readiness");
+      const match = /^ready ([1-9][0-9]*)$/.exec(line);
+      if (line !== "ready" && (!match || Number(match[1]) > maxMidiPeers)) {
+        throw new Error("Invalid router readiness");
+      }
       ready = true;
       clearTimeout(timer);
-      handlers.onReady();
+      handlers.onReady(match ? Number(match[1]) : defaultMidiPeers);
       return;
     }
     if (line === "event" && !inEvent && !replyStarted) {

@@ -24,11 +24,13 @@ enum {
     GRIDPICO_PATCH_MONITOR_PORT_ID = 6
 };
 
-/* Shared storage bounds. The active profile determines actual counts. */
+/* Shared backing for the configured-profile bench. These extents do not
+ * set any initializer's admitted counts. The viewport remains 5 by 8.
+ */
 enum {
-    GRIDPICO_PATCH_MAX_DEVICES = 4,
-    GRIDPICO_PATCH_MAX_PORTS = 6,
-    GRIDPICO_PATCH_MAX_BRANCHES = 3,
+    GRIDPICO_PATCH_MAX_DEVICES = 8,
+    GRIDPICO_PATCH_MAX_PORTS = 18,
+    GRIDPICO_PATCH_MAX_BRANCHES = 13,
     GRIDPICO_PATCH_SOURCE_ROWS = 5,
     GRIDPICO_PATCH_DESTINATION_COLUMNS = 8,
     GRIDPICO_PATCH_NAME_BYTES = 32,

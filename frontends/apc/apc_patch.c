@@ -2,8 +2,14 @@
 
 #include "apc_protocol.h"
 
+#include <string.h>
+
 enum {
     APC_CLIP_STOP_FIRST = 0x40,
+    APC_ARROW_UP = APC_CLIP_STOP_FIRST,
+    APC_ARROW_DOWN = 0x41,
+    APC_ARROW_LEFT = 0x42,
+    APC_ARROW_RIGHT = 0x43,
     APC_SCENE_FIRST = 0x52,
     APC_SHIFT = 0x62,
     APC_COLOR_PREVIEW_PAD = 0x08
@@ -122,31 +128,106 @@ void gridpico_apc_patch_init(gridpico_apc_patch *frontend, void *session_context
     };
 }
 
+void gridpico_apc_patch_init_passive(gridpico_apc_patch *frontend, void *session_context,
+                                    gridpico_local_read_patch_page_fn read_page,
+                                    void *feedback_context,
+                                    gridpico_apc_surface_feedback_fn feedback)
+{
+    *frontend = (gridpico_apc_patch){
+        .session_context = session_context,
+        .feedback_context = feedback_context,
+        .feedback = feedback,
+        .read_page = read_page
+    };
+}
+
+void gridpico_apc_patch_reset_gestures(gridpico_apc_patch *frontend)
+{
+    memset(frontend->note_held, 0, sizeof(frontend->note_held));
+    frontend->color_device = 0;
+}
+
 void gridpico_apc_patch_set_page_feedback(gridpico_apc_patch *frontend,
                                          gridpico_patch_led_page_fn page_feedback)
 {
     frontend->page_feedback = page_feedback;
 }
 
+static void render_route_page(
+    gridpico_apc_patch *frontend,
+    const gridpico_patch_route_state routes[][GRIDPICO_PATCH_DESTINATION_COLUMNS])
+{
+    uint8_t palette[GRIDPICO_PATCH_LED_FRAMES];
+    for (size_t row = 0; row < GRIDPICO_PATCH_SOURCE_ROWS; ++row) {
+        for (size_t column = 0; column < GRIDPICO_PATCH_DESTINATION_COLUMNS; ++column) {
+            palette[pad_in_row(row, column)] = route_palette(routes[row][column]);
+        }
+    }
+    emit_page(frontend, 0, palette);
+}
+
+static void present_viewport(gridpico_apc_patch *frontend, const gridpico_local_patch_page *page)
+{
+    frontend->viewport = page->viewport;
+    render_route_page(frontend, page->routes);
+}
+
+static gridpico_result read_viewport(gridpico_apc_patch *frontend,
+                                     const gridpico_local_patch_viewport *request)
+{
+    gridpico_local_patch_page page;
+    const gridpico_result result = frontend->read_page(frontend->session_context, request, &page);
+    if (result == GRIDPICO_OK) {
+        present_viewport(frontend, &page);
+    }
+    return result;
+}
+
+static gridpico_result pan_viewport(gridpico_apc_patch *frontend, uint8_t note)
+{
+    gridpico_local_patch_viewport request = frontend->viewport;
+    switch (note) {
+    case APC_ARROW_UP:
+        if (request.source_offset > 0) {
+            --request.source_offset;
+        }
+        break;
+    case APC_ARROW_DOWN:
+        ++request.source_offset;
+        break;
+    case APC_ARROW_LEFT:
+        if (request.destination_offset > 0) {
+            --request.destination_offset;
+        }
+        break;
+    case APC_ARROW_RIGHT:
+        ++request.destination_offset;
+        break;
+    default:
+        return GRIDPICO_OK;
+    }
+    return read_viewport(frontend, &request);
+}
+
 gridpico_result gridpico_apc_patch_refresh_snapshot(
     gridpico_apc_patch *frontend, const gridpico_patch_snapshot *snapshot)
 {
+    if (frontend->read_page != NULL) {
+        return GRIDPICO_INVALID;
+    }
     if (frontend->color_device != 0) {
         return render_color_page(frontend, frontend->color_device);
     }
 
-    uint8_t palette[GRIDPICO_PATCH_LED_FRAMES];
-    for (size_t row = 0; row < GRIDPICO_PATCH_SOURCE_ROWS; ++row) {
-        for (size_t column = 0; column < GRIDPICO_PATCH_DESTINATION_COLUMNS; ++column) {
-            palette[pad_in_row(row, column)] = route_palette(snapshot->routes[row][column]);
-        }
-    }
-    emit_page(frontend, 0, palette);
+    render_route_page(frontend, snapshot->routes);
     return GRIDPICO_OK;
 }
 
 gridpico_result gridpico_apc_patch_refresh(gridpico_apc_patch *frontend)
 {
+    if (frontend->read_page != NULL) {
+        return read_viewport(frontend, &frontend->viewport);
+    }
     if (frontend->color_device != 0) {
         return render_color_page(frontend, frontend->color_device);
     }
@@ -254,6 +335,9 @@ gridpico_result gridpico_apc_patch_receive(
     }
     frontend->note_held[note] = true;
     const bool shift_held = frontend->note_held[APC_SHIFT];
+    if (frontend->read_page != NULL) {
+        return shift_held ? pan_viewport(frontend, note) : GRIDPICO_OK;
+    }
     if (note < GRIDPICO_PATCH_LED_FRAMES) {
         return shift_held ? press_color_pad(frontend, note) : toggle_route(frontend, note);
     }

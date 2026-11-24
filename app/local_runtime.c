@@ -9,45 +9,66 @@ enum {
     MIDI_LOG_PORT = 6,
 };
 
-static const gridpico_local_registry registry = {
-    .inventory = {
-        .device_count = GRIDPICO_LOCAL_DEVICES,
-        .port_count = GRIDPICO_LOCAL_PORTS,
-        .devices = {
-            {1, "Web APC", GRIDPICO_PATCH_DISCONNECTED},
-            {2, "Diagnostics", GRIDPICO_PATCH_DISCONNECTED},
-            {3, "Web Monitor", GRIDPICO_PATCH_DISCONNECTED},
-            {4, "MIDI Log", GRIDPICO_PATCH_DISCONNECTED},
+static const local_router_profile default_profile = {
+    .registry = {
+        .inventory = {
+            .device_count = GRIDPICO_LOCAL_DEVICES,
+            .port_count = GRIDPICO_LOCAL_PORTS,
+            .devices = {
+                {1, "Web APC", GRIDPICO_PATCH_DISCONNECTED},
+                {2, "Diagnostics", GRIDPICO_PATCH_DISCONNECTED},
+                {3, "Web Monitor", GRIDPICO_PATCH_DISCONNECTED},
+                {4, "MIDI Log", GRIDPICO_PATCH_DISCONNECTED},
+            },
+            .ports = {
+                {APC_KEYBED_PORT, 1, "Keybed", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+                {2, 1, "Panel", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, false},
+                {APC_FEEDBACK_PORT, 1, "LED feedback", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, false},
+                {4, 2, "LED Sequence", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, false},
+                {WEB_MONITOR_PORT, 3, "Monitor", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+                {MIDI_LOG_PORT, 4, "Log", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+            },
         },
-        .ports = {
-            {APC_KEYBED_PORT, 1, "Keybed", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, true},
-            {2, 1, "Panel", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, false},
-            {APC_FEEDBACK_PORT, 1, "LED feedback", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, false},
-            {4, 2, "LED Sequence", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, false},
-            {WEB_MONITOR_PORT, 3, "Monitor", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
-            {MIDI_LOG_PORT, 4, "Log", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+        .port_capabilities = {
+            GRIDPICO_LOCAL_PORT_MANAGED, GRIDPICO_LOCAL_PORT_PANEL, GRIDPICO_LOCAL_PORT_RAW,
+            GRIDPICO_LOCAL_PORT_RAW, GRIDPICO_LOCAL_PORT_MANAGED, GRIDPICO_LOCAL_PORT_MANAGED,
         },
     },
-    .port_capabilities = {
-        GRIDPICO_LOCAL_PORT_MANAGED, GRIDPICO_LOCAL_PORT_PANEL, GRIDPICO_LOCAL_PORT_RAW,
-        GRIDPICO_LOCAL_PORT_RAW, GRIDPICO_LOCAL_PORT_MANAGED, GRIDPICO_LOCAL_PORT_MANAGED,
+    .limits = {.midi_peer_limit = GRIDPICO_LOCAL_PORTS},
+    .ports = {
+        {LOCAL_ROLE_KEYBED, LOCAL_MIDI_QUEUE, true},
+        {LOCAL_ROLE_PANEL, LOCAL_PANEL_QUEUE, true},
+        {LOCAL_ROLE_LED, LOCAL_MIDI_QUEUE, true},
+        {LOCAL_ROLE_SEQUENCE, LOCAL_MIDI_QUEUE, true},
+        {LOCAL_ROLE_MONITOR, LOCAL_MIDI_QUEUE, true},
+        {LOCAL_ROLE_LOG, LOCAL_MIDI_QUEUE, true},
     },
 };
 
-static size_t port_index(gridpico_port_id id)
+static size_t port_index(const local_runtime *runtime, gridpico_port_id id)
 {
-    for (size_t i = 0; i < registry.inventory.port_count; ++i) {
-        if (registry.inventory.ports[i].id == id) {
+    const gridpico_patch_inventory *inventory = &runtime->profile->registry.inventory;
+    for (size_t i = 0; i < inventory->port_count; ++i) {
+        if (inventory->ports[i].id == id) {
             return i;
         }
     }
-    return registry.inventory.port_count;
+    return inventory->port_count;
 }
 
 static local_binding *binding(local_runtime *runtime, gridpico_port_id id)
 {
-    const size_t index = port_index(id);
-    return index < registry.inventory.port_count ? &runtime->bindings[index] : NULL;
+    const size_t index = port_index(runtime, id);
+    return index < runtime->profile->registry.inventory.port_count ? &runtime->bindings[index] : NULL;
+}
+
+static bool socket_pool_full(const local_runtime *runtime)
+{
+    size_t admitted = 0;
+    for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
+        if (runtime->bindings[i].attached && !runtime->bindings[i].adapter_owned) ++admitted;
+    }
+    return admitted >= runtime->profile->limits.midi_peer_limit;
 }
 
 static gridpico_result first_error(gridpico_result a, gridpico_result b)
@@ -80,11 +101,17 @@ static size_t read_logs(void *context, gridpico_diagnostic_log_entry *rows, size
 static gridpico_result stage_midi(local_runtime *runtime, gridpico_connection to,
                                   const uint8_t bytes[GRIDPICO_LOCAL_MESSAGE_BYTES])
 {
-    local_binding *sink = binding(runtime, to.endpoint);
-    if (sink == NULL || !sink->attached || sink->generation != to.generation || sink->fault) {
+    const size_t index = port_index(runtime, to.endpoint);
+    if (index == runtime->profile->registry.inventory.port_count) {
         return GRIDPICO_UNAVAILABLE;
     }
-    if (sink->queued == LOCAL_MIDI_QUEUE) {
+    local_binding *sink = &runtime->bindings[index];
+    if (!sink->attached || sink->generation != to.generation || sink->fault) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    if (sink->queued >= runtime->profile->ports[index].queue_limit ||
+        (sink->adapter.send == NULL &&
+         runtime->output_count - runtime->fault_count >= LOCAL_MIDI_STAGE_FRAMES)) {
         sink->fault = true;
         return GRIDPICO_UNAVAILABLE;
     }
@@ -122,10 +149,10 @@ static gridpico_result deliver_raw(void *context, const gridpico_local_raw_deliv
 static void deliver_feedback(void *context, const gridpico_apc_surface_message *message)
 {
     local_runtime *runtime = context;
-    const local_binding *sink = binding(runtime, APC_FEEDBACK_PORT);
-    if (sink->attached && runtime->raw_deadline_ms == 0 &&
+    const local_binding *sink = binding(runtime, runtime->feedback_port);
+    if (sink != NULL && sink->attached && runtime->raw_deadline_ms == 0 &&
         (runtime->feedback_ready || runtime->refreshing)) {
-        const gridpico_connection destination = {APC_FEEDBACK_PORT, sink->generation};
+        const gridpico_connection destination = {runtime->feedback_port, sink->generation};
         stage_midi(runtime, destination, message->bytes);
     }
 }
@@ -166,8 +193,14 @@ static gridpico_result set_panel_color(void *context, gridpico_device_id id, gri
 
 static void reset_panel(local_runtime *runtime)
 {
-    gridpico_apc_patch_init(&runtime->apc, runtime, read_snapshot, set_panel_route, read_color,
-                            set_panel_color, runtime, deliver_feedback);
+    if (runtime->profile->passive_surface) {
+        gridpico_apc_patch_init_passive(&runtime->apc, &runtime->session,
+                                       gridpico_patch_session_read_local_patch_page,
+                                       runtime, deliver_feedback);
+    } else {
+        gridpico_apc_patch_init(&runtime->apc, runtime, read_snapshot, set_panel_route, read_color,
+                                set_panel_color, runtime, deliver_feedback);
+    }
 }
 
 static bool route_feedback_changed(const gridpico_patch_graph_state *before,
@@ -217,7 +250,10 @@ static gridpico_result apply_port(local_runtime *runtime, gridpico_connection co
 
 static void stage_fault(local_runtime *runtime, gridpico_connection connection)
 {
-    if (!binding(runtime, connection.endpoint)->adapter_owned) {
+    local_binding *port = binding(runtime, connection.endpoint);
+    if (!port->adapter_owned && !port->fault_staged) {
+        port->fault_staged = true;
+        ++runtime->fault_count;
         runtime->output[runtime->output_count++] =
             (local_output){.destination = connection, .fault = true};
     }
@@ -254,7 +290,8 @@ static gridpico_result set_local_route(void *context, const gridpico_local_route
         gridpico_local_route_status state;
         result = gridpico_patch_session_read_local_route(&runtime->session, &route, &state);
         if (result == GRIDPICO_OK && !current &&
-            (!binding(runtime, route.source)->attached || route.destination != APC_FEEDBACK_PORT ||
+            (route.source != runtime->sequence_port || route.destination != runtime->feedback_port ||
+             !binding(runtime, route.source)->attached ||
              !runtime->feedback_ready)) {
             result = GRIDPICO_UNAVAILABLE;
         }
@@ -298,23 +335,69 @@ static void write_serial(void *context, const char *bytes, size_t size)
     }
 }
 
-gridpico_result local_runtime_init(local_runtime *runtime)
+static gridpico_result read_availability(
+    void *context, const gridpico_local_registry *registry,
+    gridpico_local_port_availability out[GRIDPICO_PATCH_MAX_PORTS])
+{
+    const local_runtime *runtime = context;
+    const gridpico_patch_inventory *inventory = &runtime->profile->registry.inventory;
+    if (registry->inventory.port_count != inventory->port_count) return GRIDPICO_INVALID;
+    for (size_t i = 0; i < inventory->port_count; ++i) {
+        if (registry->inventory.ports[i].id != inventory->ports[i].id) return GRIDPICO_INVALID;
+    }
+    const bool full = socket_pool_full(runtime);
+    for (size_t i = 0; i < inventory->port_count; ++i) {
+        const local_binding *port = &runtime->bindings[i];
+        out[i] = port->attached ? GRIDPICO_LOCAL_IN_USE :
+            runtime->profile->ports[i].socket && !port->adapter_owned &&
+            port->generation != UINT32_MAX && !full ? GRIDPICO_LOCAL_FREE : GRIDPICO_LOCAL_UNAVAILABLE;
+    }
+    return GRIDPICO_OK;
+}
+
+static gridpico_result read_routing(void *context, gridpico_local_routing_snapshot *out)
+{
+    local_runtime *runtime = context;
+    return gridpico_patch_session_read_local_routing(&runtime->session, out);
+}
+
+static void enable_routing(local_runtime *runtime)
+{
+    gridpico_patch_session_bind_local_routing(&runtime->session, gridpico_patch_graph_read_local_state,
+                                             read_availability, runtime);
+    runtime->routing_enabled = true;
+}
+
+gridpico_result local_runtime_init_profile(local_runtime *runtime, const local_router_profile *profile)
 {
     *runtime = (local_runtime){0};
-    for (size_t i = 0; i < registry.inventory.port_count; ++i) {
-        runtime->bindings[i].generation = 1;
-    }
-    const gridpico_result result = gridpico_patch_graph_init_local(
-        &runtime->graph, &registry, deliver_note, deliver_raw, runtime);
+    runtime->configured = profile != NULL;
+    runtime->profile = runtime->configured ? profile : &default_profile;
+    const gridpico_local_registry *registry = &runtime->profile->registry;
+    const gridpico_result result = runtime->configured
+        ? gridpico_patch_graph_init_local_profile(&runtime->graph, registry, &profile->limits,
+                                                  deliver_note, deliver_raw, runtime)
+        : gridpico_patch_graph_init_local(&runtime->graph, registry, deliver_note, deliver_raw, runtime);
     if (result != GRIDPICO_OK) {
         return result;
+    }
+    runtime->feedback_port = local_profile_role(runtime->profile, LOCAL_ROLE_LED);
+    runtime->sequence_port = local_profile_role(runtime->profile, LOCAL_ROLE_SEQUENCE);
+    for (size_t i = 0; i < registry->inventory.port_count; ++i) {
+        runtime->bindings[i].generation = 1;
     }
     gridpico_patch_session_init(&runtime->session, &runtime->graph, gridpico_patch_graph_read_graph,
                                gridpico_patch_graph_set_route);
     gridpico_patch_session_bind_local_routes(&runtime->session, gridpico_patch_graph_set_local_route,
                                             gridpico_patch_graph_read_local_route);
+    if (runtime->configured) enable_routing(runtime);
     reset_panel(runtime);
     return GRIDPICO_OK;
+}
+
+gridpico_result local_runtime_init(local_runtime *runtime)
+{
+    return local_runtime_init_profile(runtime, NULL);
 }
 
 gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime)
@@ -328,35 +411,39 @@ gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime)
         return result;
     }
     request.route.destination = MIDI_LOG_PORT;
-    return set_local_route(runtime, &request);
+    const gridpico_result logged = set_local_route(runtime, &request);
+    if (logged == GRIDPICO_OK && !runtime->routing_enabled) enable_routing(runtime);
+    return logged;
 }
 
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms)
 {
     runtime->now_ms = now_ms;
     runtime->output_count = 0;
+    runtime->fault_count = 0;
     runtime->serial_count = 0;
     runtime->serial.fault = false;
-    for (size_t i = 0; i < registry.inventory.port_count; ++i) {
+    for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
         runtime->bindings[i].queued = 0;
+        runtime->bindings[i].fault_staged = false;
     }
 }
 
 gridpico_result local_runtime_port(const local_runtime *runtime, gridpico_port_id id,
                                   local_port_state *out)
 {
-    const size_t index = port_index(id);
-    if (index == registry.inventory.port_count) {
+    const size_t index = port_index(runtime, id);
+    if (index == runtime->profile->registry.inventory.port_count) {
         return GRIDPICO_INVALID;
     }
     const local_binding *binding = &runtime->bindings[index];
     *out = (local_port_state){
-        .direction = registry.inventory.ports[index].direction,
-        .limit = registry.port_capabilities[index] == GRIDPICO_LOCAL_PORT_PANEL
-            ? LOCAL_PANEL_QUEUE : LOCAL_MIDI_QUEUE,
+        .direction = runtime->profile->registry.inventory.ports[index].direction,
+        .limit = runtime->profile->ports[index].queue_limit,
         .generation = binding->generation,
         .attached = binding->attached,
         .adapter_owned = binding->adapter_owned,
+        .socket = runtime->profile->ports[index].socket,
     };
     return GRIDPICO_OK;
 }
@@ -382,6 +469,7 @@ static gridpico_result bind_port(local_runtime *runtime, gridpico_connection con
         return GRIDPICO_INVALID;
     }
     if (port->adapter_owned != (adapter.retire != NULL) ||
+        (adapter.retire == NULL && (!port->socket || socket_pool_full(runtime))) ||
         port->attached || connection.generation <= port->generation ||
         (port->generation == 1 && connection.generation != 2)) {
         return GRIDPICO_UNAVAILABLE;
@@ -391,7 +479,7 @@ static gridpico_result bind_port(local_runtime *runtime, gridpico_connection con
     if (result != GRIDPICO_OK) {
         apply_port(runtime, connection, false);
         stage_fault(runtime, connection);
-    } else if (connection.endpoint == APC_FEEDBACK_PORT) {
+    } else if (connection.endpoint == runtime->feedback_port) {
         runtime->feedback_refresh = true;
     }
     return result;
@@ -427,10 +515,11 @@ gridpico_result local_runtime_detach(local_runtime *runtime, gridpico_connection
     }
     port->fault = false;
     gridpico_result result = apply_port(runtime, connection, false);
-    if (registry.port_capabilities[port_index(connection.endpoint)] == GRIDPICO_LOCAL_PORT_PANEL) {
-        reset_panel(runtime);
+    if (runtime->profile->registry.port_capabilities[port_index(runtime, connection.endpoint)] == GRIDPICO_LOCAL_PORT_PANEL) {
+        if (runtime->profile->passive_surface) gridpico_apc_patch_reset_gestures(&runtime->apc);
+        else reset_panel(runtime);
         runtime->feedback_refresh = true;
-    } else if (connection.endpoint == APC_FEEDBACK_PORT) {
+    } else if (connection.endpoint == runtime->feedback_port) {
         runtime->feedback_ready = false;
     }
     if (runtime->raw_deadline_ms != 0 &&
@@ -450,9 +539,9 @@ static bool valid_triplet(const uint8_t *bytes)
 
 gridpico_result local_runtime_midi(local_runtime *runtime, const gridpico_local_raw_ingress *input)
 {
-    const size_t index = port_index(input->source.endpoint);
-    if (index == registry.inventory.port_count ||
-        registry.inventory.ports[index].direction != GRIDPICO_PATCH_INPUT ||
+    const size_t index = port_index(runtime, input->source.endpoint);
+    if (index == runtime->profile->registry.inventory.port_count ||
+        runtime->profile->registry.inventory.ports[index].direction != GRIDPICO_PATCH_INPUT ||
         !valid_triplet(input->bytes) || input->source.generation == 0) {
         return GRIDPICO_INVALID;
     }
@@ -460,7 +549,7 @@ gridpico_result local_runtime_midi(local_runtime *runtime, const gridpico_local_
     if (!port->attached || port->generation != input->source.generation) {
         return GRIDPICO_UNAVAILABLE;
     }
-    switch (registry.port_capabilities[index]) {
+    switch (runtime->profile->registry.port_capabilities[index]) {
     case GRIDPICO_LOCAL_PORT_PANEL: {
         gridpico_apc_surface_message message;
         memcpy(message.bytes, input->bytes, sizeof(message.bytes));
@@ -515,6 +604,7 @@ gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t gener
     if (result == GRIDPICO_OK) {
         runtime->cli.set_local_route = set_local_route;
         runtime->cli.read_local_route = read_local_route;
+        if (runtime->routing_enabled) runtime->cli.read_local_routing = read_routing;
         runtime->serial = (local_binding){.generation = generation, .attached = true};
         gridpico_cli_process(&runtime->cli);
     }
@@ -553,10 +643,10 @@ gridpico_result local_runtime_serial(local_runtime *runtime, uint32_t generation
 static gridpico_result retire_faults(local_runtime *runtime)
 {
     gridpico_result result = GRIDPICO_OK;
-    for (size_t i = 0; i < registry.inventory.port_count; ++i) {
+    for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
         local_binding *port = &runtime->bindings[i];
         if (port->attached && port->fault) {
-            const gridpico_connection connection = {registry.inventory.ports[i].id, port->generation};
+            const gridpico_connection connection = {runtime->profile->registry.inventory.ports[i].id, port->generation};
             result = first_error(result, local_runtime_detach(runtime, connection));
             stage_fault(runtime, connection);
         }
@@ -574,14 +664,16 @@ gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result res
         return result;
     }
     runtime->feedback_refresh = false;
-    local_binding *sink = binding(runtime, APC_FEEDBACK_PORT);
-    if (!sink->attached || runtime->raw_deadline_ms != 0) {
+    local_binding *sink = binding(runtime, runtime->feedback_port);
+    if (sink == NULL || !sink->attached || runtime->raw_deadline_ms != 0) {
         return result;
     }
     const size_t before = sink->queued;
     const size_t output_before = runtime->output_count;
     gridpico_result refreshed = GRIDPICO_UNAVAILABLE;
-    if (before <= LOCAL_MIDI_QUEUE - GRIDPICO_PATCH_LED_FRAMES) {
+    const size_t index = port_index(runtime, runtime->feedback_port);
+    const size_t limit = runtime->profile->ports[index].queue_limit;
+    if (before + GRIDPICO_PATCH_LED_FRAMES <= limit) {
         runtime->refreshing = true;
         refreshed = gridpico_apc_patch_refresh(&runtime->apc);
         runtime->refreshing = false;
@@ -607,8 +699,8 @@ gridpico_result local_runtime_retire(local_runtime *runtime)
 {
     gridpico_result result = GRIDPICO_OK;
     for (unsigned direction = GRIDPICO_PATCH_INPUT; direction <= GRIDPICO_PATCH_OUTPUT; ++direction) {
-        for (size_t i = 0; i < registry.inventory.port_count; ++i) {
-            const gridpico_patch_port *port = &registry.inventory.ports[i];
+        for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
+            const gridpico_patch_port *port = &runtime->profile->registry.inventory.ports[i];
             const local_binding *state = &runtime->bindings[i];
             if (port->direction == direction && state->attached) {
                 const gridpico_connection connection = {port->id, state->generation};
