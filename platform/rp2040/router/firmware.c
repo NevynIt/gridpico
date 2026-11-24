@@ -29,6 +29,9 @@
 #ifdef GRIDPICO_RP2040_HUB_TRACE
 #include "hub_trace.h"
 #endif
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+#include "onboard_status.h"
+#endif
 
 #if TUSB_VERSION_NUMBER != 2100
 #error "Build the router with TinyUSB 0.21.0"
@@ -315,6 +318,9 @@ static _Noreturn void request_bootsel(void)
 {
     static const char reply[] = "OK BOOTSEL\n";
     const uint64_t deadline = time_us_64() + BOOTSEL_DRAIN_US;
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+    gridpico_onboard_show(GRIDPICO_ONBOARD_BOOTSEL);
+#endif
     bool replied = false;
     do {
         if (!replied) replied = write_cdc(reply, sizeof(reply) - 1);
@@ -819,6 +825,39 @@ static bool start_host(void)
     return true;
 }
 
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+static uint32_t onboard_first_frame;
+
+/* Keep the LED sample off the router's foreground dispatch stack frame. */
+static void __attribute__((noinline)) service_onboard_status(bool host_ready)
+{
+    static uint64_t next_sample;
+    static bool host_advanced;
+    const uint64_t now = time_us_64();
+    if (now < next_sample) return;
+    next_sample = now + 10000;
+
+    gridpico_onboard_facts facts = {.fault = !host_ready};
+    if (host_ready) {
+        host_advanced |= pio_usb_host_get_frame_number() != onboard_first_frame;
+        facts.started = host_advanced;
+        facts.midi = (apc_interface != NO_INTERFACE && tuh_midi_mounted(apc_interface)) ||
+                     (synth_interface != NO_INTERFACE && tuh_midi_mounted(synth_interface));
+        facts.recovery = apc_ambiguous || synth_ambiguous;
+        /* Only the selected APC and synth can submit OUT and latch a fault. The
+           resolver drops their selections on fault, so inspect the live slots. */
+        for (uint8_t i = 0; i < CFG_TUH_MIDI; ++i) {
+            facts.fault |= interfaces[i].present && interfaces[i].faulted && tuh_midi_mounted(i);
+        }
+        /* Pinned TinyUSB allocates hub addresses after its ordinary device slots. */
+        for (uint8_t address = CFG_TUH_DEVICE_MAX + 1; address <= CFG_TUH_DEVICE_MAX + CFG_TUH_HUB; ++address) {
+            facts.hub |= tuh_mounted(address);
+        }
+    }
+    gridpico_onboard_show(gridpico_onboard_classify(facts));
+}
+#endif
+
 int main(void)
 {
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
@@ -834,6 +873,10 @@ int main(void)
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
     mark_unused_stack();
 #endif
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+    gridpico_onboard_init();
+    gridpico_onboard_show(GRIDPICO_ONBOARD_STARTING);
+#endif
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
     const uint64_t boot_deadline = time_us_64() + FLASH_START_DEADLINE_US;
     if (!gridpico_flash_init_usb_serial()) enter_rom();
@@ -843,6 +886,9 @@ int main(void)
 #endif
     const tusb_rhport_init_t device = {.role = TUSB_ROLE_DEVICE, .speed = TUSB_SPEED_FULL};
     if (!tusb_init(DEVICE_ROOT, &device) || gridpico_pico_router_init(&router) != GRIDPICO_OK) {
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+        gridpico_onboard_show(GRIDPICO_ONBOARD_FAULT);
+#endif
         enter_rom();
     }
 #ifdef GRIDPICO_RP2040_FLASH_STARTUP_FAULT
@@ -868,6 +914,9 @@ int main(void)
 #endif
             watchdog_update();
             host_ready = start_host();
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+            onboard_first_frame = pio_usb_host_get_frame_number();
+#endif
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
             if (!host_ready) enter_rom();
             host_frame_at_start = hcd_frame_number(HOST_ROOT);
@@ -890,6 +939,9 @@ int main(void)
             const bool host_running = host_ready && hcd_frame_number(HOST_ROOT) != host_frame_at_start;
             startup_ready = check_flash_start(boot_deadline, host_running, cdc_ready_seen);
         }
+#endif
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+        if (host_attempted) service_onboard_status(host_ready);
 #endif
         watchdog_update();
     }
