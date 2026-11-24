@@ -1,0 +1,89 @@
+cmake_minimum_required(VERSION 3.20)
+
+set(PICO_BOARD waveshare_rp2040_zero CACHE STRING "Gridpico RP2040 bench board")
+set(CFG_TUH_RPI_PIO_USB 1)
+foreach(path IN ITEMS PICO_SDK_PATH PICO_TINYUSB_PATH PICO_PIO_USB_PATH)
+    if(NOT ${path})
+        set(${path} "$ENV{${path}}")
+    endif()
+endforeach()
+if(NOT EXISTS "${PICO_SDK_PATH}/external/pico_sdk_import.cmake" OR
+   NOT EXISTS "${PICO_TINYUSB_PATH}/src/class/midi/midi_host.c" OR
+   NOT EXISTS "${PICO_PIO_USB_PATH}/src/pio_usb.c")
+    message(FATAL_ERROR "Set PICO_SDK_PATH, PICO_TINYUSB_PATH (0.21.0) and PICO_PIO_USB_PATH (0.7.3).")
+endif()
+include("${PICO_SDK_PATH}/external/pico_sdk_import.cmake")
+project(gridpico_rp2040_router LANGUAGES C CXX ASM)
+if(NOT PICO_PLATFORM STREQUAL "rp2040")
+    message(FATAL_ERROR "The Gridpico router bench build requires RP2040.")
+endif()
+pico_sdk_init()
+
+get_filename_component(root "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+add_executable(gridpico_rp2040_router
+    firmware.c
+    usb_descriptors.c
+    ../bootsel_line.c
+    "${root}/app/rp2040_router.c"
+    "${root}/core/midi/patch_graph.c"
+    "${root}/core/session/patch_session.c"
+    "${root}/frontends/apc/apc_frontend.c"
+    "${root}/frontends/apc/apc_protocol.c"
+)
+target_include_directories(gridpico_rp2040_router PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}" .. "${root}")
+target_link_libraries(gridpico_rp2040_router PRIVATE pico_stdlib pico_bootrom hardware_watchdog
+    tinyusb_device tinyusb_host tinyusb_pico_pio_usb)
+set_target_properties(gridpico_rp2040_router PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED YES)
+target_compile_definitions(gridpico_rp2040_router PRIVATE PICO_STACK_SIZE=0x1000)
+if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(gridpico_rp2040_router PRIVATE -fstack-usage)
+endif()
+foreach(selector IN ITEMS APC_VID APC_PID SYNTH_VID SYNTH_PID)
+    set(GRIDPICO_${selector} 0 CACHE STRING "Confirmed PIO USB bench selector (${selector})")
+    target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_${selector}=${GRIDPICO_${selector}})
+endforeach()
+foreach(selector IN ITEMS APC_INTERFACE SYNTH_INTERFACE)
+    set(GRIDPICO_${selector} 255 CACHE STRING "Confirmed PIO USB MIDI interface (${selector})")
+    target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_${selector}=${GRIDPICO_${selector}})
+endforeach()
+option(GRIDPICO_RP2040_BENCH_TRACE "Enable the private CDC trace transcript" OFF)
+option(GRIDPICO_RP2040_PIO_DIAGNOSTICS "Include read-only PIO startup and enumeration diagnostics" OFF)
+option(GRIDPICO_RP2040_HCD_TRACE "Observe the stock MIDI class transfer result" OFF)
+option(GRIDPICO_RP2040_HUB_TRACE "Observe stock hub setup and control transfers" OFF)
+option(GRIDPICO_RP2040_TWO_HUB_BENCH "Allow one cascaded hub in the SRAM bench build" OFF)
+if(GRIDPICO_RP2040_BENCH_TRACE)
+    target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_BENCH_TRACE)
+endif()
+if((GRIDPICO_RP2040_PIO_DIAGNOSTICS OR GRIDPICO_RP2040_HCD_TRACE) AND NOT GRIDPICO_RP2040_BENCH_TRACE)
+    message(FATAL_ERROR "PIO diagnostics and HCD tracing require GRIDPICO_RP2040_BENCH_TRACE.")
+endif()
+if(GRIDPICO_RP2040_PIO_DIAGNOSTICS)
+    target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_PIO_DIAGNOSTICS)
+endif()
+if(GRIDPICO_RP2040_HCD_TRACE)
+    target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_HCD_TRACE)
+    target_link_options(gridpico_rp2040_router PRIVATE "LINKER:--wrap=midih_xfer_cb")
+endif()
+if(GRIDPICO_RP2040_HUB_TRACE)
+    if(NOT GRIDPICO_RP2040_PIO_DIAGNOSTICS)
+        message(FATAL_ERROR "Hub tracing requires GRIDPICO_RP2040_PIO_DIAGNOSTICS.")
+    endif()
+    target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_HUB_TRACE)
+    target_sources(gridpico_rp2040_router PRIVATE hub_trace.c)
+    target_link_options(gridpico_rp2040_router PRIVATE
+        "LINKER:--wrap=hub_open"
+        "LINKER:--wrap=hcd_setup_send"
+        "LINKER:--wrap=hcd_event_handler"
+        "LINKER:--wrap=hcd_edpt_xfer"
+    )
+endif()
+if(GRIDPICO_RP2040_TWO_HUB_BENCH)
+    if(NOT GRIDPICO_RP2040_HUB_TRACE)
+        message(FATAL_ERROR "The two-hub bench requires GRIDPICO_RP2040_HUB_TRACE.")
+    endif()
+    target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_TWO_HUB_BENCH)
+endif()
+pico_enable_stdio_usb(gridpico_rp2040_router 0)
+pico_enable_stdio_uart(gridpico_rp2040_router 0)
+pico_set_binary_type(gridpico_rp2040_router no_flash)
+pico_add_extra_outputs(gridpico_rp2040_router)
