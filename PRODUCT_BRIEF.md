@@ -29,11 +29,15 @@ The next sequencing milestone after the current routing and UI work is a playabl
 
 The first usable Patch view routes one source to multiple destinations. The initial serial CLI shows the device names and MIDI ports the core recognizes, their connection state, and which ports occupy each source row and destination column. Users can assign a color to a recognized device through either the CLI or APC. Both views use the same device preference. Colors identify devices and route feedback shows route state.
 
+The physical APC and Web APC use an editable five-by-eight Patchbay. Users can identify a source by playing it, arrange inputs and outputs, and audition a selected output with a short MIDI phrase. The rig saves a global layout and routes through an explicit Save. Ports use USB product names where available and accept persistent CLI aliases. An APC gesture opens a chooser for Patchbay, Keys passthrough, and the planned Sequencer mode. The chooser shows the current mode. Keys mode hands the panel and LED feedback to the connected music application and keeps the chooser gesture available on the APC.
+
 Routing has its own destination from Home and a distinct layout. Named MIDI inputs are rows, named outputs are columns, and their intersections show and control routes. Port availability is visible separately from route state. Known routes in the selected profile start enabled. Port capacity is configurable within each target's tested limits. The APC viewport can move through matrices larger than its physical grid. When USB devices reconnect, Gridpico reuses logical ports and routes where a device can be matched reliably and asks the user to resolve ambiguous matches.
 
 Diagnostics is the separate page for the serial CLI, MIDI Log, Monitor, and routed protocol replay. The browser terminal uses the same CLI commands as a serial terminal and can select either the local router's loopback CLI or a local serial device through Web Serial. The built-in LED test is ready to run in Diagnostics when its known endpoints are available. One action sets up and runs the sequence through Gridpico to the Web APC. Users can also send LED sequences directly to a physical APC over local Web MIDI. Diagnostics reports submission status so users can check the effect on the receiving APC.
 
 On RP2040, USB-hosted devices connect through a hub. Native USB offers multiple MIDI ports, CDC and a read-only `GRIDPICO` drive carrying the self-contained browser interface and documentation. The user has already demonstrated the HTML-drive approach in a separate prototype.
+
+The bench targets seven simultaneous downstream USB MIDI devices. Native USB presents a dedicated bidirectional APC panel and LED pair and one or more independent assignable bidirectional MIDI pairs for the Patchbay. The Pico's onboard light reports startup, connection readiness, and issues, with a distinct color before a software BOOTSEL reset. Users can configure colors from the web and configure the LED type and pins and the PIO USB pin mapping through CDC on compatible RP2040 boards.
 
 The first physical routing check sends MIDI from the real APC through the Pico's USB host hub and Gridpico router to the MicroFreak. The Pi can configure and observe the Pico while the Pico handles the MIDI route. Gridpico firmware on this bench retains a CDC command to enter BOOTSEL and starts a recovery watchdog early. If USB and CDC startup fail, the watchdog recovery enters BOOTSEL so the connected Pi can reflash the Pico.
 
@@ -41,7 +45,7 @@ The physical and web APC surfaces use the same router state and show feedback fr
 
 The Web APC and Diagnostics pages must work offline when opened directly from the mounted read-only drive. Diagnostics must be able to connect to the Pico's serial CLI from that page on supported browsers.
 
-Browser users can select local USB MIDI through Web MIDI and local USB CDC through Web Serial on supported setups. When the Pico is attached to the Pi, an opt-in WebSocket endpoint on the trusted LAN relays its CDC byte stream without requiring certificates. Authenticated WSS remains an option for a future deployment. The interface identifies the selected connection and the device receiving commands.
+Browser users can select local USB MIDI through Web MIDI and local USB CDC through Web Serial on supported setups. When the Pico is attached to the Pi, Diagnostics can select the Pico's CDC through an opt-in WebSocket endpoint on the trusted LAN without requiring certificates. Authenticated WSS remains an option for a future deployment. The interface identifies the selected connection and the device receiving commands.
 
 The desktop targets are Linux x86, Linux ARM (including Raspberry Pi Zero), and Windows. They use the same musical application with platform-specific backends. The [roadmap](ROADMAP.md) records the verification status for each target.
 
