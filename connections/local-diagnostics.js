@@ -78,7 +78,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
   if (adapter.trustedLan && capabilities) {
     const status = document.querySelector("#local-midi-only");
-    status.textContent = "The CLI and LED test are unavailable on this connection. Use the router’s SSH loopback connection.";
+    status.textContent = adapter.openPicoCdc ?
+      "For Pi router commands or the LED test, use the router’s SSH loopback connection." :
+      "The CLI and LED test are unavailable on this connection. Use the router’s SSH loopback connection.";
+    if (adapter.openPicoCdc) status.hidden = false;
     if (!capabilities.roles.monitor && !capabilities.roles.log) {
       const unavailable = document.createElement("p");
       unavailable.textContent = "Monitor and MIDI Log are unavailable on this connection.";

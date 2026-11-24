@@ -150,6 +150,7 @@ function prepareCapabilities(runtimeRoles) {
       ledTest: !listener && webUi && roles.sequence?.port === 4 && roles.led?.port === 3,
       recording: Boolean(recorder && (!listener || listener.trustedLan)),
     };
+    if (listener?.trustedLan && lanPicoCdc) actions.picoCdc = true;
     const descriptor = { version: 1, release: bundle.release, instance, roles, autoBind, actions };
     const body = Buffer.from(JSON.stringify(descriptor));
     if (body.length > 2048) throw new Error("Browser capability descriptor exceeds its bound");

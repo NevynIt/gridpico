@@ -85,6 +85,10 @@ Reserve the exact provider, port and direction while a page binding is opening o
 
 ## Shared in-page adapter
 
+The Diagnostics Pico CDC increment adds optional boolean `actions.picoCdc` to version `1` capabilities. Omission means unavailable. Publish true only in the configured trusted-LAN listener's same-origin descriptor, with a compatible served adapter that explicitly validates the additional field. Alternate-Origin responses keep the prior actions shape. The new adapter accepts both shapes. Release its served assets and descriptor together. Existing `actions.cli` still describes the Pi loopback CLI only.
+
+Diagnostics offers **Pico via Pi CDC** as an explicit target at the current admitted origin. A user chooses Connect to open the existing `/cdc` lease. The socket becomes connected after the host verifies and opens the exact tty. Show the Pi origin and that the Pi selected the USB device. Send only explicit read-oriented `TRACE` or `HUBTRACE` lines in this first Diagnostics form. Treat replies as opaque transcript bytes, and distinguish old transcript when a lease retires. The form does not change relay byte framing or authority. The separate `/pico-cdc/` maintenance terminal keeps its current behavior. Pi loopback and direct Web Serial remain independent selections. Pico typed Routing, outbound MIDI and alternate-origin access have separate gates. [Pico LAN CDC](pico-target.md#private-lan-pico-cdc)
+
 Connections owns one browser MIDI layer. Web APC, Diagnostics, Monitor, MIDI Log and the optional FM page choose a provider and a port explicitly. Pages own their controls and presentation. The layer uses the existing `openMidi(portId, { direction, onData, onState })` shape for either provider. This JavaScript boundary is within the page. A WebSocket peer still sends or receives binary MIDI only.
 
 | Boundary | Behavior |

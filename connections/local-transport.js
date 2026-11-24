@@ -56,7 +56,9 @@
     }
     requireValid(Array.isArray(autoBind) && autoBind.length <= 5 && new Set(autoBind).size === autoBind.length &&
       autoBind.every(role => typeof role === "string" && role !== "sequence" && Object.hasOwn(roles, role)));
-    requireValid(keysOf(actions, ["cli", "ledTest", "recording"]) &&
+    const actionNames = ["cli", "ledTest", "recording"];
+    if (actions && Object.hasOwn(actions, "picoCdc")) actionNames.push("picoCdc");
+    requireValid(keysOf(actions, actionNames) &&
       Object.values(actions).every(available => typeof available === "boolean"));
     Object.freeze(roles);
     Object.freeze(autoBind);
@@ -574,6 +576,15 @@
     get() {
       if (serialAdmitted()) return serial;
     },
+  });
+  const picoCdcAdmitted = () => documentOrigin === switchDestination && target.origin === documentOrigin &&
+    location.pathname === "/diagnostics/" && capabilities?.actions.picoCdc === true;
+  function openPicoCdc(options) {
+    if (!picoCdcAdmitted()) throw new Error("Pico CDC is unavailable on this page.");
+    return track(options, callbacks => openBytes("/cdc", callbacks, length => length <= 256, 8192));
+  }
+  Object.defineProperty(transport, "openPicoCdc", {
+    get() { return picoCdcAdmitted() ? openPicoCdc : undefined; },
   });
   window.gridpicoLocal = Object.freeze(transport);
 })();
