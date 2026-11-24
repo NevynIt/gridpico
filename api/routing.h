@@ -61,6 +61,22 @@ typedef struct {
     gridpico_port_id columns[GRIDPICO_PATCH_DESTINATION_COLUMNS];
 } gridpico_apc_patch_layout;
 
+/* Logical state for the version 1 snapshot codec. Storage encodes its fields
+ * explicitly. This structure does not define the byte representation.
+ */
+enum { GRIDPICO_APC_SESSION_SNAPSHOT_ROUTES = 12 };
+
+typedef struct {
+    gridpico_port_id source;
+    gridpico_port_id destination;
+} gridpico_apc_session_route;
+
+typedef struct {
+    gridpico_apc_patch_layout layout;
+    size_t route_count;
+    gridpico_apc_session_route routes[GRIDPICO_APC_SESSION_SNAPSHOT_ROUTES];
+} gridpico_apc_session_snapshot;
+
 typedef struct {
     gridpico_port_id id;
     gridpico_patch_direction direction;

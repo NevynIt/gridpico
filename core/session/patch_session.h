@@ -60,6 +60,13 @@ void gridpico_patch_session_bind_local_routing(gridpico_patch_session *session,
 gridpico_result gridpico_patch_session_bind_apc_patch(gridpico_patch_session *session,
                                                     const gridpico_apc_patch_layout *layout,
                                                     gridpico_port_id audition_source);
+gridpico_result gridpico_patch_session_export_apc_snapshot(const gridpico_patch_session *session,
+                                                         gridpico_apc_session_snapshot *out);
+/* Restore into a fresh, unpublished Session and Graph before attachment or
+ * ingress. Assembly discards or reinitializes the candidate after any failure.
+ */
+gridpico_result gridpico_patch_session_restore_apc_snapshot(gridpico_patch_session *session,
+                                                          const gridpico_apc_session_snapshot *snapshot);
 gridpico_result gridpico_patch_session_read_apc_patch(void *context,
                                                     gridpico_apc_patch_snapshot *out);
 gridpico_result gridpico_patch_session_assign_apc_patch(void *context, gridpico_revision layout_revision,
