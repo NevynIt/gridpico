@@ -25,7 +25,7 @@ flowchart LR
   fixtures[Separate Web APC Route / Patch fixtures]
   package[Offline asset staging]
   drive[Mounted GRIDPICO]
-  cdc[Physical Pico CDC]
+  cdc[Browser-local Pico CDC]
   speaker[Physical speaker]
   osMidi[Selected OS MIDI ports]
 
@@ -54,7 +54,7 @@ flowchart LR
   fixtures -->|Separate runner instances| midiRouter
   package -->|Static files| offline
   drive -. pending mounted-page access .-> diag
-  diag -. pending real serial .-> cdc
+  diag -. pending browser-local Web Serial .-> cdc
   fm -. physical output not verified .-> speaker
 ```
 
@@ -65,5 +65,5 @@ The default `./scripts/web-ui.sh` profile tries Keybed TX 1, Panel TX 2 and APC 
 | Status | Evidence |
 | --- | --- |
 | **Verified · Linux and Chromium** | The x86_64 native route/transpose proof configures Session and injects simulated notes into the graph. The published Web APC Route/Patch gates, canonical launcher, Diagnostics CLI help and LED replay, Linux ALSA Web MIDI, FM and offline browser tools have independent evidence. See [native proof](../ROADMAP.md#independent-native-proof), [startup acceptance](../ROADMAP.md#approved-follow-up--controller-and-diagnostics-startup), [Web APC gates](../ROADMAP.md#web-apc-rapid-play-regression-and-next-monitor-update), and [instrument / offline evidence](../ROADMAP.md#approved-tonight-delivery). |
-| **Verified · Linux hosts and instruments** | Native two-host WSS and bounded Linux RTP delivery with scoped cleanup passed; RTP repeatability and loss recovery remain open. Pi-local arm64 routing, stock FluidSynth WAV capture and standalone browser FM were verified. Chromium Monitor tone evidence is a browser signal only. See [host evidence](../ROADMAP.md#4-verify-rtp-midi-and-productize-cross-host-websocket-midi), [Pi and instrument evidence](../ROADMAP.md#approved-tonight-delivery), and [Monitor evidence](../ROADMAP.md#web-apc-rapid-play-regression-and-next-monitor-update). |
-| **Pending · targets and portability** | Windows/WSL, desktop-browser remote mTLS, reliable RTP timing/rebind, physical speaker output, mounted `GRIDPICO`, Pico USB/CDC, and hardware MIDI remain unverified. Projects, sequencing, broader OS MIDI targets and portability remain planned. See [next work and hardware evidence](../ROADMAP.md#next-approved-product-work-after-web-apc-protocol-and-timed-leds) and [bench topology](HARDWARE.md). |
+| **Verified · Linux hosts and instruments** | Native two-host WSS and bounded Linux RTP delivery with scoped cleanup passed; RTP repeatability and loss recovery remain open. Pi-local arm64 routing, stock FluidSynth WAV capture and standalone browser FM were verified. On the exact RAM-only Pico ELF, independent Chrome/WSS audit saw Green at startup/rebind, one C4 pair and two Pad 00 Off/Active cycles. Browser RX/paint and PIO USB acknowledgements passed. Original bridge returned with its full flash matched. This proves no physical keypress, audible output or visible LED. See [host evidence](../ROADMAP.md#4-verify-rtp-midi-and-productize-cross-host-websocket-midi), [Pi and instrument evidence](../ROADMAP.md#approved-tonight-delivery), [Pico evidence](../ROADMAP.md#approved-physical-pico-and-cdc-delivery), and [Monitor evidence](../ROADMAP.md#web-apc-rapid-play-regression-and-next-monitor-update). |
+| **Pending · targets and portability** | Windows/WSL, desktop-browser mTLS from an operator laptop, reliable RTP timing/rebind, physical keypress/sound/visual LED acceptance, mounted `GRIDPICO`, browser-local Web Serial, Keybed export `/midi/5`, P-95/MiniFuse path and permanent firmware remain open. No RAM image or temporary WSS listener remains running. Projects, sequencing and broader portability remain planned. See [Pico delivery evidence](../ROADMAP.md#approved-physical-pico-and-cdc-delivery) and [bench topology](HARDWARE.md). |

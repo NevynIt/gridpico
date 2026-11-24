@@ -61,7 +61,7 @@ flowchart TB
   projects <--> hal
   piano <-->|"Feedback service"| hal
   subgraph targets["Platform implementations and target designs"]
-    rp["RP2040 composite USB / PIO host<br/>planned; hardware path pending"]
+    rp["RP2040 composite USB / PIO host<br/>RAM-only route/WSS bench verified<br/>persistent deployment pending"]
     subgraph linux["One Linux HAL owner — shared OS implementation"]
       lx["Linux x86_64<br/>ALSA MIDI adapter implemented"]
       la["Linux ARM<br/>Pi arm64 exercised; broader coverage open"]

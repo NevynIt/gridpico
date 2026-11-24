@@ -1,6 +1,6 @@
 # Hardware bench topology
 
-This page records the owner-supplied Gridpico bench setup. Gridpico hardware validation is pending.
+This page records the owner-supplied Gridpico bench setup. Original-bridge CDC recovery and remote CDC were verified. Gridpico’s exact RAM-only route candidate passed final WSS/browser audit and returned to the original bridge with the full flash matched. This is limited to the recorded synthetic C4 and Pad 00 Off/Active checks. Full physical-key performance, acoustic output, visually confirmed LEDs, mounted-drive browser access, browser-local Web Serial and permanent firmware acceptance remain open. See the [Pico bench operator note](PICO_BENCH.md) and [delivery evidence](../ROADMAP.md#approved-physical-pico-and-cdc-delivery).
 
 ## Connections
 
@@ -27,6 +27,6 @@ The [rpico-bridge hardware notes](https://github.com/NevynIt/rpico-bridge/blob/m
 - **rpico-bridge recorded trial:** an empty, bus-powered hub was detected with a temporary breakout-V-to-board-5-V jumper, a charger on native USB, no laptop and no downstream devices.
 - **rpico-bridge owner-reported run:** two MIDI devices routed through a separately powered seven-port hub with the PIO VBUS jumper disconnected. The Pico's native USB-C power source for that run was unconfirmed.
 
-Neither observation verifies Gridpico hardware or establishes protection and current capacity for this setup.
+These rpico-bridge observations do not establish Gridpico firmware behavior or protection and current capacity for this setup. Gridpico RAM-only recovery and limited native MIDI endpoint evidence is recorded separately in the [Pico delivery record](../ROADMAP.md#approved-physical-pico-and-cdc-delivery). Endpoint acknowledgement is not proof of physical key input, audible response or visible APC feedback.
 
 The [Pico-PIO-USB README at pinned commit `b186e36`](https://github.com/sekigon-gonnoc/Pico-PIO-USB/blob/b186e36bea0f3bcc2ee94ca1fa81e7f71281443a/README.md) describes the PIO USB GPIO pair and recommends 22 Ω series resistors. The [Waveshare RP2040-Zero schematic](https://files.waveshare.com/upload/4/4c/RP2040_Zero.pdf) is the board pinout reference. Neither source is evidence of a Gridpico bench test.

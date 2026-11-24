@@ -196,23 +196,31 @@ UI Designer reviews the workflow and visual hierarchy before implementation and 
 
 The Pico is connected. Project Manager coordinates delivery and confirms independent evidence for each gate. The weekly allowance floor is 30%.
 
-1. **No-touch BOOTSEL entry and bridge return · Independently verified.** Pi → Pico CDC entered the RP2040 B2 ROM on the same physical USB path. Two full 2 MiB flash reads matched at SHA-256 `f40534f41983bbe7b916bdee32f0c8f19fb40f5eb03c83c8aca8db2a2f4d95e3`, and independent review reverified the retained strict SFTP copy. The original rpico-bridge returned with the physical APC and MicroFreak online. Flash restore remains untested, and a full flash write awaits an independently verified fallback. Gridpico firmware and routing acceptance remain pending.
+1. **No-touch BOOTSEL entry and bridge return · Independently verified.** Pi → Pico CDC entered the RP2040 B2 ROM on the same physical USB path. Two full 2 MiB flash reads matched at SHA-256 `f40534f41983bbe7b916bdee32f0c8f19fb40f5eb03c83c8aca8db2a2f4d95e3`, and independent review reverified the retained strict SFTP copy. The original rpico-bridge returned with the physical APC and MicroFreak online. Flash restore remains untested, and a full flash write awaits an independently verified fallback. Persistent Gridpico firmware and full physical routing acceptance remain pending.
    **RAM-only Pico probes · Independently verified.** The native-only probe emitted its CDC banner, exercised DTR, entered the same BOOTSEL ROM and left the full flash image unchanged. In a separate probe, actual watchdog starvation after arming returned the original bridge unaided. An independent pre-arm fallback and a flash write remain pending.
-2. **Physical hub routing · Pending.** Verify real APC → MicroFreak MIDI through the Gridpico Pico USB hub, including observed Note On and Note Off at the destination.
-   An independent hardware diagnostic observed the stock PIO timer running and root hub `0bda:5411` descriptors. Gridpico did not mount the downstream APC or MicroFreak. The original bridge returned with its flash unchanged and both devices online. Power and wiring were unchanged.
-3. **Remote CDC · Independently verified on the original bridge.** Stock Chrome sent exact `help` and `devices` commands to the physical Pico CDC through a temporary, optional same-origin Pi mutual-TLS WSS service over a strict SSH forward, with role restrictions enforced. Direct dev access on port 19445 timed out. Production deployment, physical hub MIDI routing, and direct USB Web Serial and Web MIDI on the operator’s laptop remain open.
+2. **Physical hub bench · Selected native and browser paths independently verified.** The nested-hub census found both the physical APC and MicroFreak live in the two-slot test. A separate selected native test matched Note On and Note Off transfers to MicroFreak OUT02 and Off/Active LED transfers to APC OUT01 with matching native feedback. Playing from the physical APC as the source and testing seven attached devices remain pending.
+   An independent hardware diagnostic observed the stock PIO timer running and root hub `0bda:5411` descriptors. In that earlier diagnostic, Gridpico had yet to mount the downstream APC or MicroFreak. The original bridge returned with its flash unchanged and both devices online. Power and wiring were unchanged.
+3. **Remote CDC · Independently verified on the original bridge.** Stock Chrome sent exact `help` and `devices` commands to the physical Pico CDC through a temporary, optional same-origin Pi mutual-TLS WSS service over a strict SSH forward, with role restrictions enforced. Direct dev access on port 19445 timed out. Persistent CDC deployment and direct USB Web Serial and Web MIDI on the operator’s laptop remain open.
 
 ### Approved performance and browser test outcomes
 
-Physical path acceptance follows the recovery gate and remains pending Project Manager confirmation. [Browser UI delivery](#approved-ui-usability-delivery)
+The results below apply to the verified bench paths. Physical source performance and the operator’s laptop remain open. [Browser UI delivery](#approved-ui-usability-delivery)
 
 - Route MIDI from the physical APC through the Pico to a web synth over WSS.
-- Route Web APC MIDI over WSS through the Pico to the physical MicroFreak.
-- Verify that the physical and virtual APC share Gridpico state and show corresponding LED feedback.
+- **Web APC → WSS → Pico → MicroFreak · Independently verified on the bench.** Stock Chrome played C4 through a temporary WSS service over strict CONNECT. The audit matched the exact Note On and Note Off and successful USB transfers to MicroFreak OUT02. Firmware code is published at `5b63765`. The original bridge returned as device 048, with the full retained 2 MiB flash matching and both instruments online. Port 19445 was closed after testing. Operator laptop access and acoustic output remain unverified.
+- **Matched APC LED feedback · Independently verified on the bench.** Web APC panel actions produced one matched Off and Active LED transfer each to physical APC OUT01, with both panel releases observed in firmware and final state Active. Playing from the physical APC and routing it to the browser synth remain pending.
 - **Laptop Web MIDI bridge · Independently verified on the host.** Stock Chrome bridged two actual ALSA inputs over WSS to the managed Monitor route. The physical setup with a laptop-attached APC and a WSS route through the Pico to the MicroFreak remains pending.
 - **MIDI File playback · Independently verified on an isolated host.** The browser tool passed exact note sequence and timing over stock mutual-TLS WSS, whole-file rejection of invalid input, and scoped note cleanup. Playback through the Pico to the MicroFreak remains pending.
 
 Record the laptop-attached APC, observed LED feedback and acoustic output against the tested target and setup. Circuit sequencing remains deferred.
+
+### Approved physical setup follow-up
+
+- **APC LED observation.** The human saw the bottom-left pad of the physical APC light green. The correlated native and browser captures are recorded separately above.
+- **MicroFreak Program Change · Independently verified in a fixture.** The selected MicroFreak route gated the exact two-byte Program Change beginning with `C3` to a modeled direct endpoint, with defaults preserved. The prior physical preset and any unsaved edits were unknown, so the hardware test remains open and the physical patch was left untouched. Omni receive and channel 4 transmit also remain open.
+- **MiniFuse 4 and Yamaha P-95.** Confirm the expected MiniFuse 4 in the seven-port hub inventory and verify the P-95 route over DIN MIDI when a stimulus or receipt can be observed. P-95 signal remains unverified. The seven likely occupied sockets describe the setup. A seven-device attached test and supported hub capacity remain unverified.
+- **Persistent remote CLI.** The read-only SSH fallback was independently verified after installation, and maintenance-only mutual TLS passed in isolation. The maintenance service remains unexposed. Persistent authenticated Pi WSS access to physical Pico CDC and direct laptop credentials remain open.
+- **Ready-to-use routes.** Leave safe, usable routes configured where the verified setup permits. Project Manager coordinates assignments and deployment within the 30% weekly allowance floor.
 
 ## Demo sequence for 23 November at 09:00 CET (08:00 UTC)
 

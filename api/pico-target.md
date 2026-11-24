@@ -1,6 +1,6 @@
 # Physical Pico routing and maintenance
 
-**Owner** Architect. **Status** Cooperative CDC recovery and post-arm watchdog return to the original bridge verified with SRAM probes. Authenticated browser CDC to the original bridge passed over strict SSH forwarding. Direct LAN access, full flash replacement and full-target Pico routing retain separate gates. [Bench wiring](../docs/HARDWARE.md) · [Native USB allocation](../ARCHITECTURE.md#rp2040-computer-connection) · [Pi router service](pi-recorder.md)
+**Owner** Architect. **Status** Selected SRAM builds passed native and authenticated browser note and Pad 00 feedback checks at the USB endpoints. Recovery returned to the unchanged bridge. Authenticated browser CDC to that bridge passed over strict SSH forwarding. Physical keybed input, audible response, direct laptop access and full flash replacement retain separate gates. [Bench wiring](../docs/HARDWARE.md) · [Native USB allocation](../ARCHITECTURE.md#rp2040-computer-connection) · [Pi router service](pi-recorder.md)
 
 ## Recovery and release
 
@@ -22,7 +22,22 @@ Independent review verified post-arm starvation on the SRAM watchdog probe, ELF 
 
 Use the same production Session/control, Graph and APC protocol code on Pico. The first hardware proof runs an ordinary managed route from the physical APC keybed to the selected MicroFreak USB MIDI input on the PIO host hub. The Pi can read control or evidence over native USB. Musical delivery takes place on Pico through the PIO host controller. During the proof leave Pi MIDI forwarding inactive and verify the physical route independently of any browser or relay. The source route and both USB backends remain bounded by the measured Pico profile and reserved release capacity.
 
-The independently audited stock-timer SRAM run `d6c5b0a4` showed native CDC, both native MIDI cables, 120 MHz PIO host startup and advancing frame counts. The count rose from 1640 to 2392 over 0.752 seconds. TinyUSB read the root Realtek `0bda:5411` hub's device and configuration descriptors. Its attach counter recorded two events without identifying their parent paths. Downstream descriptors and MIDI class mounts were absent in the captured trace. Hub configuration and downstream enumeration remain under investigation. CDC BOOTSEL returned to ROM, where the retained full 2 MiB flash matched again. The original bridge and both instruments returned.
+The independently audited stock-timer SRAM run `d6c5b0a4` showed native CDC, both native MIDI cables, 120 MHz PIO host startup and advancing frame counts. The count rose from 1640 to 2392 over 0.752 seconds. TinyUSB read the root Realtek `0bda:5411` hub's device and configuration descriptors. The later one-slot SRAM run `570d6e5f` captured a valid second hub descriptor at address zero. The only hub address was already occupied. The two-slot census `394a481b` then identified both hubs and both MIDI devices. CDC BOOTSEL and a full 2 MiB comparison confirmed return to the unchanged original bridge after each run.
+
+### Observed USB topology and configured capacity
+
+The two-slot census observed the root Realtek `0bda:5411` hub at USB address `4` and a nested hub of the same VID:PID at address `5` on root port `1`. The MicroFreak `1c75:0601` was at address `1` on root port `2`, with MIDIStreaming interface `2` and one RX and one TX cable. The APC `09e8:004e` was at address `2` on root port `3`, with MIDIStreaming interface `1` and two RX and two TX cables. Each instrument exposed one MIDI IN and one MIDI OUT endpoint. The APC's two virtual cables share that endpoint pair. These addresses and port paths describe the census. The selected build matches the verified VID:PID, interface and cable counts.
+
+| Resource | Positive census or calculated demand | Selected bench profile |
+| --- | --- | --- |
+| USB hubs | 2, including the internal cascade | 2 hub address slots |
+| Other addressed USB devices | 2 | 3 device address slots |
+| MIDIStreaming interfaces | 2 | 4 MIDI class slots |
+| PIO host endpoint entries | Up to 10 steady for the observed devices, plus 1 transient EP0 | 32 shared entries |
+
+The observed-topology bound counts four addressed control endpoints, up to two hub interrupt IN endpoints and four MIDI data endpoints. PIO shares each control endpoint entry between its two directions. TinyUSB serializes enumeration and closes address-zero EP0 before opening the assigned address's EP0. Allow one temporary entry while another attachment is being enumerated alongside the observed devices. At the selected profile's configured counts, the same descriptor shapes give an upper bound of 15 steady entries (5 control, 2 hub interrupt and 8 MIDI data), or 16 with transient address zero. These are source-derived bounds. The bench did not instrument endpoint pool high-water marks. The Pico's separate native USB CDC and MIDI endpoints use its device controller. [TinyUSB address allocation](https://github.com/hathach/tinyusb/blob/0.21.0/src/host/usbh.c#L2116-L2138) · [TinyUSB address-zero handoff](https://github.com/hathach/tinyusb/blob/0.21.0/src/host/usbh.c#L1939-L1949) · [Pico-PIO-USB host allocation](https://github.com/sekigon-gonnoc/Pico-PIO-USB/blob/0.7.3/src/pio_usb_host.c#L433-L473)
+
+The seven physical sockets describe the hub hardware. Only the four USB addresses above and two MIDI interfaces were positively identified. A MiniFuse 4 or another composite device needs a fresh census of hub ancestry, device and interface counts, opened endpoints and descriptor sizes before any capacity change. The current evidence establishes neither MiniFuse MIDI identity nor a DIN path to the Yamaha P-95.
 
 The first full test firmware uses private `1209:0001`, product `Gridpico RP2040 Router`, `bcdDevice` `0103`, native CDC control/data interfaces `0` and `1`, and native MIDI AudioControl/MIDIStreaming interfaces `2` and `3`. Its RAM build omits iSerial. It exposes two native USB MIDI cable pairs and CDC. Wider endpoints, normal release identity and the read-only drive have separate target gates.
 
@@ -31,15 +46,60 @@ The first full test firmware uses private `1209:0001`, product `Gridpico RP2040 
 | `0` | Managed Web APC Keybed ingress | Managed physical APC keybed export for a selected synth or observer |
 | `1` | Web APC Panel ingress to the production frontend | Committed APC LED feedback |
 
-On the hub the physical APC keybed and panel use their separate USB MIDI ports. The physical Panel and Web Panel each own their held edges and submit commands to the same Session. Give the physical and browser LED receivers independent delivery and refresh state. Pad `00` toggles only the physical APC → MicroFreak branch. Mirror the authoritative pad state to both receivers on attach and change as `96 00 15` for Active and `96 00 00` otherwise. CLI readback distinguishes Pending and Off. Start with desired physical keybed → MicroFreak, physical keybed → native export, and native keybed → MicroFreak enabled. Keep their lifetimes independent. Add no native input-to-native output echo. A Web peer fault cannot retire the physical APC or make its feedback stale.
+On the hub the physical APC keybed and panel use their separate USB MIDI ports. The physical Panel and Web Panel each own their held edges and submit commands to the same Session. Give the physical and browser LED receivers independent delivery and refresh state. Pad `00` toggles only the physical APC → MicroFreak branch. Mirror the authoritative pad state to both receivers on attach and change as `96 00 15` for Active and `96 00 00` otherwise. Session distinguishes Pending and Off, with private bench traces available on the instrumented SRAM build. Start with desired physical keybed → MicroFreak, physical keybed → native export, and native keybed → MicroFreak enabled. Keep their lifetimes independent. Add no native input-to-native output echo. A Web peer fault cannot retire the physical APC or make its feedback stale.
 
 Compare exact Note On and Off, route readback, scoped held-note release and both LED outputs. Distinguish firmware/adapter admission, PIO host transfer completion and actual destination behavior. USB transfer completion is evidence at the USB endpoint. Actual physical APC key presses, visible LEDs and MicroFreak response require an observed instrument or user input separate from transfer evidence. The same distinction applies to browser synth PCM and speaker output. A synthetic stimulus can verify its own path only.
+
+### Selected SRAM build and bench results
+
+The selected bench build uses Waveshare RP2040-Zero, Pico SDK 2.2.0, TinyUSB 0.21.0, Pico-PIO-USB 0.7.3 and ARM GNU 12.2.1. Configure the `no_flash` target from the reviewed source revision with the paths to those dependencies. The command below is the selected LED-refresh build configuration, with the bench dependency paths as examples. The artifact hashes identify the tested builds.
+
+```sh
+cmake -S platform/rp2040/router -B build/rp2040-selected-led-refresh -G Ninja \
+  -DCMAKE_BUILD_TYPE=MinSizeRel -DPICO_SDK_PATH=/opt/pico/pico-sdk \
+  -DPICO_TINYUSB_PATH=/opt/pico/tinyusb-0.21.0 -DPICO_PIO_USB_PATH=/opt/pico/Pico-PIO-USB \
+  -DGRIDPICO_RP2040_BENCH_TRACE=ON -DGRIDPICO_RP2040_PIO_DIAGNOSTICS=ON \
+  -DGRIDPICO_RP2040_HCD_TRACE=ON -DGRIDPICO_RP2040_HUB_TRACE=ON \
+  -DGRIDPICO_RP2040_TWO_HUB_BENCH=ON \
+  -DGRIDPICO_APC_VID=0x09e8 -DGRIDPICO_APC_PID=0x004e -DGRIDPICO_APC_INTERFACE=1 \
+  -DGRIDPICO_SYNTH_VID=0x1c75 -DGRIDPICO_SYNTH_PID=0x0601 -DGRIDPICO_SYNTH_INTERFACE=2
+cmake --build build/rp2040-selected-led-refresh --target gridpico_rp2040_router --parallel 4
+```
+
+| Bench build | ELF SHA-256 | UF2 SHA-256 |
+| --- | --- | --- |
+| Selected native | `48910a2633606e105877b297fbb819b9920b52ea319b31da9f183924aedacee3` | `cd6abc9df57a262e0bdfb731538c91e079bc72b18e901cb5f49b4d52b004d6f9` |
+| Selected native LED refresh | `3e48411b278ce578dbebdde2a4489063a6cce0361397118826ae39efdbc8f3e9` | `f9f11cf6bc742e5f2f09e5730d6431f4217823508433ba7a04af563092a1f3a1` |
+
+The selected native run sent `90 3c 64` and `80 3c 20` from the verified native Keybed cable. The Pico trace correlated the graph output with driver-observed four-byte ACKs at the MicroFreak USB OUT endpoint and preserved the explicit Off velocity. Native Panel gestures toggled the physical APC → MicroFreak branch Off and back to Active. The physical APC OUT endpoint acknowledged both LED packets, and an independent native Panel receiver captured `96 00 00` and `96 00 15`. The last native Panel release was submitted and its helper retired cleanly. Only the earlier release appears in the saved native ingress trace.
+
+The LED-refresh build retains immediate committed feedback and re-offers Pad `00` on native cable `1` at most once per second when note and changed-feedback work is clear and the native endpoint is ready. It skips missed intervals and leaves Graph state and physical APC traffic untouched. Stock Chrome 158 over the disposable authenticated WSS and strict SSH path received and painted Active without a gesture. From the LED WebSocket `101`, startup receipt was **608 ms** and observed paint **625 ms**. A fresh browser after the first closed bound all three roles on the same SRAM run. It received Active in **681 ms** and painted it in **701 ms**. The Pico trace showed no additional physical APC LED transfer during the quiet refresh windows.
+
+An in-page probe reached Disconnected for each role, then stopped when the expected DevTools close events were absent at its 3.5-second deadline. It made no reconnect attempt. The fresh browser result verifies a new binding after browser exit. In-page rebinding remains unverified.
+
+The fresh browser sent `90 3c 60` and `80 3c 00` through WSS Keybed to the Pico. The graph and MicroFreak OUT traces showed the exact packets and matching driver-observed four-byte ACKs. WSS Panel sent both press and release for each toggle. The browser painted actual Off and restored Active feedback from the Pico, and the physical APC OUT acknowledged both changes. The physical lower-left green lamp is a separate operator observation. An actual physical APC key press, its native export, audible response, MiniFuse/P-95, and the operator's laptop were outside this gate.
+
+After the browser checks, CDC BOOTSEL and the full 2 MiB readback verified the unchanged bridge. The original bridge and both instruments returned, the disposable TLS listener and forwards closed, and the production Pi router stayed active on its existing listeners.
+
+## Native Program Change bench
+
+Use a separate `no_flash` build of the selected Pico router after the existing browser note and LED gate. The opt-in `GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH` build option defaults to Off. The first profile accepts Program Change from the verified **native Keybed ingress**, cable `0`, on MIDI channel 4 only. Use this through an exclusive local bench sender to the verified RawMIDI input. Existing WSS, MIDI File, laptop bridge, Panel and serial profiles retain their current message sets. The physical APC input retains its current behavior.
+
+The native sender supplies exactly two MIDI bytes `C3 pp` with an explicit zero-based program `00–7f`. USB-MIDI 1.0 represents those bytes on cable `0` as the four-byte event packet `0C C3 pp 00`. The last byte is USB packet padding. Forward the same two MIDI bytes to the uniquely selected MicroFreak on its cable `0`, using its existing Active native-keybed route. Graph answers a private, read-only question about the logical output. Every sounding contribution and owed release to that output blocks admission, including debt retained from an older attachment. Assembly also requires an empty destination queue and an idle, verified USB OUT before using the existing single in-flight transfer. Busy or unavailable attempts are rejected immediately. Preserve notes, route revision and release accounting. Program Change owns no Note Off or replay state. Bank Select, SysEx and preset writes are outside this proof. [USB-MIDI 1.0 packet format](https://www.usb.org/sites/default/files/midi10.pdf)
+
+First verify in a native fixture that the opt-in path accepts the exact wire encoding and forwards one packet to the selected output. Exercise program values `00` and `7f`, default-Off behavior, invalid data and CIN, wrong channel, cable and source, absent or busy destination, and no change to note and release behavior. Keep the exact selected-board note and LED proof independent. On hardware, compare the explicit native bytes and matching driver-observed four-byte H/T pair, then observe the actual preset on MicroFreak. The instrument's reported Omni receive and channel-4 transmit are separate settings. Verify Program Change Receive is enabled for the bench. [Arturia Program Change reference](https://support.arturia.com/hc/en-us/articles/4405748052626-MicroFreak-General-Questions)
+
+Independent native fixtures passed for opt-in SRAM build `0dc31776`. They verified exact direct OUT admission, simulated completion, destination release debt, queue and flight rejection, and fresh admission without replay. The default-Off UF2 matched the verified LED-refresh UF2 byte for byte. No Program Change was sent to hardware.
+
+Before any hardware send, verify the prior bank and preset, confirm there are no unsaved edits, and identify a different preset and the prior preset's return program in that same bank. If any of these facts is missing, stop after native fixture validation and leave hardware Program Change pending. Observe the result on the instrument before sending the explicit return program. Verify the prior preset is restored. A USB ACK alone establishes delivery to the endpoint. This is a planned bench gate and hardware acceptance is pending.
 
 ## Dedicated Pico WSS service
 
 The optional service is separate from the Pi router, its LAN Origin grant, recorder and existing WSS service. In the nominated candidate use `https://192.168.0.223:19445` with a matching IP SAN. Require exact Host and same Origin, the selected private interface, normal TLS chain verification and an enrolled mutual-TLS leaf. Keep distinct Pico MIDI Tools and Pico CDC Maintenance leaf allowlists. The maintenance leaf gains Pico CDC only. Provide no alternate Origin, plain listener, remote flash action, or shell command endpoint. The ordinary Pi `/serial` remains loopback-only over the existing trusted operator path.
 
 Run `node connections/pico-host.js CONFIG CDC_HELPER MIDI_HELPER` with private operator-supplied files outside the checkout. The config selects `address`, `port`, `origin`, `interface`, `certificate`, `key`, `clientCA`, `midiClientFingerprints`, `maintenanceClientFingerprints` and `target`. The two fingerprint sets are disjoint lowercase SHA-256 leaf enrollments. `target` is the absolute HAL selector path. Absolute helper paths come from the approved launcher. Expose the Pico Home, APC, FM and MIDI File tools to the MIDI grant. Expose `/pico-cdc/` and WSS `/cdc` to the maintenance grant. Admit one CDC session for the selected endpoint. The opaque transcript can carry the firmware's CDC commands including cooperative BOOTSEL for that enrolled maintenance operator. A planned update retires the relay session before the Pi's maintenance procedure takes the tty.
+
+The maintenance-only profile explicitly sets `midiClientFingerprints: []` and retains a nonempty maintenance allowlist. The same TLS, Host, Origin and exact-device checks apply. Only the maintenance page and CDC socket are available to enrolled clients in this profile. The isolated fixture passed at `7ea0716`. Persistent Pi deployment and operator enrollment remain separate. The Pi router's existing plain LAN and loopback-only serial boundaries stay in place.
 
 The selector fields are `mode`, `usbPath`, `vid`, `pid`, `bcdDevice`, `product`, `serial`, `cdcInterface` and `midiInterface`. Match topology, exact four-digit lowercase hex identifiers, product and native interface indices. `usb-serial` mode requires an exact real serial. Explicit `ram-bench` mode permits `serial: null` only for the reviewed image on the nominated physical path. HAL correlates actual tty and ALSA client and cable handles to that selected device and direction. Display names, tty number and ALSA address alone do not establish identity. Reject missing or ambiguous matches. The maintenance view distinguishes the configured target from a connected target. An accepted upgrade means HAL has opened the verified endpoint.
 

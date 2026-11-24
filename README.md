@@ -2,7 +2,7 @@
 
 **A portable MIDI workstation for routing and transforming existing instruments, with sequencing planned for later. The production kernel and Pico firmware remain MIDI-only; optional instruments run as independent peers.**
 
-Gridpico connects existing instruments through interchangeable controllers and platform backends. Linux x86_64 and Raspberry Pi arm64 paths have verified evidence. Windows, broader Linux ARM coverage and the RP2040 USB/CDC hardware path remain open.
+Gridpico connects existing instruments through interchangeable controllers and platform backends. Linux x86_64 and Raspberry Pi arm64 paths have verified evidence. Windows and broader Linux ARM coverage remain open. The RP2040 bench has RAM-only CDC/BOOTSEL and limited native MIDI endpoint evidence. Full routing, mounted-drive access and permanent firmware acceptance remain open.
 
 The repository includes the production MIDI router, Web APC and Diagnostics tools, CLI, offline browser assets and separate instrument peers. See the [roadmap](ROADMAP.md) for verified scope and remaining gates.
 
@@ -76,7 +76,7 @@ The launcher opens [http://127.0.0.1:8767/](http://127.0.0.1:8767/) when a deskt
 
 Open Web APC to play the keybed. Open Diagnostics separately for the MIDI Log and Monitor. Each managed route becomes active when the Web APC keybed and that route’s receiving port are connected. Enable Monitor audio with a user gesture. The launcher also links to the separate FM Instrument. See the [connection startup guide](connections/README.md#local-router).
 
-To stage the offline home and tools on the build host, configure with `cmake -S . -B build/web-ui` and run `cmake --build build/web-ui --target gridpico_offline_assets`. Open `build/web-ui/GRIDPICO/HOME.HTM` directly. Its relative links open `INDEX.HTM`, `DIAG.HTM`, and `FM.HTM`. The manifest checksums all four HTML files. The three tool pages inline the shared MIDI provider. Diagnostics can use Web Serial when available. A mounted Pico drive and real CDC are still pending.
+To stage the offline home and tools on the build host, configure with `cmake -S . -B build/web-ui` and run `cmake --build build/web-ui --target gridpico_offline_assets`. Open `build/web-ui/GRIDPICO/HOME.HTM` directly. Its relative links open `INDEX.HTM`, `DIAG.HTM`, and `FM.HTM`. The manifest checksums all four HTML files. The three tool pages inline the shared MIDI provider. Diagnostics can use Web Serial when available. Mounted `GRIDPICO` access and browser-local Web Serial remain open. Original-bridge remote CDC and Gridpico RAM-only CDC evidence are separate paths.
 
 ## Get the source
 
@@ -89,6 +89,6 @@ Use a separate checkout and the same Docker daemon as rpico-bridge. The containe
 
 ## Scope and provenance
 
-APC is the preferred interface, not the identity of the kernel. Its Web APC controller exercises the production APC frontend; CLI and future piano controls use the same musical commands. The RP2040 target design includes a read-only USB drive for static HTML/documentation, but Gridpico's mounted-drive, USB and CDC paths remain pending hardware validation. Desktop deployments do not emulate a USB disk or CDC when they do not need them.
+APC is the preferred interface, not the identity of the kernel. Its Web APC controller exercises the production APC frontend; CLI and future piano controls use the same musical commands. The RP2040 target design includes a read-only USB drive for static HTML/documentation. Gridpico’s full instrument-routing and mounted-drive acceptance remain pending. Desktop deployments do not emulate a USB disk or CDC when they do not need them.
 
 Earlier projects are design references and experiments only. No product code is imported. The development-tooling attribution is in [Sources](docs/SOURCES.md) and the corresponding [notice](third_party/notices/rpico-bridge-MIT.txt). The repository uses the [MIT license](LICENSE) selected when the human created it.
