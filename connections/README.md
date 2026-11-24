@@ -443,6 +443,13 @@ explicitly. Enroll at least one maintenance leaf in
 and its CDC socket. Musical tools and ports require a separate MIDI
 enrollment.
 
+To give one client both roles, enroll its leaf fingerprint in the optional
+`midiCdcClientFingerprints` list. Keep all three lists disjoint. A combined
+client can open **Pico CDC maintenance** from Pico Home and use the existing
+MIDI ports on the same authenticated origin. CDC still admits one attachment
+across all clients. You can leave both split lists empty when the combined
+list contains at least one enrolled leaf.
+
 The MIDI helper owns release cleanup for bytes it accepted on its
 verified cable. If that cleanup cannot be confirmed, the service blocks
 that send slot pending native recovery. Verify native recovery before

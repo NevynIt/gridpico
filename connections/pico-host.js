@@ -82,15 +82,25 @@ function interfaceActive() {
 
 function serverConfig(filename) {
   const config = object(externalFile(filename, "Pico service config").bytes, "Pico service config");
-  if (Object.keys(config).length !== 10) throw new Error("Invalid Pico service config fields");
+  const hasCombined = Object.hasOwn(config, "midiCdcClientFingerprints");
+  if (Object.keys(config).length !== 10 + Number(hasCombined)) throw new Error("Invalid Pico service config fields");
   if (config.address !== address || config.port !== port || config.interface !== interfaceName || config.origin !== origin) {
     throw new Error(`Expected ${origin} on ${interfaceName}`);
   }
   if (!interfaceActive()) throw new Error("Configured Pico address is unavailable on wlan0");
   const midi = enrolled(config.midiClientFingerprints, { allowEmpty: true });
-  const maintenance = enrolled(config.maintenanceClientFingerprints);
-  if ([...midi].some(fingerprint => maintenance.has(fingerprint))) {
-    throw new Error("Pico MIDI and maintenance enrollments must be disjoint");
+  const combined = enrolled(hasCombined ? config.midiCdcClientFingerprints : [], { allowEmpty: true });
+  const maintenance = enrolled(config.maintenanceClientFingerprints, { allowEmpty: combined.size > 0 });
+  const grants = new Map();
+  for (const [fingerprints, grant] of [
+    [midi, { midi: true, cdc: false }],
+    [maintenance, { midi: false, cdc: true }],
+    [combined, { midi: true, cdc: true }],
+  ]) {
+    for (const fingerprint of fingerprints) {
+      if (grants.has(fingerprint)) throw new Error("Pico client leaf enrollments must be disjoint");
+      grants.set(fingerprint, grant);
+    }
   }
   const selector = externalFile(config.target, "Pico selector");
   const targetLabel = physicalTarget(selector.bytes);
@@ -104,7 +114,7 @@ function serverConfig(filename) {
   } catch {
     throw new Error("Pico TLS requires a matching key and certificate with the configured IP SAN");
   }
-  return { selector, targetLabel, tls, midi, maintenance };
+  return { selector, targetLabel, tls, grants };
 }
 
 function exact(request, name, expected) {
@@ -119,10 +129,12 @@ function exact(request, name, expected) {
 function startup(configFile, cdcHelper, midiHelper) {
   const cdc = helper(cdcHelper);
   const midi = helper(midiHelper);
-  const { selector, targetLabel, tls, midi: midiLeaves, maintenance } = serverConfig(configFile);
+  const { selector, targetLabel, tls, grants } = serverConfig(configFile);
   const bundle = loadWebUiBundle();
   const publicPaths = new Set(["/apc/", "/fm/", "/midi-file/", "/local-transport.js"]);
   const home = readFileSync(path.join(__dirname, "pico-home.html"));
+  const combinedHome = home.toString("utf8").replace("</ul>",
+    '<li><a href="/pico-cdc/">Pico CDC maintenance</a></li>\n      </ul>');
   const html = "text/html; charset=utf-8";
   const cdcSource = readFileSync(path.join(__dirname, "pico-cdc.html"), "utf8");
   const cdcPage = cdcSource.replace("PICO_TARGET_LABEL", () => targetLabel.replace(/[&<>]/g, char =>
@@ -145,22 +157,23 @@ function startup(configFile, cdcHelper, midiHelper) {
     const { socket } = request;
     if (!socket.authorized || !exact(request, "host", host) || !interfaceActive()) return;
     const fingerprint = socket.getPeerCertificate().fingerprint256?.replaceAll(":", "").toLowerCase();
-    if (midiLeaves.has(fingerprint)) return "midi";
-    if (maintenance.has(fingerprint)) return "maintenance";
+    return grants.get(fingerprint);
   }
 
   tls.on("request", (request, response) => {
-    const level = identity(request);
-    if (!level || (request.headers.origin !== undefined && !exact(request, "origin", origin))) {
+    const grant = identity(request);
+    if (!grant || (request.headers.origin !== undefined && !exact(request, "origin", origin))) {
       response.writeHead(403).end();
       return;
     }
     let asset;
-    if (level === "maintenance") {
-      if (request.url === "/pico-cdc/") asset = [html, cdcPage];
-    } else if (request.url === "/") asset = [html, home];
-    else if (request.url === "/ui-capabilities.json") asset = ["application/json; charset=utf-8", capability];
-    else if (publicPaths.has(request.url)) asset = bundle.assets.get(request.url);
+    const maintenancePage = request.url === "/pico-cdc/";
+    if (grant.cdc && maintenancePage) asset = [html, cdcPage];
+    else if (grant.midi) {
+      if (request.url === "/") asset = [html, grant.cdc ? combinedHome : home];
+      else if (request.url === "/ui-capabilities.json") asset = ["application/json; charset=utf-8", capability];
+      else if (publicPaths.has(request.url)) asset = bundle.assets.get(request.url);
+    }
     if (!asset) {
       response.writeHead(404).end();
       return;
@@ -180,7 +193,7 @@ function startup(configFile, cdcHelper, midiHelper) {
       "Content-Type": type, "Content-Length": Buffer.byteLength(bytes), "Cache-Control": "no-store",
       "Cross-Origin-Resource-Policy": "same-origin", "X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY",
     };
-    if (level === "maintenance") {
+    if (maintenancePage) {
       headers["Content-Security-Policy"] = `default-src 'none'; script-src 'sha256-${cdcScriptHash}'; style-src 'unsafe-inline'; connect-src wss://${host}; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`;
     }
     response.writeHead(200, headers).end(bytes);
@@ -192,12 +205,12 @@ function startup(configFile, cdcHelper, midiHelper) {
   }
 
   tls.on("upgrade", (request, raw, head) => {
-    const level = identity(request);
-    if (!level || !exact(request, "origin", origin)) return reject(raw, "403 Forbidden");
+    const grant = identity(request);
+    if (!grant || !exact(request, "origin", origin)) return reject(raw, "403 Forbidden");
     const match = /^\/midi\/([1235])$/.exec(request.url);
     const slot = match && Number(match[1]);
-    const serial = level === "maintenance" && request.url === "/cdc";
-    if (!serial && !(level === "midi" && slot)) return reject(raw, "404 Not Found");
+    const serial = grant.cdc && request.url === "/cdc";
+    if (!serial && !(grant.midi && slot)) return reject(raw, "404 Not Found");
     const wsKey = request.headers["sec-websocket-key"];
     if (request.method !== "GET" || request.headers.upgrade?.toLowerCase() !== "websocket" ||
         !exact(request, "sec-websocket-version", "13") ||
