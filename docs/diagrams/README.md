@@ -102,7 +102,7 @@ flowchart TB
 
 One numbered card is one agent; grouped frames contain several agents. A Lead badge is an additional duty, not an extra seat. The human starts Session Manager first, which bootstraps Strategist, Architect and Project Manager. This original diagram shows 19 proposed module and support seats, created progressively after approval and Project Manager requests. The separately approved Research seat is documented in the coordination agreement.
 
-Session Manager keeps the list and operates sessions; it does not enforce approval or resource policies. The human approves additional seats through Strategist. Project Manager requests approved delivery seats, while Strategist requests the separately approved Research seat. The three planning agents collaborate, while Strategist owns the brief, Architect the architecture and Project Manager the current roadmap. See the [coordination agreement](../../AGENT_TEAM_COORDINATION.md) for authority and workflow.
+Session Manager keeps the list and operates sessions; it does not enforce approval or resource policies. The human approves additional seats through Strategist. Project Manager requests approved delivery seats, while Strategist requests the separately approved Research seat. Product Owner is a separately approved seat. Strategist owns the brief, Architect the architecture and Product Owner the current roadmap. Project Manager retains delivery assignments, acceptance evidence, integration, allowance and publication. See the [coordination agreement](../../AGENT_TEAM_COORDINATION.md) for authority and workflow.
 
 Only Strategist initiates human-facing communication; the human may still ask any agent a brief direct question. The coordination agreement governs operational details. Invisible links in the source only arrange the roster vertically; they do not add reporting relationships.
 
@@ -113,7 +113,7 @@ flowchart TB
     sm["04 · SESSION MANAGER<br/>Approved list + exact Codex session IDs<br/>Create / start / pause / resume<br/>No enforcement or scheduling"]
     st["01 · STRATEGIST<br/>Human gateway<br/>Owns PRODUCT_BRIEF.md"]
     ar["02 · ARCHITECT<br/>Owns ARCHITECTURE.md + api/<br/>Public contracts, not implementations"]
-    pm["03 · PROJECT MANAGER<br/>Owns ROADMAP.md — created after discussion<br/>Assignments, acceptance, commits"]
+    pm["03 · PROJECT MANAGER<br/>Assignments, delivery acceptance<br/>Integration, allowance and publication"]
   end
   human -->|"Starts first"| sm
   sm -.->|"Bootstrap: creates"| st

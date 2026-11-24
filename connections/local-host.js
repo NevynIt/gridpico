@@ -72,8 +72,12 @@ const startupAssets = new Map();
 if (webUi) {
   for (const url of ["/apc/", "/diagnostics/"]) {
     const [type, html] = assets.get(url);
-    startupAssets.set(url, [type, html.replace(script, '<script defer src="/local-transport.js" data-gridpico-profile="web-ui"></script>')]);
+    const ledTest = url === "/diagnostics/" ? '<script defer src="/local-led-test.js"></script>' : "";
+    const marked = html.replace(script, '<script defer src="/local-transport.js" data-gridpico-profile="web-ui"></script>');
+    startupAssets.set(url, [type, marked.replace("</head>", ledTest + "</head>")]);
   }
+  startupAssets.set("/local-led-test.js", ["text/javascript; charset=utf-8",
+    readFileSync(path.join(__dirname, "local-led-test.js"))]);
 }
 const fmPage = "../web/fm/index.html";
 if (existsSync(path.join(__dirname, fmPage))) {

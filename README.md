@@ -12,7 +12,7 @@ The repository includes the production MIDI router, Web APC and Diagnostics tool
 | --- | --- | --- |
 | [Product brief](PRODUCT_BRIEF.md) | Strategist | Product intent, scope and business case |
 | [Architecture](ARCHITECTURE.md) | Architect | Modules, connections, portability and future sequencer boundary |
-| [Roadmap](ROADMAP.md) | Project Manager | Current delivery, evidence and pending work |
+| [Roadmap](ROADMAP.md) | Product Owner | Product horizon, approved scope and feature status, with delivery evidence |
 | [Agent coordination](AGENT_TEAM_COORDINATION.md) and [agent policy](AGENTS.md) | Human authority; Strategist records approved changes | Team boundaries, ownership and operating policy |
 | [Container and first-run setup](docs/SETUP.md) | Documentation | Development environment and startup guidance |
 | [At a glance](docs/AT_A_GLANCE.md) and [other documentation](docs/) | Documentation | User-facing overview, setup, validation and hardware references |
@@ -25,7 +25,8 @@ The repository includes the production MIDI router, Web APC and Diagnostics tool
 | `README.md`, `docs/**` | Documentation |
 | `PRODUCT_BRIEF.md`, approved policy in `AGENTS.md` and `AGENT_TEAM_COORDINATION.md` | Strategist |
 | `ARCHITECTURE.md`, `api/**` | Architect |
-| `ROADMAP.md`, `.team/MODEL_PLAN.md` | Project Manager |
+| `ROADMAP.md` | Product Owner |
+| `.team/MODEL_PLAN.md`, delivery assignments, acceptance/integration, allowance and publication | Project Manager |
 | `.team/APPROVED_AGENTS.md`, `.team/roles/**` | Session Manager, reflecting approved decisions |
 | `connections/README.md` | Computer Connections |
 | `web/apc/README.md` | Web APC |
