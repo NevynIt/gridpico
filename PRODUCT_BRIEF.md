@@ -59,6 +59,6 @@ Synthesis, sampling, and audio processing in the kernel or firmware are outside 
 
 ## Planning and ownership
 
-Strategist maintains this brief in discussion with the human. Architect maintains `ARCHITECTURE.md`. Project Manager maintains `ROADMAP.md` in consultation with the other two. UI Designer maintains `USE_CASES.md` alongside this brief and reviews user workflows and visual choices before UI implementation. Each file has one editor.
+Strategist maintains this brief in discussion with the human. Architect maintains `ARCHITECTURE.md`. Product Owner maintains `ROADMAP.md` and tracks approved features and milestones. Project Manager coordinates delivery and confirms implementation and testing evidence. UI Designer maintains `USE_CASES.md` alongside this brief and reviews user workflows and visual choices before UI implementation. Each file has one editor.
 
 The initial team is Session Manager, Strategist, Architect and Project Manager. No implementation agents are created merely because a candidate roster or architecture exists. Expansion follows human approval and Project Manager's lifecycle requests.

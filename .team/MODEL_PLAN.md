@@ -10,6 +10,7 @@ The bootstrap sessions displayed the model and effort settings listed below. Pro
 | Strategist | `gpt-6.2-sol` | high | Bootstrap |
 | Architect | `gpt-6.2-sol` | high | Bootstrap |
 | Project Manager | `gpt-6.2-sol` | medium | Bootstrap |
+| Product Owner | `gpt-6.2-sol` | low | Approved, strategic roadmap stewardship |
 | Kernel: Session/control | `gpt-6.2-sol` | high | Later |
 | Kernel: MIDI graph | `gpt-6.2-sol` | high | Later |
 | Kernel: Processors | `gpt-6.2-sol` | medium | Later |

@@ -1,6 +1,6 @@
 # gridpico roadmap
 
-**Owner** — Project Manager
+**Owner** — Product Owner
 
 **Status** — The production Web UI, Diagnostics playback, MIDI Log and CLI, and the standalone FM instrument are verified in Linux Chromium. Native Linux RTP-MIDI and WSS have two-host receipt and release evidence. RTP repeatability and timing, Windows/WSL, desktop WSS mutual TLS, and the physical Pico, mounted drive and CDC checks remain open. Pi-local routed FluidSynth WAVs are verified.
 

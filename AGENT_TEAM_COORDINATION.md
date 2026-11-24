@@ -26,12 +26,12 @@ The initial team contains exactly four agents. The human starts Session Manager;
 | --- | --- | --- |
 | **Strategist** | Human conversation, product goals, approved decisions; **`PRODUCT_BRIEF.md`** (including the business case) | Treat discussion as implementation authorization; assign implementation tasks |
 | **Architect** | **`ARCHITECTURE.md`**, public contracts under `api/`, dependency rules and technical decisions within approved scope | Implement modules; change approved boundaries without human approval |
-| **Project Manager** | **`ROADMAP.md`**, task sequencing, assignments, weekly Codex allowance planning, acceptance/integration, regular commits; decides which sessions are needed | Redefine product scope or contracts; implement modules |
+| **Project Manager** | Task sequencing, assignments, weekly Codex allowance planning, delivery evidence, acceptance, integration and regular commits. Decides which approved sessions are needed and sends verified milestones to Product Owner. | Redefine product scope or contracts; implement modules |
 | **Session Manager** | Approved-agent list, original Codex session IDs, lifecycle status and requested session operations | Enforce policy or budgets, supervise agents, approve seats, assign work, choose priorities or monitor for work |
 
-The three planning documents are **shared reference documents with single owners**, not three documents each maintained in parallel by every agent. All three planning agents discuss and propose changes; the owner updates the relevant file. Cross-document conflicts are resolved between owners and, when necessary, through Strategist to the human.
+The human approved a persistent **Product Owner** seat after bootstrap. Product Owner is the sole editor of `ROADMAP.md` and keeps the product horizon, approved feature scope and feature status current. Product Owner consults Strategist, Architect, UI Designer and Project Manager, links to design and delivery evidence, and brings open product trade-offs to Strategist. Project Manager confirms delivery evidence. The human approves changes in direction through Strategist.
 
-`ROADMAP.md` records the current delivery plan and verification evidence. Project Manager maintains it after discussing the brief and architecture with Strategist and Architect. Do not import GridZero's old roadmap.
+The planning documents are shared references with single owners. Discuss changes directly with the relevant owner and resolve product-direction conflicts through Strategist. Keep existing roadmap links and evidence accessible. Do not import GridZero's old roadmap.
 
 ## 3. Startup and expansion
 
@@ -84,7 +84,9 @@ No additional coordinator seat is required by this agreement. A genuinely necess
 | --- | --- |
 | `PRODUCT_BRIEF.md` | Strategist |
 | `ARCHITECTURE.md`, `api/` | Architect |
-| `ROADMAP.md`, explicitly agreed task/current-state notes | Project Manager |
+| `ROADMAP.md` and product feature status | Product Owner |
+| Explicitly agreed delivery task notes and acceptance evidence | Project Manager |
+| `USE_CASES.md`, associated use-case documents and visual references | UI Designer |
 | Team role definitions / approved roster / local session mapping | Session Manager, reflecting approved decisions and requested configuration |
 | Each implementation directory | Its one approved module owner |
 | `app/`, build/glue sources, `.devcontainer/`, packaging tools | Application Assembly once that seat is created |
@@ -107,7 +109,8 @@ Every named agent may communicate directly with another using supported Herdr fa
 | --- | --- |
 | Missing, ambiguous or unsuitable contract | Architect; consult the area lead when helpful |
 | Cross-area dependency or technical conflict | Architect; keep Project Manager informed of delivery impact |
-| Assignment, priority, capacity or scheduling question | Project Manager |
+| Assignment, delivery priority, capacity or scheduling question | Project Manager |
+| Roadmap horizon or approved feature status | Product Owner, with verified delivery evidence from Project Manager |
 | New product scope, module-boundary change or new seat | Strategist → Human |
 | Implementation defect found by Testing | Responsible module owner; inform Project Manager |
 | Build/integration failure found by Builder | Responsible owner; inform Project Manager; Architect for cross-module cause |
@@ -123,6 +126,8 @@ A human may ask any agent a brief direct question. Answer that question without 
 ## 8. Work, acceptance and Git
 
 The human approves direction through Strategist. Architect defines/clarifies minimal contracts within that direction. Project Manager assigns a bounded task with owner, write scope and acceptance criteria. The owner implements and reports evidence. Testing independently checks behavior/contracts; Builder executes builds/tests. Defects return to the responsible owner under Project Manager's coordination.
+
+**UI design before implementation.** The approved persistent UI Designer seat owns the use cases as a product reference alongside the brief. The designer maps the user journey and usable defaults, explores visuals with ImageGen for new or substantially reworked screens, and reviews proposed UI choices before implementation. Architect checks feasibility and contracts with the designer. Project Manager links the reviewed workflow and visual reference in assignments. Module owners aim for a good, usable result with room to adapt visual details. Testing independently checks that workflows, visual hierarchy and states are clear. Ask UI Designer first about uncertain choices and escalate unresolved product decisions to the human through Strategist.
 
 Project Manager accepts completed work and coordinates integration. All agents can inspect `git status`, `diff`, `log` and `show`. **Project Manager is the normal committer/pusher by convention**, not by an invented structural ban on everyone else.
 
