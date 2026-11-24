@@ -301,8 +301,10 @@ Open `build/web-ui/GRIDPICO/HOME.HTM`. Its relative links open `INDEX.HTM`
 `VERSION.TXT` lists their SHA-256 checksums and the home checksum. The tools
 include the same shared MIDI adapter and use Web MIDI where the browser
 grants access. Diagnostics opens Web Serial separately for its transcript.
-Staged direct files were exercised offline. Physical Pico CDC and mounted
-drive acceptance remain open.
+Staged direct files were exercised offline. Browser-local USB CDC and
+mounted-drive acceptance remain open. The original Pico bridge passed
+remote WSS CDC through strict SSH forwarding.
+[Pico CDC evidence](../api/pico-target.md#dedicated-pico-wss-service)
 
 ### Timed RGB pads
 
@@ -434,6 +436,12 @@ the selected helper verifies and opens CDC. It carries opaque serial
 bytes and has one attachment. Enrolled MIDI clients use the separate Pico
 Home and slots 1, 2, 3 and 5. Both roles validate the server chain,
 client enrollment, Host and WebSocket Origin.
+
+For a maintenance-only service, set `"midiClientFingerprints": []`
+explicitly. Enroll at least one maintenance leaf in
+`maintenanceClientFingerprints`. Those clients can open the Pico console
+and its CDC socket. Musical tools and ports require a separate MIDI
+enrollment.
 
 The MIDI helper owns release cleanup for bytes it accepted on its
 verified cable. If that cleanup cannot be confirmed, the service blocks

@@ -42,8 +42,8 @@ function object(bytes, label) {
   return value;
 }
 
-function enrolled(list) {
-  if (!Array.isArray(list) || !list.length || list.length > 64 ||
+function enrolled(list, { allowEmpty = false } = {}) {
+  if (!Array.isArray(list) || (!allowEmpty && !list.length) || list.length > 64 ||
       list.some(item => typeof item !== "string" || !/^[a-f0-9]{64}$/.test(item))) {
     throw new Error("Expected lowercase SHA-256 client leaf enrollments");
   }
@@ -87,7 +87,7 @@ function serverConfig(filename) {
     throw new Error(`Expected ${origin} on ${interfaceName}`);
   }
   if (!interfaceActive()) throw new Error("Configured Pico address is unavailable on wlan0");
-  const midi = enrolled(config.midiClientFingerprints);
+  const midi = enrolled(config.midiClientFingerprints, { allowEmpty: true });
   const maintenance = enrolled(config.maintenanceClientFingerprints);
   if ([...midi].some(fingerprint => maintenance.has(fingerprint))) {
     throw new Error("Pico MIDI and maintenance enrollments must be disjoint");
