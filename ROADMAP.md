@@ -162,6 +162,12 @@ Default WSS tools use exact same-origin admission. The optional synth receive gr
 
 **Deferred follow-on.** After this delivery is finalized, bring back a bounded proposal for a Circuit Tracks-style web frontend over the same Gridpico sequencer as the eventual APC adapter. The first workflow would use one MIDI track and one 16-step pattern, with sound from existing web instruments or an external MIDI destination.
 
+## Persistent Pi router and recording
+
+The Pi has its own enabled `gridpico-router.service`, independent of the laptop's router on port 8767. Its pinned release `048accf` serves APC and Recordings at `http://192.168.0.223:18768/` on the explicitly trusted private subnet. Published LAN MIDI is Keybed TX 1, Panel TX 2 and LED RX 3. The Pi serial CLI remains on loopback. An authenticated SSH forward can expose the Pi's separate `127.0.0.1:18767` to the laptop. Keep ordinary authenticated WSS available as an independent profile; it is off on this Pi deployment.
+
+Start a take in **Recordings**, wait for **Recording**, and play the APC on the same Pi origin in another tab. The starter managed route 1 → 12 reaches only the recorder's local binding. Stop finalizes the take, and the latest validated stereo PCM WAV is available by download. Capture is limited to 60 seconds and the completed file to 12 MiB. Actual direct Chromium confirmed routed APC MIDI and downloaded a non-silent stock FluidSynth WAV whose SHA-256 matched the Pi file. The enabled user service and SSH-independent operation were verified. An actual reboot, the operator laptop and physical Pico/CDC remain open. [Pi operation and updates](platform/linux/PI_ROUTER.md) · [Recording contract](api/pi-recorder.md)
+
 ## Demo sequence for 23 November at 09:00 CET (08:00 UTC)
 
 Historical delivery plan. The current entry point and startup evidence are in [controller and Diagnostics startup](#approved-follow-up--controller-and-diagnostics-startup).
