@@ -110,6 +110,11 @@ void gridpico_pico_router_finish_mode(gridpico_pico_router *router,
 #endif
 
 gridpico_result gridpico_pico_router_init(gridpico_pico_router *router);
+#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+/* Startup only. Discard the candidate on a rejected snapshot. */
+gridpico_result gridpico_pico_router_init_snapshot(gridpico_pico_router *router,
+                                                  const gridpico_apc_session_snapshot *snapshot);
+#endif
 gridpico_route_snapshot gridpico_pico_router_pad_status(gridpico_pico_router *router);
 void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_peer peer, bool attached);
 gridpico_result gridpico_pico_router_receive(

@@ -365,7 +365,12 @@ static void reset_panel(gridpico_pico_router *router, gridpico_pico_peer peer)
 }
 #endif
 
+#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+gridpico_result gridpico_pico_router_init_snapshot(gridpico_pico_router *router,
+                                                  const gridpico_apc_session_snapshot *snapshot)
+#else
 gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
+#endif
 {
     static const gridpico_local_profile profile = {
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
@@ -401,6 +406,9 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
 #endif
     reset_panel(router, GRIDPICO_PICO_APC);
     reset_panel(router, GRIDPICO_PICO_WEB);
+#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+    if (snapshot != NULL) return gridpico_patch_session_restore_apc_snapshot(&router->session, snapshot);
+#endif
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {
         const gridpico_local_route_request request = {.route = routes[i], .enabled = true};
         const gridpico_result enabled = gridpico_patch_session_set_local_route(&router->session, &request);
@@ -408,6 +416,13 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
     }
     return GRIDPICO_OK;
 }
+
+#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
+{
+    return gridpico_pico_router_init_snapshot(router, NULL);
+}
+#endif
 
 static void update_port(gridpico_pico_router *router, gridpico_port_id port, gridpico_pico_peer peer)
 {
