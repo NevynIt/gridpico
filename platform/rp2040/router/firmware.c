@@ -96,6 +96,7 @@ enum { CDC_OUTPUT_BYTES_PER_PASS = 64 };
 static uint32_t cdc_output_budget;
 static gridpico_cdc_cli cdc_cli;
 static gridpico_cli_frontend cli;
+static gridpico_local_routing_snapshot routing_scratch;
 #endif
 static uint64_t native_led_refresh_at;
 static host_interface interfaces[CFG_TUH_MIDI];
@@ -319,6 +320,9 @@ static void bind_matrix_cli(void)
     cli.read_snapshot = gridpico_patch_session_read_snapshot;
     /* CLI reads and panel refreshes share the serialized foreground. */
     gridpico_cli_bind_apc_patch(&cli, gridpico_patch_session_read_apc_patch, &router.panel_scratch);
+    gridpico_cli_bind_routing(&cli, &router, gridpico_pico_router_read_routing,
+                             gridpico_pico_router_read_managed_route, gridpico_pico_router_set_managed_route,
+                             &routing_scratch);
     gridpico_cli_bind_platform(&cli, capabilities, start_cli_platform, NULL);
 }
 

@@ -21,6 +21,10 @@ enum {
 #endif
 };
 
+#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+enum { AUDITION_DEVICE = 4 };
+#endif
+
 static const gridpico_local_route routes[] = {
     {APC_KEYS, SYNTH_NOTES, GRIDPICO_LOCAL_MANAGED},
     {APC_KEYS, WEB_EXPORT, GRIDPICO_LOCAL_MANAGED},
@@ -44,7 +48,7 @@ static const gridpico_local_registry registry = {
             {2, "Computer", GRIDPICO_PATCH_DISCONNECTED},
             {3, "MicroFreak", GRIDPICO_PATCH_DISCONNECTED},
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
-            {4, "Audition", GRIDPICO_PATCH_DISCONNECTED},
+            {AUDITION_DEVICE, "Audition", GRIDPICO_PATCH_DISCONNECTED},
 #endif
         },
         .ports = {
@@ -365,6 +369,84 @@ static void reset_panel(gridpico_pico_router *router, gridpico_pico_peer peer)
 }
 #endif
 
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+static gridpico_result read_routing_availability(
+    void *context, const gridpico_local_registry *current,
+    gridpico_local_port_availability out[GRIDPICO_PATCH_MAX_PORTS])
+{
+    (void)context;
+    /* The Graph's directional states come from verified USB attachment updates.
+     * Pico has no separate claimable socket pool.
+     */
+    for (size_t i = 0; i < current->inventory.port_count; ++i) {
+        out[i] = current->inventory.ports[i].state == GRIDPICO_PATCH_CONNECTED
+            ? GRIDPICO_LOCAL_IN_USE : GRIDPICO_LOCAL_UNAVAILABLE;
+    }
+    return GRIDPICO_OK;
+}
+
+static bool public_managed_route(const gridpico_local_route *route)
+{
+    return route->mode == GRIDPICO_LOCAL_MANAGED &&
+           route->source != AUDITION_KEYS && route->destination != AUDITION_KEYS;
+}
+
+gridpico_result gridpico_pico_router_read_routing(void *context, gridpico_local_routing_snapshot *out)
+{
+    gridpico_pico_router *router = context;
+    if (router == NULL) return GRIDPICO_INVALID;
+    const gridpico_result result = gridpico_patch_session_read_local_routing(&router->session, out);
+    if (result != GRIDPICO_OK) return result;
+
+    gridpico_local_graph_state *graph = &out->graph;
+    gridpico_patch_inventory *inventory = &graph->registry.inventory;
+    size_t kept = 0;
+    for (size_t i = 0; i < inventory->device_count; ++i) {
+        if (inventory->devices[i].id == AUDITION_DEVICE) continue;
+        inventory->devices[kept] = inventory->devices[i];
+        out->colors[kept] = out->colors[i];
+        ++kept;
+    }
+    inventory->device_count = kept;
+
+    kept = 0;
+    for (size_t i = 0; i < inventory->port_count; ++i) {
+        if (inventory->ports[i].id == AUDITION_KEYS ||
+            graph->registry.port_capabilities[i] != GRIDPICO_LOCAL_PORT_MANAGED) continue;
+        inventory->ports[kept] = inventory->ports[i];
+        graph->registry.port_capabilities[kept] = graph->registry.port_capabilities[i];
+        out->availability[kept] = out->availability[i];
+        ++kept;
+    }
+    inventory->port_count = kept;
+
+    kept = 0;
+    for (size_t i = 0; i < graph->route_count; ++i) {
+        if (!public_managed_route(&graph->routes[i].route)) continue;
+        graph->routes[kept] = graph->routes[i];
+        ++kept;
+    }
+    graph->route_count = kept;
+    return GRIDPICO_OK;
+}
+
+gridpico_result gridpico_pico_router_read_managed_route(
+    void *context, const gridpico_local_route *route, gridpico_local_route_status *out)
+{
+    gridpico_pico_router *router = context;
+    if (router == NULL || route == NULL || !public_managed_route(route)) return GRIDPICO_INVALID;
+    return gridpico_patch_session_read_local_route(&router->session, route, out);
+}
+
+gridpico_result gridpico_pico_router_set_managed_route(
+    void *context, const gridpico_local_route_request *request)
+{
+    gridpico_pico_router *router = context;
+    if (router == NULL || request == NULL || !public_managed_route(&request->route)) return GRIDPICO_INVALID;
+    return gridpico_patch_session_set_local_route(&router->session, request);
+}
+#endif
+
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
 gridpico_result gridpico_pico_router_init_snapshot(gridpico_pico_router *router,
                                                   const gridpico_apc_session_snapshot *snapshot)
@@ -399,7 +481,13 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
     const gridpico_apc_patch_layout layout = {.rows = {APC_KEYS, WEB_KEYS},
                                             .columns = {SYNTH_NOTES, WEB_EXPORT}};
     router->audition.source_generation = 1;
-    gridpico_patch_session_bind_local_routing(&router->session, gridpico_patch_graph_read_local_state, NULL, NULL);
+    gridpico_patch_session_bind_local_routing(&router->session, gridpico_patch_graph_read_local_state,
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+                                             read_routing_availability,
+#else
+                                             NULL,
+#endif
+                                             NULL);
     const gridpico_result layout_result = gridpico_patch_session_bind_apc_patch(&router->session, &layout,
                                                                               AUDITION_KEYS);
     if (layout_result != GRIDPICO_OK) return layout_result;

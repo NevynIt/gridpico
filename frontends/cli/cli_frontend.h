@@ -41,6 +41,13 @@ typedef struct {
     gridpico_local_read_route_fn read_local_route;
     /* Optional full Routing projection, supplied by configured profiles. */
     gridpico_local_read_routing_fn read_local_routing;
+    /* Target-specific revisioned Routing and guarded route callbacks. These
+     * use routing_context, not the shared terminal/Session provider context. */
+    void *routing_context;
+    gridpico_local_read_routing_fn routing_read;
+    gridpico_local_read_route_fn routing_read_route;
+    gridpico_local_set_route_fn routing_set_route;
+    gridpico_local_routing_snapshot *routing_scratch;
     unsigned platform_capabilities;
     gridpico_cli_start_platform_fn start_platform;
     void *platform_context;
@@ -79,6 +86,16 @@ void gridpico_cli_bind_platform(gridpico_cli_frontend *frontend,
 void gridpico_cli_bind_apc_patch(gridpico_cli_frontend *frontend,
                                  gridpico_apc_patch_read_fn read_apc_patch,
                                  gridpico_apc_patch_snapshot *scratch);
+
+/* Bind target-specific revisioned Routing and guarded managed-route edits.
+ * The projection scratch is caller-owned and reused synchronously for page
+ * reads and guard checks; no Routing snapshot is placed on the CLI stack.
+ */
+void gridpico_cli_bind_routing(gridpico_cli_frontend *frontend, void *context,
+                              gridpico_local_read_routing_fn read_routing,
+                              gridpico_local_read_route_fn read_route,
+                              gridpico_local_set_route_fn set_route,
+                              gridpico_local_routing_snapshot *scratch);
 
 /* Execute a complete UTF-8 command line. Diagnostics and serial terminal
  * command callbacks use this same handler. Synchronous commands emit CRLF

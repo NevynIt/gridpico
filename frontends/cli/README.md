@@ -13,6 +13,8 @@ status
 
 Depending on the selected runtime, help may also list `color get/set`, `logs`, `route`, `routing`, `trace`, `hubtrace` and `BOOTSEL`. Use IDs printed by `inventory`. The default local profile's IDs and route examples are in the [local router contract](../../api/local-router.md#serial-cli-route-control). Typed color, status and log providers are described in [Patch controls](../../api/patchbay-controls.md#read-only-diagnostics-commands); optional Routing pagination is in [Routing](../../api/routing.md#routing-through-the-local-cli).
 
+On a profile with the target Routing binder, `help route` includes the guarded managed form `route SRC DST managed on|off if REV`. It rechecks the complete Routing revision before mutation; stale revisions return `ERR UNAVAILABLE` without a write. Raw continues to use its separate lease.
+
 ## Binding
 
 Keep `gridpico_cli_frontend` in static or other caller-owned long-lived storage. It contains the embedded-cli arena and Patch snapshot scratch. For an interactive terminal, initialize it with the shared Session callbacks, then feed bytes with `gridpico_cli_receive` and process them on the serialized command context:

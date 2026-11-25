@@ -22,6 +22,10 @@ typedef struct {
 
 typedef struct {
     gridpico_local_routing_snapshot snapshot;
+    gridpico_local_routing_snapshot scratch;
+    gridpico_local_route_status route_status;
+    size_t route_reads;
+    size_t route_writes;
 } routing_fixture;
 
 typedef struct {
@@ -338,6 +342,29 @@ static gridpico_result read_routing_fixture(void *context,
     return GRIDPICO_OK;
 }
 
+static gridpico_result read_fixture_route(void *context, const gridpico_local_route *route,
+                                          gridpico_local_route_status *out)
+{
+    routing_fixture *fixture = context;
+    assert(route->source == 1 && route->destination == 5 &&
+           route->mode == GRIDPICO_LOCAL_MANAGED);
+    ++fixture->route_reads;
+    *out = fixture->route_status;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result set_fixture_route(void *context,
+                                         const gridpico_local_route_request *request)
+{
+    routing_fixture *fixture = context;
+    assert(request->route.source == 1 && request->route.destination == 5 &&
+           request->route.mode == GRIDPICO_LOCAL_MANAGED);
+    ++fixture->route_writes;
+    fixture->route_status.state = request->enabled ? GRIDPICO_PATCH_ROUTE_ACTIVE
+                                                    : GRIDPICO_PATCH_ROUTE_OFF;
+    return GRIDPICO_OK;
+}
+
 static void assert_routing_record_bounds(const transcript *output)
 {
     size_t record_start = 0;
@@ -540,6 +567,81 @@ static void test_routing_cli(transcript *terminal)
     clear(terminal);
     assert(gridpico_cli_execute_line(&cli, "routing", capture, terminal) == GRIDPICO_CAPACITY);
     assert(strcmp(terminal->output, "ERR CAPACITY\r\n") == 0);
+}
+
+static void test_guarded_route_cli(transcript *terminal)
+{
+    routing_fixture fixture = {0};
+    initialize_routing_snapshot(&fixture);
+    fixture.route_status = (gridpico_local_route_status){
+        .revision = fixture.snapshot.revision,
+        .state = GRIDPICO_PATCH_ROUTE_ACTIVE,
+    };
+    gridpico_cli_frontend cli;
+    assert(gridpico_cli_init(&cli, NULL, unused_snapshot, NULL, NULL,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    gridpico_cli_bind_routing(&cli, &fixture, read_routing_fixture,
+                              read_fixture_route, set_fixture_route, &fixture.scratch);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help route", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "managed on|off if <revision>"));
+    compare_terminal_reply(&cli, terminal, "help route", GRIDPICO_OK);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "routing", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "ROUTING 41 8\r\n"));
+    assert(fixture.scratch.revision == 41);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "route 1 5 managed", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output, "ROUTE 1 5 MANAGED ACTIVE\r\nOK\r\n") == 0);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "route 1 5 managed off if 41",
+                                    capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "ROUTE 1 5 MANAGED OFF\r\nOK\r\n") == 0);
+    assert(fixture.route_writes == 1 && fixture.route_reads == 2);
+
+    const size_t writes_before_stale = fixture.route_writes;
+    const size_t reads_before_stale = fixture.route_reads;
+    fixture.snapshot.revision = 42;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "route 1 5 managed on if 41",
+                                    capture, terminal) == GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(fixture.route_writes == writes_before_stale &&
+           fixture.route_reads == reads_before_stale);
+
+    fixture.snapshot.revision = UINT64_MAX;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli,
+        "route 1 5 managed on if 18446744073709551615", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "ROUTE 1 5 MANAGED ACTIVE\r\nOK\r\n") == 0);
+    assert(fixture.route_writes == writes_before_stale + 1);
+
+    const size_t writes_before_invalid = fixture.route_writes;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "route 4 3 raw on if 18446744073709551615",
+                                    capture, terminal) == GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    assert(fixture.route_writes == writes_before_invalid);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "route 19 5 managed on if 18446744073709551615",
+                                    capture, terminal) == GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    assert(fixture.route_writes == writes_before_invalid);
+
+    gridpico_cli_frontend unavailable;
+    assert(gridpico_cli_init(&unavailable, NULL, unused_snapshot, NULL, NULL,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&unavailable, "route 1 5 managed on if 41",
+                                    capture, terminal) == GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&unavailable, "help route", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
 }
 
 static gridpico_result start_platform_fixture(void *context, unsigned command)
@@ -789,6 +891,7 @@ int main(void)
     test_monitor_cli(&terminal);
     test_local_route_cli(&terminal);
     test_routing_cli(&terminal);
+    test_guarded_route_cli(&terminal);
     test_platform_cli(&terminal);
     return 0;
 }

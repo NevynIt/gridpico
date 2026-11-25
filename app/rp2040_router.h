@@ -115,6 +115,13 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router);
 gridpico_result gridpico_pico_router_init_snapshot(gridpico_pico_router *router,
                                                   const gridpico_apc_session_snapshot *snapshot);
 #endif
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+gridpico_result gridpico_pico_router_read_routing(void *context, gridpico_local_routing_snapshot *out);
+gridpico_result gridpico_pico_router_read_managed_route(
+    void *context, const gridpico_local_route *route, gridpico_local_route_status *out);
+gridpico_result gridpico_pico_router_set_managed_route(
+    void *context, const gridpico_local_route_request *request);
+#endif
 gridpico_route_snapshot gridpico_pico_router_pad_status(gridpico_pico_router *router);
 void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_peer peer, bool attached);
 gridpico_result gridpico_pico_router_receive(

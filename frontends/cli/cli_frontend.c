@@ -82,6 +82,8 @@ static const cli_help_entry help_color_readonly = {
     CLI_COMMAND_COLOR, "color", "color get <device> -- read a device color"};
 static const cli_help_entry help_route = {
     CLI_COMMAND_ROUTE, "route", "route <src> <dst> managed|raw [on|off] -- read or set a route, then read back its state"};
+static const cli_help_entry help_route_guarded = {
+    CLI_COMMAND_ROUTE, "route", "route <src> <dst> managed|raw [on|off]; route <src> <dst> managed on|off if <revision> -- read or set a route with revision guard, then read back committed state"};
 static const cli_help_entry help_routing = {
     CLI_COMMAND_ROUTING, "routing", "routing | routing <revision> <offset> -- read a bounded Routing snapshot page"};
 static const cli_help_entry help_trace = {
@@ -129,9 +131,23 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
         entries[count++] = frontend->set_device_color != NULL
                                ? &help_color : &help_color_readonly;
     }
-    if (frontend->set_local_route != NULL && frontend->read_local_route != NULL &&
-        count < capacity) entries[count++] = &help_route;
-    if (frontend->read_local_routing != NULL && count < capacity)
+    const bool target_callbacks = frontend->routing_read_route != NULL ||
+                                  frontend->routing_set_route != NULL ||
+                                  frontend->routing_read != NULL;
+    const bool route_pair = target_callbacks
+        ? frontend->routing_read_route != NULL && frontend->routing_set_route != NULL
+        : frontend->read_local_route != NULL && frontend->set_local_route != NULL;
+    if (route_pair && count < capacity) {
+        const bool guarded = frontend->routing_read != NULL &&
+                             frontend->routing_read_route != NULL &&
+                             frontend->routing_set_route != NULL &&
+                             frontend->routing_scratch != NULL;
+        entries[count++] = guarded ? &help_route_guarded : &help_route;
+    }
+    const bool routing_available = frontend->routing_read != NULL
+        ? frontend->routing_scratch != NULL
+        : frontend->read_local_routing != NULL;
+    if (routing_available && count < capacity)
         entries[count++] = &help_routing;
     if (frontend->start_platform != NULL &&
         (frontend->platform_capabilities & GRIDPICO_CLI_PLATFORM_TRACE) != 0 &&
@@ -707,19 +723,26 @@ static gridpico_result execute_local_route(gridpico_cli_frontend *frontend, cons
     if (!parse_local_route_command(line, &route, &has_enabled, &enabled)) {
         return GRIDPICO_INVALID;
     }
-    if (frontend->read_local_route == NULL ||
-        (has_enabled && frontend->set_local_route == NULL)) return GRIDPICO_UNAVAILABLE;
+    const bool target_callbacks = frontend->routing_read_route != NULL ||
+                                  frontend->routing_set_route != NULL ||
+                                  frontend->routing_read != NULL;
+    const gridpico_local_read_route_fn read_route = target_callbacks
+        ? frontend->routing_read_route : frontend->read_local_route;
+    const gridpico_local_set_route_fn set_route = target_callbacks
+        ? frontend->routing_set_route : frontend->set_local_route;
+    void *callback_context = target_callbacks ? frontend->routing_context
+                                              : frontend->session_context;
+    if (read_route == NULL || (has_enabled && set_route == NULL))
+        return GRIDPICO_UNAVAILABLE;
 
     if (has_enabled) {
         const gridpico_local_route_request request = {.route = route, .enabled = enabled};
-        const gridpico_result result = frontend->set_local_route(frontend->session_context,
-                                                                 &request);
+        const gridpico_result result = set_route(callback_context, &request);
         if (result != GRIDPICO_OK) return result;
     }
 
     gridpico_local_route_status status = {0};
-    const gridpico_result result = frontend->read_local_route(frontend->session_context,
-                                                              &route, &status);
+    const gridpico_result result = read_route(callback_context, &route, &status);
     if (result != GRIDPICO_OK) return result;
     return write_local_route_record(write, context, &route, &status);
 }
@@ -735,6 +758,54 @@ static bool parse_unsigned_decimal(const char *text, size_t size, uint64_t *valu
         parsed = parsed * 10u + digit;
     }
     *value = parsed;
+    return true;
+}
+
+typedef struct {
+    gridpico_local_route route;
+    bool enabled;
+    gridpico_revision revision;
+} guarded_route_command;
+
+static bool parse_guarded_route_command(const char *line, guarded_route_command *command)
+{
+    if (line == NULL || command == NULL) return false;
+    const size_t length = strlen(line);
+    if (length == 0 || length >= GRIDPICO_CLI_LINE_BYTES) return false;
+    char buffer[GRIDPICO_CLI_LINE_BYTES];
+    memcpy(buffer, line, length + 1);
+    char *tokens[7];
+    size_t count = 0;
+    char *cursor = buffer;
+    while (*cursor != '\0') {
+        if (*cursor == ' ' || count == sizeof tokens / sizeof tokens[0]) return false;
+        tokens[count++] = cursor;
+        char *space = strchr(cursor, ' ');
+        if (space == NULL) break;
+        *space = '\0';
+        cursor = space + 1;
+        if (*cursor == '\0' || *cursor == ' ') return false;
+    }
+    if (count != 7 || strcmp(tokens[0], "route") != 0 ||
+        strcmp(tokens[3], "managed") != 0 || strcmp(tokens[5], "if") != 0) return false;
+
+    gridpico_device_id source;
+    gridpico_device_id destination;
+    if (!decimal_device_id(tokens[1], strlen(tokens[1]), &source) ||
+        !decimal_device_id(tokens[2], strlen(tokens[2]), &destination)) return false;
+    if (strcmp(tokens[4], "on") == 0) command->enabled = true;
+    else if (strcmp(tokens[4], "off") == 0) command->enabled = false;
+    else return false;
+
+    uint64_t revision;
+    if (!parse_unsigned_decimal(tokens[6], strlen(tokens[6]), &revision) || revision == 0)
+        return false;
+    command->route = (gridpico_local_route){
+        .source = source,
+        .destination = destination,
+        .mode = GRIDPICO_LOCAL_MANAGED,
+    };
+    command->revision = (gridpico_revision)revision;
     return true;
 }
 
@@ -846,6 +917,38 @@ static bool compatible_enabled_route(const gridpico_local_routing_snapshot *snap
         ? GRIDPICO_LOCAL_PORT_MANAGED : GRIDPICO_LOCAL_PORT_RAW;
     return snapshot->graph.registry.port_capabilities[source_index] == expected &&
            snapshot->graph.registry.port_capabilities[destination_index] == expected;
+}
+
+static gridpico_result execute_guarded_route(gridpico_cli_frontend *frontend, const char *line,
+                                            gridpico_cli_write_fn write, void *context)
+{
+    guarded_route_command command;
+    if (!parse_guarded_route_command(line, &command)) return GRIDPICO_INVALID;
+    if (frontend->routing_read == NULL || frontend->routing_read_route == NULL ||
+        frontend->routing_set_route == NULL || frontend->routing_scratch == NULL)
+        return GRIDPICO_UNAVAILABLE;
+
+    gridpico_local_routing_snapshot *snapshot = frontend->routing_scratch;
+    const gridpico_result result = frontend->routing_read(frontend->routing_context, snapshot);
+    if (result != GRIDPICO_OK) return result;
+    const gridpico_result validation = validate_local_routing_snapshot(snapshot);
+    if (validation != GRIDPICO_OK) return validation;
+    if (snapshot->revision != command.revision) return GRIDPICO_UNAVAILABLE;
+    if (!compatible_enabled_route(snapshot, &command.route)) return GRIDPICO_INVALID;
+
+    const gridpico_local_route_request request = {
+        .route = command.route,
+        .enabled = command.enabled,
+    };
+    const gridpico_result set_result = frontend->routing_set_route(
+        frontend->routing_context, &request);
+    if (set_result != GRIDPICO_OK) return set_result;
+
+    gridpico_local_route_status status = {0};
+    const gridpico_result read_result = frontend->routing_read_route(
+        frontend->routing_context, &command.route, &status);
+    if (read_result != GRIDPICO_OK) return read_result;
+    return write_local_route_record(write, context, &command.route, &status);
 }
 
 typedef struct {
@@ -969,35 +1072,24 @@ static gridpico_result write_routing_header(gridpico_cli_write_fn write, void *c
                ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
 }
 
-static gridpico_result execute_routing(gridpico_cli_frontend *frontend, const char *line,
-                                       gridpico_cli_write_fn write, void *context)
+static gridpico_result write_routing_page(const gridpico_local_routing_snapshot *snapshot,
+                                          size_t offset, gridpico_cli_write_fn write,
+                                          void *context)
 {
-    bool continuation;
-    gridpico_revision requested_revision;
-    size_t offset;
-    if (!parse_routing_command(line, &continuation, &requested_revision, &offset))
-        return GRIDPICO_INVALID;
-    if (frontend->read_local_routing == NULL) return GRIDPICO_UNAVAILABLE;
-
-    gridpico_local_routing_snapshot snapshot = {0};
-    const gridpico_result read_result = frontend->read_local_routing(
-        frontend->session_context, &snapshot);
-    if (read_result != GRIDPICO_OK) return read_result;
-    if (continuation && snapshot.revision != requested_revision) return GRIDPICO_UNAVAILABLE;
-    const gridpico_result validation = validate_local_routing_snapshot(&snapshot);
+    const gridpico_result validation = validate_local_routing_snapshot(snapshot);
     if (validation != GRIDPICO_OK) return validation;
 
-    const gridpico_patch_inventory *inventory = &snapshot.graph.registry.inventory;
+    const gridpico_patch_inventory *inventory = &snapshot->graph.registry.inventory;
     const size_t total = inventory->device_count + inventory->port_count +
-                         snapshot.graph.route_count;
+                         snapshot->graph.route_count;
     if (offset > total) return GRIDPICO_INVALID;
 
     const gridpico_local_enabled_route *routes[GRIDPICO_PATCH_MAX_BRANCHES];
-    for (size_t i = 0; i < snapshot.graph.route_count; ++i) {
-        routes[i] = &snapshot.graph.routes[i];
-        if (!compatible_enabled_route(&snapshot, &routes[i]->route)) return GRIDPICO_INVALID;
+    for (size_t i = 0; i < snapshot->graph.route_count; ++i) {
+        routes[i] = &snapshot->graph.routes[i];
+        if (!compatible_enabled_route(snapshot, &routes[i]->route)) return GRIDPICO_INVALID;
     }
-    for (size_t i = 1; i < snapshot.graph.route_count; ++i) {
+    for (size_t i = 1; i < snapshot->graph.route_count; ++i) {
         const gridpico_local_enabled_route *route = routes[i];
         size_t j = i;
         while (j > 0 && compare_local_routes(route, routes[j - 1]) < 0) {
@@ -1006,21 +1098,21 @@ static gridpico_result execute_routing(gridpico_cli_frontend *frontend, const ch
         }
         routes[j] = route;
     }
-    for (size_t i = 1; i < snapshot.graph.route_count; ++i) {
+    for (size_t i = 1; i < snapshot->graph.route_count; ++i) {
         if (compare_local_routes(routes[i - 1], routes[i]) == 0) return GRIDPICO_INVALID;
     }
 
     const size_t count = total - offset < GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS
                              ? total - offset : GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS;
     const size_t next = offset + count;
-    gridpico_result result = write_routing_header(write, context, snapshot.revision,
+    gridpico_result result = write_routing_header(write, context, snapshot->revision,
                                                   next, next == total);
     if (result != GRIDPICO_OK) return result;
     for (size_t i = offset; i < next; ++i) {
         if (i < inventory->device_count) {
-            result = write_routing_device(write, context, &snapshot, i);
+            result = write_routing_device(write, context, snapshot, i);
         } else if (i < inventory->device_count + inventory->port_count) {
-            result = write_routing_port(write, context, &snapshot,
+            result = write_routing_port(write, context, snapshot,
                                         i - inventory->device_count);
         } else {
             result = write_routing_route(write, context,
@@ -1030,6 +1122,56 @@ static gridpico_result execute_routing(gridpico_cli_frontend *frontend, const ch
         if (result != GRIDPICO_OK) return result;
     }
     return GRIDPICO_OK;
+}
+
+static gridpico_result execute_routing_target(gridpico_cli_frontend *frontend,
+                                              bool continuation,
+                                              gridpico_revision requested_revision,
+                                              size_t offset,
+                                              gridpico_cli_write_fn write, void *context)
+{
+    if (frontend->routing_read == NULL || frontend->routing_scratch == NULL)
+        return GRIDPICO_UNAVAILABLE;
+    gridpico_local_routing_snapshot *snapshot = frontend->routing_scratch;
+    const gridpico_result read_result = frontend->routing_read(frontend->routing_context,
+                                                               snapshot);
+    if (read_result != GRIDPICO_OK) return read_result;
+    if (continuation && snapshot->revision != requested_revision) return GRIDPICO_UNAVAILABLE;
+    if (offset > GRIDPICO_PATCH_MAX_DEVICES + GRIDPICO_PATCH_MAX_PORTS +
+                     GRIDPICO_PATCH_MAX_BRANCHES) return GRIDPICO_INVALID;
+    return write_routing_page(snapshot, offset, write, context);
+}
+
+static gridpico_result execute_routing_legacy(gridpico_cli_frontend *frontend,
+                                              bool continuation,
+                                              gridpico_revision requested_revision,
+                                              size_t offset,
+                                              gridpico_cli_write_fn write, void *context)
+{
+    if (frontend->read_local_routing == NULL) return GRIDPICO_UNAVAILABLE;
+    gridpico_local_routing_snapshot snapshot = {0};
+    const gridpico_result read_result = frontend->read_local_routing(
+        frontend->session_context, &snapshot);
+    if (read_result != GRIDPICO_OK) return read_result;
+    if (continuation && snapshot.revision != requested_revision) return GRIDPICO_UNAVAILABLE;
+    if (offset > GRIDPICO_PATCH_MAX_DEVICES + GRIDPICO_PATCH_MAX_PORTS +
+                     GRIDPICO_PATCH_MAX_BRANCHES) return GRIDPICO_INVALID;
+    return write_routing_page(&snapshot, offset, write, context);
+}
+
+static gridpico_result execute_routing(gridpico_cli_frontend *frontend, const char *line,
+                                       gridpico_cli_write_fn write, void *context)
+{
+    bool continuation;
+    gridpico_revision requested_revision;
+    size_t offset;
+    if (!parse_routing_command(line, &continuation, &requested_revision, &offset))
+        return GRIDPICO_INVALID;
+    if (frontend->routing_read != NULL)
+        return execute_routing_target(frontend, continuation, requested_revision, offset,
+                                      write, context);
+    return execute_routing_legacy(frontend, continuation, requested_revision, offset,
+                                  write, context);
 }
 
 static const char *error_record(gridpico_result result)
@@ -1154,9 +1296,13 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
                              : GRIDPICO_INVALID;
                 break;
             case CLI_COMMAND_ROUTE:
-                result = strncmp(line, "route ", 6) == 0
-                             ? execute_local_route(frontend, line, write, write_context)
-                             : GRIDPICO_INVALID;
+                if (strncmp(line, "route ", 6) != 0) {
+                    result = GRIDPICO_INVALID;
+                } else if (strstr(line, " if ") != NULL) {
+                    result = execute_guarded_route(frontend, line, write, write_context);
+                } else {
+                    result = execute_local_route(frontend, line, write, write_context);
+                }
                 break;
             case CLI_COMMAND_ROUTING:
                 result = strcmp(line, "routing") == 0 || strncmp(line, "routing ", 8) == 0
@@ -1297,6 +1443,20 @@ void gridpico_cli_bind_apc_patch(gridpico_cli_frontend *frontend,
     if (frontend == NULL) return;
     frontend->read_apc_patch = read_apc_patch;
     frontend->apc_patch_scratch = read_apc_patch == NULL ? NULL : scratch;
+}
+
+void gridpico_cli_bind_routing(gridpico_cli_frontend *frontend, void *context,
+                              gridpico_local_read_routing_fn read_routing,
+                              gridpico_local_read_route_fn read_route,
+                              gridpico_local_set_route_fn set_route,
+                              gridpico_local_routing_snapshot *scratch)
+{
+    if (frontend == NULL) return;
+    frontend->routing_context = context;
+    frontend->routing_read = read_routing;
+    frontend->routing_read_route = read_route;
+    frontend->routing_set_route = set_route;
+    frontend->routing_scratch = read_routing == NULL ? NULL : scratch;
 }
 
 void gridpico_cli_receive(gridpico_cli_frontend *frontend, const char *bytes, size_t size)
