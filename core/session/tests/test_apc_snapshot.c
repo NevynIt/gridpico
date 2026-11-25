@@ -60,7 +60,8 @@ static gridpico_result reject_raw(void *context, const gridpico_local_raw_delive
     return GRIDPICO_INVALID;
 }
 
-static void init_fixture(fixture *runtime, size_t managed_limit)
+static void init_fixture_with_registry(fixture *runtime, size_t managed_limit,
+                                        const gridpico_local_registry *configured_registry)
 {
     const gridpico_local_profile profile = {
         .midi_peer_limit = 8,
@@ -71,7 +72,7 @@ static void init_fixture(fixture *runtime, size_t managed_limit)
         .release_credit_limit = 4,
     };
     runtime->deliveries = 0;
-    assert(gridpico_patch_graph_init_local_profile(&runtime->graph, &registry, &profile,
+    assert(gridpico_patch_graph_init_local_profile(&runtime->graph, configured_registry, &profile,
                                                   deliver_note, reject_raw, runtime) == GRIDPICO_OK);
     gridpico_patch_session_init(&runtime->session, &runtime->graph, gridpico_patch_graph_read_graph,
                                 gridpico_patch_graph_set_route);
@@ -81,6 +82,11 @@ static void init_fixture(fixture *runtime, size_t managed_limit)
                                               NULL, NULL);
     assert(gridpico_patch_session_bind_apc_patch(&runtime->session, &factory_layout, AUDITION) ==
            GRIDPICO_OK);
+}
+
+static void init_fixture(fixture *runtime, size_t managed_limit)
+{
+    init_fixture_with_registry(runtime, managed_limit, &registry);
 }
 
 static void update_port(fixture *runtime, gridpico_port_id id, gridpico_patch_connection_state state)
@@ -126,8 +132,67 @@ static void expect_graph(fixture *runtime, size_t route_count)
     assert(runtime->deliveries == 0);
 }
 
+static gridpico_result set_apc_cell(fixture *runtime, const gridpico_apc_patch_snapshot *snapshot,
+                                  uint8_t row, uint8_t column, bool enabled)
+{
+    return gridpico_patch_session_set_apc_patch_cell(&runtime->session, snapshot->layout_revision,
+                                                    snapshot->graph_revision, row, column, enabled);
+}
+
+static void verify_native_virtual_cable(void)
+{
+    const gridpico_apc_session_snapshot saved = {
+        .layout = factory_layout,
+        .route_count = 1,
+        .routes = {{KEYS_A, OUT_A}},
+    };
+    fixture runtime;
+    init_fixture(&runtime, 4);
+    gridpico_apc_patch_snapshot patch;
+    assert(gridpico_patch_session_read_apc_patch(&runtime.session, &patch) == GRIDPICO_OK);
+    assert(!patch.cells[0][2].compatible);
+    assert(set_apc_cell(&runtime, &patch, 0, 2, true) == GRIDPICO_INVALID);
+    assert(gridpico_patch_session_restore_apc_snapshot(&runtime.session, &saved) == GRIDPICO_INVALID);
+    expect_graph(&runtime, 0);
+
+    gridpico_local_registry configured = registry;
+    configured.native_virtual_cable = (gridpico_local_native_virtual_cable){KEYS_A, OUT_A};
+    init_fixture_with_registry(&runtime, 4, &configured);
+    assert(gridpico_patch_session_read_apc_patch(&runtime.session, &patch) == GRIDPICO_OK);
+    assert(patch.cells[0][2].compatible && !patch.cells[0][2].available);
+    assert(patch.cells[0][2].state == GRIDPICO_PATCH_ROUTE_OFF);
+    assert(!patch.cells[1][0].compatible);
+    assert(set_apc_cell(&runtime, &patch, 1, 0, true) == GRIDPICO_INVALID);
+    assert(set_apc_cell(&runtime, &patch, 0, 2, true) == GRIDPICO_OK);
+    assert(gridpico_patch_session_read_apc_patch(&runtime.session, &patch) == GRIDPICO_OK);
+    assert(patch.cells[0][2].state == GRIDPICO_PATCH_ROUTE_PENDING);
+
+    update_port(&runtime, KEYS_A, GRIDPICO_PATCH_CONNECTED);
+    update_port(&runtime, OUT_A, GRIDPICO_PATCH_CONNECTED);
+    assert(gridpico_patch_session_read_apc_patch(&runtime.session, &patch) == GRIDPICO_OK);
+    assert(patch.cells[0][2].available && patch.cells[0][2].state == GRIDPICO_PATCH_ROUTE_ACTIVE);
+    assert(set_apc_cell(&runtime, &patch, 0, 2, false) == GRIDPICO_OK);
+    assert(gridpico_patch_session_read_apc_patch(&runtime.session, &patch) == GRIDPICO_OK);
+    assert(patch.cells[0][2].available && patch.cells[0][2].state == GRIDPICO_PATCH_ROUTE_OFF);
+
+    assert(patch.cells[0][0].compatible && patch.cells[1][2].compatible);
+    assert(set_apc_cell(&runtime, &patch, 0, 0, true) == GRIDPICO_OK);
+    assert(gridpico_patch_session_read_apc_patch(&runtime.session, &patch) == GRIDPICO_OK);
+    assert(set_apc_cell(&runtime, &patch, 1, 2, true) == GRIDPICO_INVALID);
+
+    init_fixture_with_registry(&runtime, 4, &configured);
+    assert(gridpico_patch_session_restore_apc_snapshot(&runtime.session, &saved) == GRIDPICO_OK);
+    expect_graph(&runtime, 1);
+    gridpico_apc_session_snapshot exported;
+    assert(gridpico_patch_session_export_apc_snapshot(&runtime.session, &exported) == GRIDPICO_OK);
+    expect_layout(&exported.layout, &saved.layout);
+    expect_routes(&exported, &saved);
+}
+
 int main(void)
 {
+    verify_native_virtual_cable();
+
     fixture live;
     init_fixture(&live, 4);
     enable(&live, KEYS_B, OUT_C, GRIDPICO_LOCAL_MANAGED);

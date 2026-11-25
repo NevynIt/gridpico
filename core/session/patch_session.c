@@ -449,9 +449,13 @@ gridpico_result gridpico_patch_session_bind_apc_patch(gridpico_patch_session *se
     return GRIDPICO_OK;
 }
 
-static bool compatible_apc_cell(const gridpico_patch_port *source, const gridpico_patch_port *destination)
+static bool compatible_apc_cell(const gridpico_local_registry *registry,
+                                const gridpico_patch_port *source, const gridpico_patch_port *destination)
 {
-    return source != NULL && destination != NULL && source->device != destination->device;
+    return source != NULL && destination != NULL &&
+           (source->device != destination->device ||
+            gridpico_local_native_virtual_cable_matches(&registry->native_virtual_cable,
+                                                       source->id, destination->id));
 }
 
 gridpico_result gridpico_patch_session_export_apc_snapshot(const gridpico_patch_session *session,
@@ -511,7 +515,7 @@ static bool valid_apc_snapshot_routes(const gridpico_local_registry *registry,
                                                         GRIDPICO_PATCH_INPUT, route.source);
         const gridpico_patch_port *destination = find_apc_port(registry, audition_source,
                                                              GRIDPICO_PATCH_OUTPUT, route.destination);
-        if (!compatible_apc_cell(source, destination)) {
+        if (!compatible_apc_cell(registry, source, destination)) {
             return false;
         }
         for (size_t j = 0; j < i; ++j) {
@@ -584,7 +588,7 @@ static void read_apc_cells(const gridpico_local_graph_state *graph, gridpico_por
     }
     for (size_t row = 0; row < GRIDPICO_PATCH_SOURCE_ROWS; ++row) {
         for (size_t column = 0; column < GRIDPICO_PATCH_DESTINATION_COLUMNS; ++column) {
-            if (compatible_apc_cell(rows[row], columns[column])) {
+            if (compatible_apc_cell(&graph->registry, rows[row], columns[column])) {
                 gridpico_apc_patch_cell *cell = &snapshot->cells[row][column];
                 cell->compatible = true;
                 cell->available = rows[row]->state == GRIDPICO_PATCH_CONNECTED &&
@@ -756,7 +760,7 @@ gridpico_result gridpico_patch_session_set_apc_patch_cell(void *context,
     const gridpico_patch_port *destination = find_apc_port(
         &graph.registry, session->apc_audition_source, GRIDPICO_PATCH_OUTPUT,
         session->apc_layout.columns[column]);
-    if (!compatible_apc_cell(source, destination)) {
+    if (!compatible_apc_cell(&graph.registry, source, destination)) {
         return GRIDPICO_INVALID;
     }
 

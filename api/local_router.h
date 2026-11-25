@@ -40,10 +40,25 @@ typedef enum {
 } gridpico_local_port_capability;
 
 typedef struct {
+    gridpico_port_id source;
+    gridpico_port_id destination;
+} gridpico_local_native_virtual_cable;
+
+typedef struct {
     gridpico_patch_inventory inventory;
     /* One capability per registered port in inventory order. */
     gridpico_local_port_capability port_capabilities[GRIDPICO_PATCH_MAX_PORTS];
+    /* Optional Assembly-verified managed native ingress and independent egress. */
+    gridpico_local_native_virtual_cable native_virtual_cable;
 } gridpico_local_registry;
+
+static inline bool gridpico_local_native_virtual_cable_matches(
+    const gridpico_local_native_virtual_cable *pair, gridpico_port_id source,
+    gridpico_port_id destination)
+{
+    return source != 0 && destination != 0 && source != destination &&
+           source == pair->source && destination == pair->destination;
+}
 
 typedef enum {
     GRIDPICO_LOCAL_MANAGED,

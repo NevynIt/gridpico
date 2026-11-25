@@ -47,6 +47,7 @@ typedef struct {
     void *delivery_context;
     gridpico_patch_port_runtime ports[GRIDPICO_PATCH_MAX_PORTS];
     gridpico_local_port_capability port_capabilities[GRIDPICO_PATCH_MAX_PORTS];
+    gridpico_local_native_virtual_cable native_virtual_cable;
     gridpico_patch_graph_branch branches[GRIDPICO_PATCH_MAX_BRANCHES];
     gridpico_local_profile local_profile;
     size_t branch_limit;

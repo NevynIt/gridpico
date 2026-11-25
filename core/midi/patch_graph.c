@@ -146,7 +146,19 @@ static bool valid_local_registry(const gridpico_local_registry *registry)
             return false;
         }
     }
-    return true;
+    const gridpico_local_native_virtual_cable *pair = &registry->native_virtual_cable;
+    if (pair->source == 0 && pair->destination == 0) {
+        return true;
+    }
+    const size_t source = port_index(&registry->inventory, pair->source);
+    const size_t destination = port_index(&registry->inventory, pair->destination);
+    return gridpico_local_native_virtual_cable_matches(pair, pair->source, pair->destination) &&
+           source != NO_PORT && destination != NO_PORT &&
+           registry->port_capabilities[source] == GRIDPICO_LOCAL_PORT_MANAGED &&
+           registry->port_capabilities[destination] == GRIDPICO_LOCAL_PORT_MANAGED &&
+           registry->inventory.ports[source].direction == GRIDPICO_PATCH_INPUT &&
+           registry->inventory.ports[destination].direction == GRIDPICO_PATCH_OUTPUT &&
+           registry->inventory.ports[source].device == registry->inventory.ports[destination].device;
 }
 
 static void aggregate_devices(gridpico_patch_inventory *inventory)
@@ -559,6 +571,7 @@ static gridpico_result init_local_graph(gridpico_patch_graph *graph, const gridp
     if (result == GRIDPICO_OK) {
         graph->deliver_raw = deliver_raw;
         graph->local_profile = profile;
+        graph->native_virtual_cable = registry->native_virtual_cable;
         memcpy(graph->port_capabilities, registry->port_capabilities,
                graph->inventory.port_count * sizeof graph->port_capabilities[0]);
     }
@@ -692,7 +705,9 @@ static bool creates_device_cycle(const gridpico_patch_graph *graph, size_t sourc
 static gridpico_result enable_branch(gridpico_patch_graph *graph, size_t source, size_t destination,
                                      gridpico_local_route_mode mode)
 {
-    if (graph->deliver_raw != NULL && creates_device_cycle(graph, source, destination)) {
+    const bool terminal_cable = mode == GRIDPICO_LOCAL_MANAGED && gridpico_local_native_virtual_cable_matches(
+        &graph->native_virtual_cable, graph->inventory.ports[source].id, graph->inventory.ports[destination].id);
+    if (graph->deliver_raw != NULL && !terminal_cable && creates_device_cycle(graph, source, destination)) {
         return GRIDPICO_INVALID;
     }
     size_t free_branch = NO_BRANCH;
@@ -828,7 +843,10 @@ gridpico_result gridpico_patch_graph_read_local_state(void *context, gridpico_lo
         return GRIDPICO_INVALID;
     }
 
-    *out = (gridpico_local_graph_state){.revision = graph->revision, .registry.inventory = graph->inventory};
+    *out = (gridpico_local_graph_state){
+        .revision = graph->revision,
+        .registry = {.inventory = graph->inventory, .native_virtual_cable = graph->native_virtual_cable},
+    };
     memcpy(out->registry.port_capabilities, graph->port_capabilities,
            graph->inventory.port_count * sizeof graph->port_capabilities[0]);
     for (size_t i = 0; i < graph->branch_limit; ++i) {
