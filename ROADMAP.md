@@ -2,15 +2,29 @@
 
 **Owner** — Product Owner
 
-**Status** — The production Web UI, Diagnostics playback, MIDI Log and CLI, and the standalone FM instrument are verified in Linux Chromium. Native Linux RTP-MIDI and WSS have two-host receipt and release evidence. RTP repeatability and timing, Windows/WSL, desktop WSS mutual TLS, and the physical Pico, mounted drive and CDC checks remain open. Pi-local routed FluidSynth WAVs are verified.
+**Status** — Pre-alpha, one Gridpico product across Pico, Pi and browser. Ship normal verified firmware with demonstrated recovery. Legacy compatibility toggles and fixture-hard-coded roles are outside the product direction. The operative weekly Codex allowance floor is **5%**.
 
 [Product brief](PRODUCT_BRIEF.md) · [Architecture](ARCHITECTURE.md) · [Team coordination](AGENT_TEAM_COORDINATION.md) · [Model and effort plan](.team/MODEL_PLAN.md)
 
 ## Product horizon
 
-- **Now · Validate the connected Pico.** First prove repeatable, no-touch Pi → Pico CDC-to-BOOTSEL recovery with the current rpico-bridge firmware. Then verify APC → MicroFreak MIDI routing through the Pico USB hub and the approved remote and local controls. [Physical Pico acceptance](#approved-physical-pico-and-cdc-delivery) · [Pi router and recording](#persistent-pi-router-and-recording)
-- **Next · Scope one shared sequencer pattern.** The separate design remains one MIDI track and one 16-step pattern for a Circuit Tracks-style browser frontend and eventual APC adapter using the same Gridpico sequencer. Existing web instruments or external MIDI destinations provide sound. Implementation remains deferred. [Product brief](PRODUCT_BRIEF.md) · [Operator journeys](USE_CASES.md)
-- **Later · Broaden hardware and transport validation.** Qualify the mounted Pico tools, additional physical setups and more native network MIDI targets, including Windows RTP. Keep evidence specific to each device and platform. [Hardware work](#hardware-work-when-access-returns) · [Transport delivery](#approved-delivery-midi-and-serial-cli-across-gridpico-hosts)
+- **Now · Make the current product usable and visible.** Put the Circuit Tracks browser UI ahead of the sequencer engine. Bring Pico and Pi CLI behavior into parity where supported, with useful command and subcommand help. Remove “KNOB CTL” from Web APC. Provide one downloadable PDF of all documentation, agree a concise editorial policy, then have each owner curate their own documents. Project Manager sequences the work with Architect.
+- **Next · Finish the standalone APC workflow.** Qualify physical 5×8 editing and audition, Keys passthrough and the Shift then Sustain chooser, safe Save, and onboard status and compatible board configuration. [Standalone APC delivery and evidence](#proposed-standalone-apc-patchbay-and-usb-qualification)
+- **Later · Qualify the remaining targets and the shared sequencer.** Keep the browser UI milestone separate from playback on the future shared engine. Seven-device USB, MiniFuse and P-95, mounted Pico tools, and wider RTP and Windows qualification have separate target evidence. [Physical Pico acceptance](#approved-physical-pico-and-cdc-delivery) · [Transport delivery](#approved-delivery-midi-and-serial-cli-across-gridpico-hosts)
+
+### Current product status
+
+Verified firmware and fixture baseline `e97a343`. The canonical browser release `5a12c9fced437b3f37ccda4a481084ae239889c0` is live on the Pi with an exact shared archive match and the recorder WAV preserved.
+
+| Area | Verified scope | Still open |
+| --- | --- | --- |
+| Physical Patchbay and Keys | Installed Matrix `0104` passed startup and native Panel Move/revert with volatile placement. Jill played MicroFreak from the physical APC. Optional Keys passed host cutover tests and a temporary `0105` bidirectional A/Panel/B descriptor census. | Full physical editable workflow and Audition, real Keys MIDI and Shift then Sustain on hardware, and Jill’s Live/MPE acceptance. |
+| Save and board status | Corrected Save codec and transaction passed host fixtures. Optional GP16 status passed offline checks. | Target Save writes remain disabled because bounded USB/PIO pause and resume are unverified. Physical power-cut recovery and persisted settings remain open. Hardware LED/optical evidence, cadence, preview and compatible board LED/PIO configuration. |
+| USB and Circuit | Physical census found three MIDI devices and two hubs. SRAM captured passive Circuit Tracks note ingress. Home ↔ Circuit works on the live Pi with 16 neutral, inspection-only positions. | Seven-device qualification, MiniFuse enumeration, attributable P-95 DIN MIDI, and Circuit egress. Circuit pattern editing, transport and the shared engine remain open. |
+| Web APC | “KNOB CTL” is removed on the live Pi, with eight controls retained. | This check covered presentation. |
+| Diagnostics | Live Chrome on installed Matrix `0104` sent one `TRACE`, received Active and `END TRACE`, and observed socket close. | Pico typed Routing, Diagnostics outbound MIDI and deployed browser-to-Pico MIDI remain open. |
+
+[Scoped acceptance details](#current-acceptance-audit)
 
 ## Approved delivery: MIDI and serial CLI across Gridpico hosts
 
@@ -194,7 +208,7 @@ UI Designer reviews the workflow and visual hierarchy before implementation and 
 
 ## Approved physical Pico and CDC delivery
 
-The Pico is connected. Project Manager coordinates delivery and confirms independent evidence for each gate. The operative weekly allowance floor is 15%.
+The Pico is connected. Project Manager coordinates delivery and confirms independent evidence for each gate. The operative weekly allowance floor is 5%.
 
 1. **No-touch BOOTSEL entry and bridge return · Independently verified.** Pi → Pico CDC entered the RP2040 B2 ROM on the same physical USB path. Two full 2 MiB flash reads matched at SHA-256 `f40534f41983bbe7b916bdee32f0c8f19fb40f5eb03c83c8aca8db2a2f4d95e3`, and independent review reverified the retained strict SFTP copy. The original rpico-bridge returned with the physical APC and MicroFreak online. Flash restore remains untested.
    **RAM-only Pico probes · Independently verified.** The native-only probe emitted its CDC banner, exercised DTR, entered the same BOOTSEL ROM and left the full flash image unchanged. In a separate probe, actual watchdog starvation after arming returned the original bridge unaided.
@@ -222,11 +236,11 @@ Record the laptop-attached APC, observed LED feedback and acoustic output agains
 - **MicroFreak Program Change · Independently verified in a fixture.** The selected MicroFreak route gated the exact two-byte Program Change beginning with `C3` to a modeled direct endpoint, with defaults preserved. The fixture left the physical patch untouched. In the authorized flash trial, the actual MicroFreak OUT02 acknowledged `C3 07`. Preset change and audio were unobserved. The final image has Program Change Off. Omni receive and channel 4 transmit remain open. [Native Program Change bench](api/pico-target.md#native-program-change-bench)
 - **Pico reboot and CDC census · Verified.** Rebooting the Pico via the Pi reached the same BOOTSEL ROM and returned the original bridge. The CDC census listed the APC at 2 RX/2 TX and the MicroFreak at 1 RX/1 TX. MiniFuse 4 enumeration, P-95 DIN MIDI signal and seven-device hub capacity remain unverified. Preserve both services during follow-up.
 - **Persistent remote CLI · Independently verified on the private LAN.** Stock Chrome connected directly to physical Pico CDC over plain WS and passed TRACE twice after one idle service restart. The prior browser assets and recorder WAV matched. HTTPS/WSS remains optional, and Jill’s laptop remains a separate acceptance check. [Live Pico CDC terminal](http://192.168.0.223:18768/pico-cdc/) · [Private LAN CDC contract](api/pico-target.md#private-lan-pico-cdc)
-- **Ready-to-use routes.** Leave safe, usable routes configured where the verified setup permits. Project Manager coordinates assignments and deployment within the 15% weekly allowance floor.
+- **Ready-to-use routes.** Leave safe, usable routes configured where the verified setup permits. Project Manager coordinates assignments and deployment within the 5% weekly allowance floor.
 
 ## Proposed standalone APC Patchbay and USB qualification
 
-**Approved for delivery.** Jill gave explicit go after reviewing the design in `92b2e85`. First delivery priority is the full editable physical 5×8 APC Patchbay for Jill’s morning and live Pi Pico CDC selection in Diagnostics. The live Diagnostics Pico CDC selection passed. The full editable physical 5×8 awaits scoped acceptance evidence from Project Manager, who sequences delivery under this plan. Architect owns contracts and target limits, and UI Designer owns the workflow and visual review. The operative weekly Codex floor is 15%. The use-case legend governs details in the concept image. [APC Patchbay concept](design/visuals/apc-patchbay-journey.png) · [Use-case legend](USE_CASES.md#proposed-editable-apc-patchbay--pre-go-concept)
+**Approved for delivery.** Jill gave explicit go after reviewing the design in `92b2e85`. First delivery priority is the full editable physical 5×8 APC Patchbay for Jill’s morning and live Pi Pico CDC selection in Diagnostics. The live Diagnostics Pico CDC selection passed. The full editable physical 5×8 awaits scoped acceptance evidence from Project Manager, who sequences delivery under this plan. Architect owns contracts and target limits, and UI Designer owns the workflow and visual review. The operative weekly Codex floor is 5%. The use-case legend governs details in the concept image. [APC Patchbay concept](design/visuals/apc-patchbay-journey.png) · [Use-case legend](USE_CASES.md#proposed-editable-apc-patchbay--pre-go-concept)
 
 ### Current acceptance audit
 

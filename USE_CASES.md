@@ -15,7 +15,7 @@ Use the browser to identify equipment, configure named routes and diagnose a sig
 | Perform away from the computer | Physical APC → Patch viewport and keybed | A prepared hardware destination receives the performance. [Performance](#prepare-and-play-a-set) |
 | Trace a silent note or capture a take | Diagnostics for MIDI and LED checks, Recordings for the Pi take | Observe actual receipt or download the finalized WAV. [Troubleshooting and recording](#follow-a-note-and-record-a-take) |
 | Play a local MIDI file into a remote route | Home → MIDI File | Choose the published WSS MIDI input and start playback. [File playback](#play-a-local-midi-file) |
-| Build a pattern later | APC Sequence mode or a dedicated Circuit-style simulator | Both surfaces show the same MIDI pattern and transport. [Deferred sequencing](#deferred-sequencing-on-two-surfaces) |
+| Explore the Circuit surface now and build a pattern later | APC Sequence mode or a dedicated Circuit-style simulator | Both surfaces show the same MIDI pattern and transport. [Deferred sequencing](#deferred-sequencing-on-two-surfaces) |
 
 ### Browser structure and appearance
 
@@ -44,6 +44,8 @@ On Stop, connection loss, or replacement of the file or target, cancel scheduled
 The WSS MIDI input receives musical events. Pi router CLI, Pico CDC over direct Web Serial, and authenticated WSS Pico CDC are command paths. Direct USB Web MIDI is a separate local device selection. **Physical-laptop gate:** confirm the actual browser, device or router identity, selected port and downstream note/release on the nominated setup; record any access or disconnect limitation.
 
 ### Deferred sequencing on two surfaces
+
+**First visible page.** On each canonical or Pi release, show **Circuit** on Home only when that release serves `/circuit/` and the page links back to Home. The link indicates that the preview is available. Opening it requires no WSS, serial or sequencer probe. The page opens directly to **Track 1 · Pattern 1** and sixteen numbered step positions in two rows of eight. Use the dedicated simulator panel in the [sequence concept sheet](design/visuals/sequence-surfaces.svg) for layout. Its lit example steps illustrate a future pattern. On initial delivery the page shows **Sequencer unavailable on this router** beside the transport. Steps have neutral outlines and no playback marker. Keyboard or pointer focus may identify a position (for example, **Step 5 of 16**). Focus is local inspection only. Keep Play, Stop and pitch editing visibly unavailable with the same explanation. Home navigation works. Pattern contents, transport and MIDI output require the shared backend; the browser owns no sequence clock, playable pattern or saved musical state.
 
 The first design exercise is **one MIDI track and one 16-step pattern**. Track identity, MIDI destination, enabled steps and playing position have the same meaning on both surfaces. Both translate gestures into intent for the shared Session/Sequencer and render resulting state. Musical Time owns transport and clock, sequence playback enters the ordinary MIDI graph and Projects owns durable saves. Changing surface or view should preserve musical state. Distinguish an applied edit from an acknowledged project save. These are forward design assumptions for review. [Sequencing boundary](ARCHITECTURE.md#time-and-future-sequencing)
 

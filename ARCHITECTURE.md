@@ -99,7 +99,7 @@ The computer-visible read-only filesystem is **not** this writable project store
 
 Inside the APC frontend, keep protocol decoding/encoding separate from view/gesture interpretation even though one owner initially owns both. Other frontends neither impersonate the APC nor import its view implementation.
 
-Physical and simulated panel messages reach the production APC frontend through Computer connections or platform MIDI. The frontend translates panel gestures into typed commands and renders state-derived LED feedback. Keybed notes enter the production MIDI graph through musical ingress. The verified desktop profile uses a passive APC viewport. Its navigation only changes which five source rows and eight destination columns are visible. Route editing stays in the local CLI. Physical APC acceptance remains separate. [APC viewport contract](api/routing.md#apc-viewport)
+Physical and simulated panel messages reach the production APC frontend through Computer connections or platform MIDI. The frontend translates panel gestures into typed commands and renders state-derived LED feedback. Keybed notes enter the production MIDI graph through musical ingress. The desktop passive viewport and the installed Pico editable Patchbay use the same logical route model. Keep their exercised capabilities explicit until the product paths converge. [APC viewport contract](api/routing.md#apc-viewport) · [Installed matrix](api/pico-target.md#installed-patchbay-matrix)
 
 Independently running components exchange MIDI or the serial CLI byte stream. On RP2040, the browser can select computer-visible MIDI ports. The desktop WebSocket adapter carries the same APC messages to the production frontend. Router inventory, status and route control are available through the local serial CLI. Typed routing, port registration and delivery accounting stay within the production runtime.
 
@@ -136,7 +136,7 @@ Preserve GridZero's useful interaction ideas without inheriting its synth requir
 - Both views operate the same routes, tracks and transport. Changing views does not stop musical behavior.
 - Synth master-filter/volume behavior is not inherited. Any encoder allocation for external-instrument MIDI controls must be explicitly specified.
 
-Published [Patch controls](api/patchbay-controls.md) pin the implemented gestures, mappings and feedback. Future Circuit controls need their own approved specification.
+Published Patch controls pin the implemented gestures, mappings and feedback. The first Circuit browser page can ship independently as an inspection-only 16-step view. Show that the selected router lacks a sequencer. Step focus is presentation state. Playback, pitch edits, pattern data, timing and MIDI output require the shared backend. Do not enable those controls based on page availability. [Patch controls](api/patchbay-controls.md) · [Circuit preview](USE_CASES.md#deferred-sequencing-on-two-surfaces)
 
 The standalone Diagnostics page exposes the local serial CLI and connection status offline. Its MIDI controls send sequences through a separately selected MIDI port. Computer connections owns both transports and the browser client. The CLI frontend owns command text and calls Session/control for inventory, device colors and route commands. Application Assembly packages Diagnostics on the read-only `GRIDPICO` drive. [Diagnostics and local router](api/local-router.md)
 
@@ -169,24 +169,30 @@ The operator selects available ports and routes explicitly. A local adapter's ac
 
 ### RP2040 computer connection
 
-The first physical firmware gate uses CDC and two native MIDI cable pairs. The planned wider composite allocation below has a separate resource and hardware gate. The Pico routes the physical APC keybed to the MicroFreak on its PIO USB host bus. The optional authenticated Pi relay carries native MIDI and separately authorized CDC bytes, while the Pico owns the musical graph, controller semantics and LED feedback. Recovery and exact device identity precede deployment. [Pico target and relay](api/pico-target.md)
+The installed Pico matrix uses CDC and two native MIDI cable pairs. The Pico owns the physical USB host graph, controller semantics and LED feedback. The Pi can relay selected native MIDI and separately authorized Pico CDC bytes. Its own router CLI controls the Pi graph. [Pico target and relay](api/pico-target.md)
 
-Native USB provides one composite device with:
+The next native USB allocation uses one composite device.
 
 | Function | Purpose |
 | --- | --- |
-| Three general MIDI input/output pairs | Computer applications, recording/injection and explicit PC-to-PC routing |
-| Two APC simulator MIDI pairs | Separate simulated keybed and surface/LED traffic |
-| CDC | Optional text/control/diagnostic transport, not a dependency of the kernel |
-| Read-only mass storage: `GRIDPICO` | Static self-contained HTML interface and offline documentation |
+| MIDI A and MIDI B | Bidirectional general pairs on cables `0` and `2`, with independently assignable directional ports |
+| APC Panel/LED | Dedicated bidirectional surface and feedback on cable `1` |
+| CDC | Shared CLI transport and target recovery |
+| Planned read-only mass storage `GRIDPICO` | Static HTML tools and offline documentation |
 
-The five MIDI pairs are a proposed port allocation satisfying the minimum of three general-purpose pairs. They are ports/cables, not MIDI channels. Application Assembly and RP2040 HAL must budget descriptors, endpoints, buffers, flash and CPU together. Public names are product configuration, not legacy compatibility commitments.
+This is the next standard native allocation. The three MIDI pairs share one physical USB endpoint pair. The read-only census verified actual enumeration. Promote the descriptor after asymmetric send and receive, mode and release cleanup, and target resource and recovery checks. Keep exact source and verified flash rollback for the installed release until replacement passes. [Three-pair contract and census](api/pico-target.md#next-native-keys-and-patchbay-increment)
 
 The read-only volume contains `HOME.HTM`, the standalone `INDEX.HTM` and `DIAG.HTM` tools, documentation and a version manifest. Generate its immutable filesystem image at build time and serve it directly from flash. Host writes are rejected at the storage protocol boundary. Keep it separate from writable settings and projects, with defined behavior during flash operations.
 
 At revision `36c61af1`, rpico-bridge sets up a native TinyUSB composite device with one MIDI cable pair, CDC and build-optional MSC. Its PIO host task services a separate root port. It links the prebuilt documentation image into read-only data and serves bounded reads while rejecting writes. These source patterns are reference evidence for firmware planning. [Composite descriptor](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_device.c#L62-L71) · [Host and device servicing](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_host.c#L70-L108) · [Image build](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/CMakeLists.txt#L64-L89) · [Read-only storage callbacks](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_docs_msc.c#L46-L88)
 
-The reference records a complete read of its 512 KiB drive and reported write protection, and documents earlier PIO hub checks. Gridpico's five-pair enumeration and traffic separation, planned hub and power setup, hotplug behavior, live browser connection and MIDI timing while opening, copying or ejecting `GRIDPICO` all require target evidence. Users open the offline HTML explicitly. [Reference bench results](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/docs/STATE.md) · [Reference hardware evidence](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/docs/HARDWARE.md)
+The reference records a complete read of its 512 KiB drive and reported write protection. Gridpico must verify mounted-drive behavior and MIDI service during disk activity on its own target. Users open the offline HTML explicitly. [Reference bench results](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/docs/STATE.md)
+
+### Single-product staging
+
+1. Reuse `frontends/cli` on Pico and Pi. Start with `help`, `help <command>`, `status` and `inventory` through one command table for dispatch and help. Use the selected runtime's actual providers for each advertised command and subform. A known form without a provider reports unavailable. Keep the existing bounded line and reply contract and typed Session callbacks. Size the Pico parser, stack and nonblocking CDC reply path on the linked target, including full-width status revisions. Preserve the cooperative BOOTSEL path and its authority from early startup. Verify a real Pico USB CDC terminal and the Pi loopback terminal. Diagnostics sends CLI bytes through its selected authorized provider and consumes that target's replies. Keep the Pico-via-Pi Diagnostics form on its existing read-oriented scope until the new forms are explicitly admitted. A transcript connection does not establish typed Routing support.
+2. Register live USB MIDI inventory within target bounds, then bind operator-selected directional ports and controller roles to stable logical IDs. Adapters report interface and cable identity separately from MIDI channel, attachment generation and display name. Match a return to a uniquely verified identity or an explicit operator-bound physical path. Conflicts stay visible and routes stay Pending. Aliases change labels only. Graph currently reads a startup registry, so qualifying runtime registration and retirement is a dependency for dynamic Patchbay. Session preserves desired routes and placements while detach and replacement retire scoped releases. Publish measured device, hub, interface, endpoint, branch and release bounds independently. A volatile binding is available before target Save is qualified.
+3. Advance one normal Pico and one normal Pi release from verified source, then retire superseded product toggles and fixed bench routes. Qualify the real rig's selected routing and three-pair native roles, watchdog/BOOTSEL and exact readback before promotion. Keep probes and deterministic fixtures in testing or release history. A retained rollback image does not impose a second product profile or legacy format compatibility. The Circuit browser preview is independent of these steps.
 
 ## 6. Dependencies and replaceability
 
@@ -202,7 +208,7 @@ Arrows in the [architecture diagram](docs/diagrams/README.md) show data or contr
 
 Application Assembly publishes one effective capacity profile for each supported target or deterministic simulation setup, with backend input and domain validation. Optional features report availability separately. Kernel limits apply before a configuration becomes live. Queues and other performance resources have finite bounds and explicit exhaustion behavior. Frontends page endpoints and report limits using the current profile and command results. The [capacity contract](api/README.md#capacity-profiles) lists the required units and admission rules.
 
-The verified desktop profile maps the five-by-eight APC viewport over six managed source rows and nine managed destination columns. Its 18 directional ports and 200 release credits reflect the tested desktop workload. Registry backing, live peer admission, fan-out, held occurrences, release capacity and queue isolation are target-specific. The proposed five-pair RP2040 composite layout with active routing and read-only disk activity remains a separate workload. WSS publication is independent of registry size. [Configurable profile contract](api/routing.md#profile-and-admission)
+The verified desktop profile maps the five-by-eight APC viewport over six managed source rows and nine managed destination columns. Its 18 directional ports and 200 release credits reflect the tested desktop workload. Registry backing, live peer admission, fan-out, held occurrences, release capacity and queue isolation are target-specific. Pico's three-pair census and its mixed-traffic qualification are distinct. WSS publication is independent of registry size. [Configurable profile contract](api/routing.md#profile-and-admission)
 
 ## 7. Agent mapping and ownership
 
