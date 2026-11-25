@@ -2,7 +2,7 @@
 
 **A portable MIDI workstation for routing and transforming existing instruments, with sequencing planned for later. The production kernel and Pico firmware remain MIDI-only; optional instruments run as independent peers.**
 
-Gridpico connects existing instruments through interchangeable controllers and platform backends. Linux x86_64 and Raspberry Pi arm64 paths have verified evidence. Windows and broader Linux ARM coverage remain open. The RP2040 bench has RAM-only CDC/BOOTSEL and limited native MIDI endpoint evidence. Full routing, mounted-drive access and permanent firmware acceptance remain open.
+Gridpico connects existing instruments through interchangeable controllers and platform backends. Linux x86_64 and Raspberry Pi arm64 have verified paths. On the RP2040-Zero bench, installed firmware `3ae97ba` runs Patchbay and a USB CDC CLI. Startup, USB CDC and cooperative BOOTSEL recovery passed. Jill demonstrated the selected physical APC-to-MicroFreak route. Pi-hosted Diagnostics reaches the Pico CLI over the private LAN; deployed browser-to-Pico MIDI remains open. Windows and broader Linux ARM qualification remain open. See [current acceptance](ROADMAP.md#current-product-status), [installed Pico firmware evidence](api/pico-target.md#installed-patchbay-matrix) and [live Diagnostics CDC](platform/linux/PI_ROUTER.md#pico-console-from-diagnostics).
 
 The repository includes the production MIDI router, Web APC and Diagnostics tools, CLI, offline browser assets and separate instrument peers. See the [roadmap](ROADMAP.md) for verified scope and remaining gates.
 
@@ -18,7 +18,7 @@ The repository includes the production MIDI router, Web APC and Diagnostics tool
 | [At a glance](docs/AT_A_GLANCE.md) and [other documentation](docs/) | Documentation | User-facing overview, setup, validation and hardware references |
 | [Diagrams](docs/diagrams/README.md) | Documentation, with Architect and Session Manager review | Visual architecture/team maps and editable Mermaid sources |
 | [Editorial policy](docs/EDITORIAL_POLICY.md) | Documentation | Source homes, acceptance notes and owner curation |
-| [Full documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25/gridpico-documentation.pdf) | Documentation | Downloadable, revision-stamped offline snapshot; [build instructions](docs/PDF_BUILD.md) |
+| [Full documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25/gridpico-documentation.pdf) | Documentation | Dated offline snapshot from source commit `7f31f2e`; [build instructions](docs/PDF_BUILD.md) |
 
 ## Documentation owners
 
@@ -91,6 +91,6 @@ Use a separate checkout and the same Docker daemon as rpico-bridge. The containe
 
 ## Scope and provenance
 
-APC is the preferred interface, not the identity of the kernel. Its Web APC controller exercises the production APC frontend; CLI and future piano controls use the same musical commands. The RP2040 target design includes a read-only USB drive for static HTML/documentation. Gridpico’s full instrument-routing and mounted-drive acceptance remain pending. Desktop deployments do not emulate a USB disk or CDC when they do not need them.
+APC is the preferred interface, not the identity of the kernel. Its Web APC controller exercises the production APC frontend; CLI and future piano controls use the same musical commands. The selected physical APC-to-MicroFreak route has been demonstrated. Broader routing and device qualification, including seven-device USB and P-95 DIN MIDI, remain open. Mounted `GRIDPICO` drive access is a target design whose acceptance remains open. See [current acceptance](ROADMAP.md#current-product-status) and the [Pico route contract](api/pico-target.md#standalone-firmware-route). Desktop deployments do not emulate a USB disk or CDC when they do not need them.
 
 Earlier projects are design references and experiments only. No product code is imported. The development-tooling attribution is in [Sources](docs/SOURCES.md) and the corresponding [notice](third_party/notices/rpico-bridge-MIT.txt). The repository uses the [MIT license](LICENSE) selected when the human created it.

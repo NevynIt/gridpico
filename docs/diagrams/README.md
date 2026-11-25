@@ -2,7 +2,7 @@
 
 ## Musical architecture
 
-**Two important distinctions:** Web APC Keybed MIDI reaches the graph through Computer connections, while Panel commands pass through the production APC frontend and its state-derived LED feedback returns to the browser. Linux x86 and ARM share one Linux HAL owner/implementation family. RP2040 RAM-only selected routing/WSS is verified for the bench profile; persistent deployment and Windows remain pending. Platform services are documented in the [API index](../../api/README.md#platform-services).
+**Two important distinctions:** Web APC Keybed MIDI reaches the graph through Computer connections, while Panel commands pass through the production APC frontend and its state-derived LED feedback returns to the browser. Linux x86 and ARM share one Linux HAL owner/implementation family. Installed RP2040 firmware startup, USB CDC and BOOTSEL recovery passed, and Jill demonstrated the selected physical APC-to-MicroFreak route. Broader Patchbay acceptance, mounted-drive access, direct browser Web Serial and Windows remain open. Earlier RAM-only WSS checks are separate [bench evidence](../../ROADMAP.md#approved-physical-pico-and-cdc-delivery). Platform services are documented in the [API index](../../api/README.md#platform-services).
 
 Arrows describe interaction/dependency boundaries, not a requirement for threads, processes or dynamic loading. The kernel is one portable implementation. The native proof and browser fixtures use separate runtime instances of shared code. Browser Web MIDI selects an OS port directly; it does not require the Node host. Application Assembly gives Raw LED replay exclusive ownership of APC LED RX during replay, then restores the committed APC page. These are software modules; agent ownership is shown in the second diagram.
 
@@ -70,7 +70,7 @@ flowchart TB
   projects <--> hal
   piano <-->|"Feedback service"| hal
   subgraph targets["Platform implementations and target designs"]
-    rp["RP2040 composite USB / PIO host<br/>RAM-only route/WSS bench verified<br/>persistent deployment pending"]
+    rp["RP2040 composite USB / PIO host<br/>installed startup / CDC / BOOTSEL verified<br/>selected physical route demonstrated"]
     subgraph linux["One Linux HAL owner — shared OS implementation"]
       lx["Linux x86_64<br/>ALSA MIDI adapter implemented"]
       la["Linux ARM<br/>Pi arm64 exercised; broader coverage open"]

@@ -1,6 +1,6 @@
 # Hardware bench topology
 
-This page records the owner-supplied Gridpico bench setup. Original-bridge CDC recovery and remote CDC were verified. Gridpico’s exact RAM-only route candidate passed final WSS/browser audit and returned to the original bridge with the full flash matched. This is limited to the recorded synthetic C4 and Pad 00 Off/Active checks. Full physical-key performance, acoustic output, visually confirmed LEDs, mounted-drive browser access, browser-local Web Serial and permanent firmware acceptance remain open. See the [Pico bench operator note](PICO_BENCH.md) and [delivery evidence](../ROADMAP.md#approved-physical-pico-and-cdc-delivery).
+This page records the owner-supplied Gridpico bench setup. Installed Pico firmware `3ae97ba` passed startup, USB CDC and cooperative BOOTSEL recovery. Jill demonstrated the selected physical APC-to-MicroFreak route. Broader Patchbay editing and audition, audible output, visible LED confirmation, mounted-drive browser access, direct browser Web Serial and wider device qualification remain open. Earlier RAM-only WSS checks are separate [bench evidence](../ROADMAP.md#approved-physical-pico-and-cdc-delivery). See the [Pico bench operator note](PICO_BENCH.md), [current acceptance](../ROADMAP.md#current-product-status) and [installed firmware evidence](../api/pico-target.md#installed-patchbay-matrix).
 
 ## Connections
 
