@@ -1,0 +1,207 @@
+#!/usr/bin/env python3
+"""Queue one message for an original Gridpico seat."""
+
+import argparse
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+
+
+ROSTER = Path(__file__).resolve().parent.parent / ".team/local/roster.json"
+SEAT_NAME = re.compile(r"[A-Za-z0-9]+(?:[ _\t-]+[A-Za-z0-9]+)*")
+THREAD_ID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
+
+
+class SendError(Exception):
+    def __init__(self, message, status=2):
+        super().__init__(message)
+        self.status = status
+
+
+def normalize(name):
+    name = name.strip(" \t")
+    return re.sub(r"[ _\t-]+", "-", name).lower() if SEAT_NAME.fullmatch(name) else None
+
+
+def read_roster():
+    try:
+        roster = json.loads(ROSTER.read_text(encoding="utf-8"))
+        seats = roster["agents"]
+        if not isinstance(seats, list) or not seats:
+            raise ValueError
+        for seat in seats:
+            if not normalize(seat["seat"]) or (seat.get("alias") and not normalize(seat["alias"])):
+                raise ValueError
+    except (OSError, UnicodeError, ValueError, KeyError, TypeError, AttributeError):
+        raise SendError(f"invalid or unreadable roster at {ROSTER}; contact Session Manager") from None
+    return seats
+
+
+def label(seat):
+    return normalize(seat.get("alias") or seat["seat"])
+
+
+def matching_seats(seats, key):
+    return [seat for seat in seats if key and key in (label(seat), normalize(seat["seat"]))]
+
+
+def resolve(seats, name):
+    matches = matching_seats(seats, normalize(name))
+    if not matches:
+        raise SendError(f"unknown seat {name!r}")
+    if len(matches) != 1:
+        raise SendError(f"ambiguous seat {name!r}; use a unique full seat name or roster alias")
+    return matches[0]
+
+
+def asserted_sender(seats, value):
+    if any(not 0x20 <= ord(char) <= 0x7e for char in value):
+        raise SendError("invalid --from; use a one-line NAME or NAME@LOCATION")
+    name, separator, location = value.partition("@")
+    name = normalize(name)
+    location = normalize(location) if separator else "dev"
+    if not name or not location:
+        raise SendError("invalid --from; use a one-line NAME or NAME@LOCATION")
+    matches = matching_seats(seats, name)
+    if len(matches) > 1:
+        raise SendError("ambiguous --from; use a unique full seat name or roster alias")
+    return f"{label(matches[0]) if matches else name}@{location}"
+
+
+def herdr_result(*args):
+    try:
+        result = subprocess.run(["herdr", *args], capture_output=True, timeout=5, check=True)
+        return json.loads(result.stdout)["result"]
+    except (OSError, subprocess.SubprocessError, UnicodeError, ValueError, KeyError, TypeError):
+        raise SendError(f"Herdr lookup failed ({' '.join(args)})") from None
+
+
+def native_id(pane):
+    if not isinstance(pane, dict) or pane.get("agent") != "codex":
+        return None
+    session = pane.get("agent_session")
+    if isinstance(session, dict) and session.get("kind") == "id":
+        value = session.get("value")
+        if isinstance(value, str) and THREAD_ID.fullmatch(value):
+            return value
+    return None
+
+
+def recorded_id(seat):
+    thread = seat.get("codex_session_id")
+    return thread if isinstance(thread, str) and THREAD_ID.fullmatch(thread) else None
+
+
+def live(pane):
+    return (isinstance(pane, dict) and pane.get("agent") == "codex"
+            and pane.get("agent_status") in {"working", "idle", "done", "blocked"}
+            and pane.get("interactive_ready") is not False)
+
+
+def current_pane():
+    # Without an originating pane, Herdr can report the currently focused pane.
+    if pane_id := os.environ.get("HERDR_PANE_ID"):
+        try:
+            pane = herdr_result("pane", "current", "--current")["pane"]
+            if isinstance(pane, dict) and pane.get("pane_id") == pane_id:
+                return pane
+        except (SendError, KeyError, TypeError, AttributeError):
+            pass
+    return None
+
+
+def infer_sender(seats, pane):
+    if live(pane):
+        matches = [seat for seat in seats if seat.get("pane_id") == pane["pane_id"]]
+        if len(matches) == 1 and (thread := recorded_id(matches[0])):
+            if pane.get("agent_session") is None or native_id(pane) == thread:
+                return f"{label(matches[0])}@dev"
+    raise SendError("cannot identify a unique sender from the current Herdr pane; use --from NAME")
+
+
+def recipient_thread(seat):
+    name = label(seat)
+    thread = recorded_id(seat)
+    if thread is None:
+        raise SendError(f"offline seat {name}: no valid recorded Codex thread", 3)
+    agents = herdr_result("agent", "list")
+    if not isinstance(agents, dict) or not isinstance(agents.get("agents"), list):
+        raise SendError("Herdr agent list did not return live agent records")
+    matches = [agent for agent in agents["agents"] if live(agent) and native_id(agent) == thread]
+    if not matches:
+        raise SendError(f"offline or unrecognized seat {name}: original Codex thread is not live in Herdr", 3)
+    if len(matches) != 1:
+        raise SendError(f"Herdr reports multiple owners of the Codex thread for {name}")
+    return thread
+
+
+def queue_executable(pane):
+    if not live(pane):
+        return shutil.which("codex") or "/opt/codex/bin/codex"
+    pane_id = pane["pane_id"]
+    result = herdr_result("pane", "process-info", "--pane", pane_id)
+    info = result.get("process_info") if isinstance(result, dict) else None
+    if not isinstance(info, dict) or info.get("pane_id") != pane_id:
+        raise SendError("Herdr did not return process information for the current pane")
+    processes = info.get("foreground_processes")
+    if not isinstance(processes, list):
+        raise SendError("Herdr did not return foreground processes for the current pane")
+    pids = {proc["pid"] for proc in processes if isinstance(proc, dict) and proc.get("name") == "codex"
+            and type(proc.get("pid")) is int and proc["pid"] > 0}
+    if len(pids) != 1:
+        raise SendError("cannot find a unique foreground Codex executable in the current pane")
+    return f"/proc/{pids.pop()}/exe"
+
+
+def send(executable, thread, sender, recipient, body):
+    message = f"FROM: {sender}\n{body}"
+    try:
+        result = subprocess.run([executable, "queue", "--thread", thread, "--message", message])
+    except FileNotFoundError:
+        raise SendError("native queue unavailable: installed codex executable was not found", 127) from None
+    except OSError as error:
+        raise SendError(f"native queue could not start: {error.strerror}", 126) from None
+    if result.returncode < 0:
+        raise SendError(f"native queue for {recipient} stopped by signal {-result.returncode}", 128 - result.returncode)
+    if result.returncode:
+        raise SendError(f"native queue for {recipient} failed with exit status {result.returncode}", result.returncode)
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Queue a message to a Gridpico seat with an automatic FROM line.",
+        epilog="Example: ./scripts/seat-send architect 'message'",
+    )
+    parser.add_argument("--from", dest="sender", metavar="NAME[@LOCATION]", help="assert a sender name, including a human name")
+    parser.add_argument("recipient", metavar="SEAT", help="roster seat name or alias")
+    parser.add_argument("message", nargs="?", metavar="MESSAGE", help="one quoted message, or omit to read stdin")
+    args = parser.parse_args()
+    try:
+        body = args.message
+        if body is None:
+            if sys.stdin.isatty():
+                raise SendError("provide a message argument or pipe the message on stdin")
+            body = sys.stdin.buffer.read().decode("utf-8")
+        body.encode("utf-8")
+        if not body or "\0" in body:
+            raise SendError("provide a nonempty message without NUL bytes")
+        seats = read_roster()
+        recipient = resolve(seats, args.recipient)
+        pane = current_pane()
+        sender = asserted_sender(seats, args.sender) if args.sender is not None else infer_sender(seats, pane)
+        thread = recipient_thread(recipient)
+        send(queue_executable(pane), thread, sender, label(recipient), body)
+    except UnicodeError:
+        raise SendError("message must be UTF-8") from None
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SendError as error:
+        print(f"seat-send: {error}", file=sys.stderr)
+        sys.exit(error.status)
