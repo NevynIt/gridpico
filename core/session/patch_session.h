@@ -79,6 +79,9 @@ gridpico_result gridpico_patch_session_set_apc_patch_cell(void *context,
                                                         gridpico_revision layout_revision,
                                                         gridpico_revision graph_revision,
                                                         uint8_t row, uint8_t column, bool enabled);
+/* Notify Session of a newly admitted managed input before accepting its notes. */
+gridpico_result gridpico_patch_session_add_apc_attack_source(
+    gridpico_patch_session *session, size_t registry_index, gridpico_port_id source);
 /* Assembly checks that ingress belongs to the current attachment. */
 void gridpico_patch_session_observe_apc_patch_note(gridpico_patch_session *session,
                                                 const gridpico_ingress_note *input, uint64_t now_us);

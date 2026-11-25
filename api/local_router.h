@@ -31,6 +31,10 @@ typedef struct {
     size_t managed_fanout_limit;
     size_t occurrence_limit;
     size_t release_credit_limit;
+    /* Optional total inventory ceilings for managed device append. Both zero
+     * keeps the startup inventory fixed. These do not set socket limits. */
+    size_t dynamic_device_limit;
+    size_t dynamic_port_limit;
 } gridpico_local_profile;
 
 typedef enum {

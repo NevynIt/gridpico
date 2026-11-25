@@ -83,6 +83,9 @@ gridpico_result gridpico_patch_graph_init_local_profile(
     gridpico_patch_graph *graph, const gridpico_local_registry *registry,
     const gridpico_local_profile *profile, gridpico_deliver_note_fn deliver_note,
     gridpico_local_deliver_raw_fn deliver_raw, void *delivery_context);
+gridpico_result gridpico_patch_graph_append_managed_device(
+    gridpico_patch_graph *graph, const gridpico_patch_device *device,
+    const gridpico_patch_port *ports, size_t port_count);
 gridpico_result gridpico_patch_graph_update_port(void *context,
                                                 const gridpico_patch_port_update *update);
 gridpico_result gridpico_patch_graph_set_route(void *context,

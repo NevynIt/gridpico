@@ -161,7 +161,16 @@ static bool read_limits(gridpico_local_profile *limits, char *rest)
         if (!integer(&rest, ceilings[i], &values[i])) return false;
     }
     if (values[0] == 0 || *word(&rest) != '\0') return false;
-    *limits = (gridpico_local_profile){values[0], values[1], values[2], values[3], values[4], values[5]};
+    *limits = (gridpico_local_profile){
+        .midi_peer_limit = values[0],
+        .managed_branch_limit = values[1],
+        .raw_branch_limit = values[2],
+        .managed_fanout_limit = values[3],
+        .occurrence_limit = values[4],
+        .release_credit_limit = values[5],
+        .dynamic_device_limit = 0,
+        .dynamic_port_limit = 0,
+    };
     return true;
 }
 

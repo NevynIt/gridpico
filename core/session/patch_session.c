@@ -769,6 +769,30 @@ gridpico_result gridpico_patch_session_set_apc_patch_cell(void *context,
     return gridpico_patch_session_set_local_route(context, &request);
 }
 
+gridpico_result gridpico_patch_session_add_apc_attack_source(
+    gridpico_patch_session *session, size_t registry_index, gridpico_port_id source)
+{
+    if (session == NULL || registry_index >= GRIDPICO_PATCH_MAX_PORTS || source == 0 ||
+        source == session->apc_audition_source) {
+        return GRIDPICO_INVALID;
+    }
+    if (session->apc_layout_revision == 0) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+
+    const gridpico_port_id current = session->apc_attack_sources[registry_index];
+    if (current == source) {
+        return GRIDPICO_OK;
+    }
+    if (current != 0 ||
+        find_slot(session->apc_attack_sources, GRIDPICO_PATCH_MAX_PORTS, source) != GRIDPICO_PATCH_MAX_PORTS) {
+        return GRIDPICO_INVALID;
+    }
+
+    session->apc_attack_sources[registry_index] = source;
+    return GRIDPICO_OK;
+}
+
 void gridpico_patch_session_observe_apc_patch_note(gridpico_patch_session *session,
                                                 const gridpico_ingress_note *input, uint64_t now_us)
 {

@@ -553,6 +553,10 @@ static gridpico_result init_local_graph(gridpico_patch_graph *graph, const gridp
     if (configured && profile.midi_peer_limit == 0) {
         return GRIDPICO_INVALID;
     }
+    const bool dynamic = profile.dynamic_device_limit != 0;
+    if (dynamic != (profile.dynamic_port_limit != 0)) {
+        return GRIDPICO_INVALID;
+    }
     if (registry->inventory.device_count > limits.devices || registry->inventory.port_count > limits.ports ||
         (configured && profile.midi_peer_limit > registry->inventory.port_count) ||
         profile.managed_branch_limit > GRIDPICO_LOCAL_MAX_MANAGED_BRANCHES ||
@@ -560,6 +564,11 @@ static gridpico_result init_local_graph(gridpico_patch_graph *graph, const gridp
         profile.managed_fanout_limit > GRIDPICO_LOCAL_MAX_FANOUT ||
         profile.occurrence_limit > GRIDPICO_LOCAL_MAX_NOTE_OCCURRENCES ||
         profile.release_credit_limit > GRIDPICO_LOCAL_MAX_RELEASE_CREDITS) {
+        return GRIDPICO_CAPACITY;
+    }
+    if (dynamic && (profile.dynamic_device_limit > limits.devices || profile.dynamic_port_limit > limits.ports ||
+                    registry->inventory.device_count > profile.dynamic_device_limit ||
+                    registry->inventory.port_count > profile.dynamic_port_limit)) {
         return GRIDPICO_CAPACITY;
     }
     if (!valid_local_registry(registry)) {
@@ -604,6 +613,56 @@ gridpico_result gridpico_patch_graph_init_local_profile(
         return GRIDPICO_INVALID;
     }
     return init_local_graph(graph, registry, *profile, deliver_note, deliver_raw, delivery_context, true);
+}
+
+gridpico_result gridpico_patch_graph_append_managed_device(
+    gridpico_patch_graph *graph, const gridpico_patch_device *device,
+    const gridpico_patch_port *ports, size_t port_count)
+{
+    if (graph == NULL) {
+        return GRIDPICO_INVALID;
+    }
+    const gridpico_local_profile *profile = &graph->local_profile;
+    if (profile->dynamic_device_limit == 0) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    if (device == NULL || ports == NULL || port_count == 0) {
+        return GRIDPICO_INVALID;
+    }
+
+    gridpico_patch_inventory *inventory = &graph->inventory;
+    const size_t first_port = inventory->port_count;
+    if (inventory->device_count >= profile->dynamic_device_limit ||
+        port_count > profile->dynamic_port_limit - first_port || graph->revision == UINT64_MAX) {
+        return GRIDPICO_CAPACITY;
+    }
+    if (device->id == 0 || device->state != GRIDPICO_PATCH_DISCONNECTED || !valid_name(device->name) ||
+        device_index(inventory, device->id) != NO_DEVICE) {
+        return GRIDPICO_INVALID;
+    }
+    for (size_t i = 0; i < port_count; ++i) {
+        const gridpico_patch_port *port = &ports[i];
+        if (port->id == 0 || port->device != device->id || port->state != GRIDPICO_PATCH_DISCONNECTED ||
+            !port->patch_eligible || !valid_name(port->name) || port_index(inventory, port->id) != NO_PORT ||
+            (port->direction != GRIDPICO_PATCH_INPUT && port->direction != GRIDPICO_PATCH_OUTPUT)) {
+            return GRIDPICO_INVALID;
+        }
+        for (size_t j = 0; j < i; ++j) {
+            if (ports[j].id == port->id) {
+                return GRIDPICO_INVALID;
+            }
+        }
+    }
+
+    inventory->devices[inventory->device_count++] = *device;
+    memmove(&inventory->ports[first_port], ports, port_count * sizeof ports[0]);
+    for (size_t i = first_port; i < first_port + port_count; ++i) {
+        graph->port_capabilities[i] = GRIDPICO_LOCAL_PORT_MANAGED;
+        graph->ports[i] = (gridpico_patch_port_runtime){.generation = 1};
+    }
+    inventory->port_count += port_count;
+    ++graph->revision;
+    return GRIDPICO_OK;
 }
 
 gridpico_result gridpico_patch_graph_update_port(void *context,
