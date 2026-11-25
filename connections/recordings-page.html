@@ -8,6 +8,12 @@
     :root { color-scheme: dark; font: 1rem/1.55 system-ui, sans-serif; background: #121617; color: #eef1ef; }
     main { max-width: 38rem; margin: 2rem auto; padding: 0 1.25rem; }
     nav, .actions { display: flex; flex-wrap: wrap; gap: .75rem; align-items: center; }
+    section { margin: 1.5rem 0; padding: 1rem; border: 1px solid #586762; border-radius: .45rem; }
+    h2 { margin: 0 0 .75rem; font-size: 1.2rem; }
+    .muted { color: #bac9c4; }
+    #router { overflow-wrap: anywhere; }
+    #error { color: #ffad9e; margin: 0; }
+    #error:not(:empty) { margin: .75rem 0; }
     [hidden] { display: none !important; }
     a, button { color: inherit; }
     button { font: inherit; padding: .45rem .8rem; border: 1px solid #66726e;
@@ -19,40 +25,65 @@
 </head>
 <body>
 <main>
-  <nav aria-label="Gridpico tools"><a href="/">Home</a><a href="/apc/" target="_blank" rel="noopener">Open Web APC in another tab</a></nav>
+  <nav aria-label="Gridpico tools"><a href="/">Home</a></nav>
   <h1>Recordings</h1>
-  <p>Start a take, then play the Web APC keybed. A take lasts up to 60 seconds.
-    Stop to finalize the WAV. People with access to this router share the recorder and its latest download.</p>
-  <div class="actions" hidden>
-    <button type="button" id="start" disabled>Start</button>
-    <button type="button" id="stop" disabled>Stop</button>
+  <p id="router" class="muted"></p>
+  <section aria-labelledby="take-heading">
+    <h2 id="take-heading">Record a take</h2>
+    <div class="actions" hidden>
+      <button type="button" id="start" disabled>Start</button>
+      <button type="button" id="stop" disabled>Stop</button>
+      <a href="/apc/" target="_blank" rel="noopener">Open this router’s Web APC keybed</a>
+    </div>
+    <p id="status" role="status">Reading recorder status…</p>
+    <p id="error" role="alert"></p>
+    <p class="muted">A take lasts up to 60 seconds. People with access to this router share the recorder and its latest download.</p>
+  </section>
+  <section id="completed" hidden aria-labelledby="completed-heading">
+    <h2 id="completed-heading">Latest completed take</h2>
+    <p id="completed-status" class="muted"></p>
     <a id="download" hidden>Download latest WAV</a>
-  </div>
-  <p id="status" role="status">Reading recorder status…</p>
-  <p id="error" role="alert"></p>
+  </section>
 </main>
 <script>
 (() => {
   const start = document.querySelector("#start");
   const actions = document.querySelector(".actions");
   const stop = document.querySelector("#stop");
+  const completed = document.querySelector("#completed");
+  const completedStatus = document.querySelector("#completed-status");
   const download = document.querySelector("#download");
   const status = document.querySelector("#status");
   const error = document.querySelector("#error");
   let current;
-  let busy = false;
+  let completedId;
+  let pendingAction;
   let refreshTimer;
   let generation = 0;
+  let pageActive = true;
+  document.querySelector("#router").textContent = `Router · ${location.origin}`;
+
+  function setText(element, text) {
+    if (element.textContent !== text) element.textContent = text;
+  }
 
   function render() {
-    const labels = { idle: "Ready to record.", starting: "Starting the recorder…",
-      recording: "Recording.", stopping: "Finalizing the recording…", failed: "The take failed." };
-    status.textContent = current ? labels[current.state] : "Recorder status unavailable.";
-    start.disabled = busy || !current?.actionToken || current.activeId !== null;
-    stop.disabled = busy || !current?.actionToken || !["starting", "recording"].includes(current.state);
-    download.hidden = !current?.completedId;
-    if (current?.completedId) download.href = `/recordings/${current.completedId}.wav`;
+    const labels = { idle: "Ready to record.", starting: "Starting the recorder… Wait before playing.",
+      recording: "Recording. Play the Web APC keybed now. Release the keys before choosing Stop.",
+      stopping: "Finalizing the recording… Wait for the new WAV.",
+      failed: "The take failed. Choose Start to try again." };
+    const unavailable = "Recorder status unavailable. Wait for it to reconnect.";
+    setText(status, pendingAction ? `Requesting recorder ${pendingAction}…` : labels[current?.state] ?? unavailable);
+    start.disabled = Boolean(pendingAction || !current?.actionToken || current.activeId !== null);
+    stop.disabled = Boolean(pendingAction || !current?.actionToken || !["starting", "recording"].includes(current.state));
+    completed.hidden = !current && !completedId;
+    download.hidden = !completedId;
+    if (completedId) download.href = `/recordings/${completedId}.wav`;
     else download.removeAttribute("href");
+    setText(completedStatus, !completedId ? "No finished take yet." :
+      current?.state === "failed" ? "The previous completed take is still available." :
+      current?.activeId || pendingAction ? "Download the previous take while the new take is in progress." :
+      !current ? "Last confirmed completed take." : "The finalized WAV is ready to download.");
   }
 
   async function refresh() {
@@ -65,51 +96,60 @@
       const received = await response.json();
       if (currentGeneration === generation) {
         current = received;
+        completedId = received.completedId;
         actions.hidden = false;
       }
     } catch {
-      if (currentGeneration === generation) current = undefined;
+      if (currentGeneration === generation) {
+        current = undefined;
+        if (unavailable) completedId = undefined;
+      }
     } finally {
       if (currentGeneration === generation) {
         render();
         if (unavailable) {
           actions.hidden = true;
           status.textContent = "Recording is unavailable on this connection.";
-        } else if (!busy) refreshTimer = setTimeout(refresh, 1000);
+        } else if (!pendingAction && pageActive) refreshTimer = setTimeout(refresh, 1000);
       }
     }
   }
 
-  async function act(endpoint) {
-    if (busy || !current?.actionToken) return;
+  async function act(action, endpoint) {
+    if (pendingAction || !current?.actionToken) return;
     clearTimeout(refreshTimer);
     generation++;
     const token = current.actionToken;
-    busy = true;
+    pendingAction = action;
     error.textContent = "";
     render();
     try {
       const response = await fetch(endpoint, { method: "POST", signal: AbortSignal.timeout(5000),
         headers: { "X-Gridpico-Record-Action": token } });
       if (!response.ok) {
-        error.textContent = response.status === 409 ? "The recorder changed. Check its status before trying again." :
-          "The recorder could not accept the request.";
+        error.textContent = response.status === 409 ?
+          "The recorder changed. Check the current take and try again when the action is available." :
+          `Could not ${action} the take. Check recorder status before trying again.`;
       }
     } catch {
-      error.textContent = "The request outcome is unknown. Check recorder status.";
+      error.textContent = `Could not confirm the ${action} request. Check recorder status before trying again.`;
     } finally {
-      busy = false;
-      await refresh();
+      pendingAction = undefined;
+      if (pageActive) await refresh();
     }
   }
 
-  start.addEventListener("click", () => { void act("/recordings/start"); });
-  stop.addEventListener("click", () => { if (current?.activeId) void act(`/recordings/${current.activeId}/stop`); });
+  start.addEventListener("click", () => { void act("start", "/recordings/start"); });
+  stop.addEventListener("click", () => { if (current?.activeId) void act("stop", `/recordings/${current.activeId}/stop`); });
   window.addEventListener("pagehide", () => {
+    pageActive = false;
     generation++;
     clearTimeout(refreshTimer);
   });
-  window.addEventListener("pageshow", event => { if (event.persisted) void refresh(); });
+  window.addEventListener("pageshow", event => {
+    pageActive = true;
+    if (event.persisted) void refresh();
+  });
   void refresh();
 })();
 </script>
