@@ -5,6 +5,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   if (!midi || location.protocol !== "http:" || location.hostname !== "127.0.0.1" ||
       location.pathname !== "/diagnostics/" || location.hash === "#routing") return;
   await midi.ready;
+  if (midi.capabilityStatus === "unavailable") {
+    await new Promise(resolve =>
+      window.addEventListener("gridpico-diagnostics-midi-controls", resolve, { once: true }));
+  }
   const available = midi.capabilities ? midi.capabilities.actions.ledTest :
     midi.startupPorts?.led === 3 && midi.startupPorts.sequence === 4;
   if (!available) return;

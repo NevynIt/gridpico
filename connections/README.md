@@ -271,8 +271,9 @@ loss recovery and browser playback over an OS-exposed RTP port remain open.
 [RTP bench results](../api/linux-midi-adapter.md#linux-alsa-midi-adapter-scope)
 
 Web APC, Diagnostics and FM share the **MIDI server origin** field.
-**Open server** navigates to the same tool at the selected origin
-(`/apc/`, `/diagnostics/` or `/fm/`). Enter the scheme, host and optional port,
+Diagnostics offers a separate tab for another server so the current
+terminal and MIDI bindings stay connected. Web APC and FM can open the
+same tool on the selected server. Enter the scheme, host and optional port,
 with an optional trailing slash. HTTP and WS are accepted on `127.0.0.1`;
 use the configured HTTPS or WSS origin for a remote server. The field
 converts WS to HTTP and WSS to HTTPS for navigation. The tool opens its
@@ -359,20 +360,16 @@ its latest download. Use the authorized SSH forward on literal loopback
 
 From Pi Home, open **Diagnostics**, choose **Pico via Pi · LAN WebSocket CDC**
 and click **Connect**. Check that the terminal shows the connected Pico
-and the Pi relay address. `TRACE` and `HUBTRACE` are available without a
-command check. Choose **Check Pico commands** while the terminal is idle.
-Diagnostics sends `help` for this check once per attachment. After a
-complete reply, it allows the commands the firmware advertised from
-`help [topic]`, `inventory` and `status`. Use a command name shown in the
-reply for the optional help topic.
+and the Pi relay address. Enter text and press Enter or choose **Send**.
+Use Shift+Enter to add a line to the draft. Send adds a final LF when
+needed. The transcript shows the actual Pico reply. Command availability
+depends on the attached firmware. Reconnect explicitly after a loss.
 
-If the check times out or the reply is incomplete or invalid, use
-`TRACE` and `HUBTRACE`. Reconnect to check a fresh attachment. After
-overlapping trace requests, reconnect before checking commands.
-This read-only form leaves maintenance commands, including `BOOTSEL`, to
-the separately configured [Pico console](#separate-pico-service). For Pi
-router commands use **Loopback CLI** through the SSH forward. For a
-direct USB terminal use **Web Serial CDC**.
+The console shares the existing single Pico attachment with
+[Pico maintenance](#separate-pico-service). For Pi router commands use
+**Loopback CLI** through the SSH forward. For a direct USB terminal use
+**Web Serial CDC**. Changing MIDI ports keeps the terminal and its draft
+in place.
 
 ### Opt-in HTTPS/WSS MIDI
 

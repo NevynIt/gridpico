@@ -28,7 +28,7 @@
     .connection { margin-bottom: 1.5rem; }
     .transcript-heading { justify-content: space-between; }
     h2 { font-size: 1rem; margin: 0; }
-    button, input, select {
+    button, input, select, textarea {
       min-height: 2.65rem;
       border: 1px solid #66726e;
       border-radius: .35rem;
@@ -45,7 +45,7 @@
     [data-error], #input-error { color: #ffad9e; }
     #midi-server-status:empty { display: none; }
     #midi-server-origin { max-width: 27rem; }
-    pre, input, code { font-family: ui-monospace, "Courier New", monospace; }
+    pre, input, textarea, code { font-family: ui-monospace, "Courier New", monospace; }
     pre {
       height: clamp(12rem, 49vh, 33rem);
       overflow: auto;
@@ -59,7 +59,7 @@
       overflow-wrap: anywhere;
     }
     label { display: block; margin-bottom: .4rem; }
-    input { flex: 1 1 12rem; min-width: 0; }
+    input, textarea { flex: 1 1 12rem; min-width: 0; }
     #examples, #input-error { margin: .6rem 0 0; font-size: .875rem; }
     #examples { color: #b8c8c1; }
     #input-error:empty { margin: 0; }
@@ -183,10 +183,12 @@
       <pre id="transcript" tabindex="0" aria-labelledby="transcript-heading"></pre>
     </section>
     <form id="terminal" autocomplete="off" data-serial-controls>
-      <label for="command">CLI command</label>
+      <label id="terminal-input-label" for="command">CLI command</label>
       <div class="command-row">
         <input id="command" type="text" aria-describedby="examples input-error"
                autocapitalize="off" spellcheck="false" disabled>
+        <textarea id="pico-input" rows="2" aria-describedby="pico-examples input-error"
+                  autocapitalize="off" spellcheck="false" disabled hidden></textarea>
         <button id="send" type="submit" disabled>Send</button>
       </div>
       <p id="input-error" role="alert"></p>
@@ -195,10 +197,7 @@
         <code>color get &lt;device-id&gt;</code> ·
         <code>color set &lt;device-id&gt; #RRGGBB</code>
       </p>
-      <div id="pico-examples" hidden>
-        <p><span id="pico-commands" role="status">Commands: TRACE and HUBTRACE.</span> Routing is unavailable in this console.</p>
-        <button id="pico-check-commands" type="button" disabled>Check Pico commands</button>
-      </div>
+      <p id="pico-examples" hidden>Text goes to the Pico terminal. Send adds a final line feed if needed.</p>
     </form>
     <section id="routing" hidden aria-labelledby="routing-title">
       <h2 id="routing-title">Routing</h2>
@@ -369,10 +368,7 @@
     const transcriptLimit = 16384;
     const localReplyLimit = 11 * 256; // Eight Routing records, header, terminator, echo and prompt.
     const localReplyTimeout = 5000;
-    const picoHelpTimeout = 3000;
-    const picoHelpLimit = 4096;
-    const picoHelpRecordLimit = 256;
-    const picoHelpCountLimit = 32;
+    const picoInputLimit = 8192;
     const encoder = new TextEncoder();
     const serialProvider = document.querySelector("#serial-provider");
     const connectButton = document.querySelector("#connect");
@@ -385,9 +381,9 @@
     const command = document.querySelector("#command");
     const sendButton = document.querySelector("#send");
     const inputError = document.querySelector("#input-error");
-    const picoCheckButton = document.querySelector("#pico-check-commands");
-    const picoCommands = document.querySelector("#pico-commands");
-    let connecting = false;
+    const picoInput = document.querySelector("#pico-input");
+    const terminalLabel = document.querySelector("#terminal-input-label");
+    let connecting;
     let pageGeneration = 0;
     let connection;
     let localSerial;
@@ -395,10 +391,13 @@
     let picoEndpoint;
     let picoRetry = "Connect";
     let serialNotice = "";
-    const picoReadCommands = new Set(["TRACE", "HUBTRACE"]);
 
     function available(active) {
       return active?.ready && !active.closing && !active.pending;
+    }
+
+    function choosingSerial() {
+      return connecting === pageGeneration;
     }
 
     function providerLabel(provider) {
@@ -406,39 +405,23 @@
       return provider === "loopback" ? "Loopback CLI" : "Web Serial CDC";
     }
 
-    function updatePicoCommands(active) {
-      picoCheckButton.disabled = !available(active) || active.picoChecked || Boolean(active.picoTrace);
-      let message = "Commands: TRACE and HUBTRACE.";
-      if (active?.pending?.picoHelp) message = "Checking the attached Pico for supported commands…";
-      else if (active?.picoCommands) {
-        const admitted = ["TRACE", "HUBTRACE", "help [topic]"];
-        for (const name of ["inventory", "status"]) {
-          if (active.picoCommands.has(name)) admitted.push(name);
-        }
-        message = `Commands: ${admitted.join(", ")}. Use a command name from the help reply as a topic.`;
-      } else if (active?.picoChecked) {
-        message = "The Pico did not confirm additional commands. TRACE and HUBTRACE remain available.";
-      } else if (active?.picoTrace?.overlap) {
-        message = "Reconnect before checking Pico commands after overlapping trace requests.";
-      } else if (active?.picoTrace) {
-        message = "Waiting for the Pico trace to finish before checking commands. Reconnect if it does not finish.";
-      }
-      if (picoCommands.textContent !== message) picoCommands.textContent = message;
-    }
-
     function updateControls() {
       const ready = available(connection) && !connection.ledTest && (!connection.structured || connection.prompt);
-      connectButton.disabled = !serialProvider.value || connecting || Boolean(connection);
+      connectButton.disabled = !serialProvider.value || Boolean(connection) ||
+        (serialProvider.value === "cdc" && connecting !== undefined);
       const picoSelected = serialProvider.value === "pico";
       connectButton.textContent = picoSelected ? picoRetry : serialProvider.value === "loopback" ? "Connect local CLI" : "Connect";
       serialProvider.disabled = Boolean(connection?.ledTest);
-      disconnectButton.disabled = !connecting && (!connection || connection.closing || Boolean(connection.ledTest));
-      command.disabled = !ready;
+      disconnectButton.disabled = !choosingSerial() && (!connection || connection.closing || Boolean(connection.ledTest));
+      terminalLabel.htmlFor = picoSelected ? picoInput.id : command.id;
+      terminalLabel.textContent = picoSelected ? "Pico terminal input" : "CLI command";
+      command.hidden = picoSelected;
+      command.disabled = !ready || picoSelected;
+      picoInput.hidden = !picoSelected;
+      picoInput.disabled = !ready || !picoSelected;
       sendButton.disabled = !ready;
       document.querySelector("#examples").hidden = picoSelected;
       document.querySelector("#pico-examples").hidden = !picoSelected;
-      updatePicoCommands(picoSelected && connection?.pico && !connection.closing ? connection : undefined);
-      command.setAttribute("aria-describedby", (picoSelected ? "pico-examples" : "examples") + " input-error");
       window.dispatchEvent(new Event("gridpico-local-cli-queue"));
     }
 
@@ -461,63 +444,10 @@
       if (pending?.written && (!pending.expectReply || pending.reply !== undefined)) finishCommand(active);
     }
 
-    function readPicoHelp(active, bytes) {
-      const request = active.pending;
-      const check = request?.picoHelp;
-      if (connection !== active || active.closing || !check || request.reply !== undefined) return;
-      if (performance.now() >= check.deadline) {
-        finishCommand(active, new Error("The Pico did not finish the help reply."));
-        return;
-      }
-      const invalid = () => finishCommand(active, new Error("The Pico returned an invalid help reply."));
-      for (const byte of bytes) {
-        if (++check.bytes > picoHelpLimit || check.line.length >= picoHelpRecordLimit) return invalid();
-        check.line += String.fromCharCode(byte);
-        if (byte !== 0x0a) continue;
-        const line = check.line;
-        check.line = "";
-        if (!check.names.size && !check.banner && line === "Gridpico RP2040 router\n") {
-          check.banner = true;
-          continue;
-        }
-        if (line === "OK\r\n" && check.names.has("help")) {
-          request.reply = check.names;
-          completeCommand(active);
-          return;
-        }
-        const match = /^COMMAND ([a-z]+|BOOTSEL)(?: [\x21-\x7e][\x20-\x7e]*)? -- [\x21-\x7e][\x20-\x7e]*\r\n$/.exec(line);
-        if (!match || check.names.has(match[1]) || check.names.size >= picoHelpCountLimit) return invalid();
-        check.names.add(match[1]);
-      }
-    }
-
-    function readPicoTraceEnd(active, chunk) {
-      const trace = active.picoTrace;
-      if (!trace || trace.overlap) return;
-      for (const character of chunk) {
-        if (character !== "\n") {
-          if (trace.line !== null) trace.line = trace.line.length < 32 ? trace.line + character : null;
-          continue;
-        }
-        const line = trace.line;
-        trace.line = "";
-        const ended = trace.command === "TRACE" ? line === "END TRACE" : /^END HUBTRACE [0-9]+$/.test(line);
-        if (ended || /^ERR (INVALID|CAPACITY|UNAVAILABLE)\r$/.test(line)) {
-          active.picoTrace = undefined;
-          updateControls();
-          return;
-        }
-      }
-    }
-
     function readReply(active, chunk) {
       if (connection !== active || active.closing) return;
       appendTranscript(chunk);
-      if (active.pico) {
-        readPicoTraceEnd(active, chunk);
-        return;
-      }
-      if (!active.structured && !active.pending?.expectReply) return;
+      if (active.pico || (!active.structured && !active.pending?.expectReply)) return;
       active.tail = (active.tail + chunk).slice(-localReplyLimit);
       if (active.tail !== "> " && !active.tail.endsWith("\r\n> ")) return;
       if (active.tail === "> " && active.pending) {
@@ -539,9 +469,8 @@
     }
 
     async function writeBytes(active, bytes) {
-      if (active.local || active.pico) {
-        if (!active.handle.send(bytes)) throw new Error(active.pico ? "The Pico console could not send this line." :
-          "The local CLI could not send this line.");
+      if (active.local) {
+        if (!active.handle.send(bytes)) throw new Error("The local CLI could not send this line.");
         return;
       }
       const writer = active.port.writable.getWriter();
@@ -564,15 +493,8 @@
       active.tail = "";
       return new Promise((resolve, reject) => {
         const request = { resolve, reject, expectReply };
-        if (expectReply === "pico-help") {
-          request.picoHelp = { deadline: performance.now() + picoHelpTimeout, bytes: 0, line: "", names: new Set() };
-        }
         request.timer = setTimeout(() => {
           if (active.pending !== request) return;
-          if (request.picoHelp) {
-            finishCommand(active, new Error("The Pico did not finish the help reply."));
-            return;
-          }
           const plainFallback = !active.local && !active.structured && request.written && request.expectReply;
           const message = plainFallback ? "Web Serial did not finish the Routing check. The plain terminal remains available." :
             "The serial session did not finish the command. Reconnect and read back any attempted edit.";
@@ -580,13 +502,8 @@
           finishCommand(active, new Error(message));
           if (!plainFallback) void disconnect(active, message, true);
           updateControls();
-        }, request.picoHelp ? picoHelpTimeout : localReplyTimeout);
+        }, localReplyTimeout);
         active.pending = request;
-        if (active.pico && !active.picoChecked && picoReadCommands.has(line)) {
-          // A deferred CLI error can represent several overlapping trace submissions.
-          if (active.picoTrace) active.picoTrace.overlap = true;
-          else active.picoTrace = { command: line, line: "" };
-        }
         updateControls();
         void writeBytes(active, encoder.encode(line + "\n")).then(() => {
           if (active.pending !== request || active.closing) return;
@@ -621,7 +538,7 @@
 
     window.gridpicoDiagnosticsCli = Object.freeze({
       get attached() { return Boolean(connection); },
-      get loopback() { return Boolean(connection?.local); },
+      get loopback() { return Boolean(connection?.local && !connection.closing); },
       get ready() {
         return Boolean(available(connection) && !connection.pico && !connection.ledTest && !connection.routingFailed &&
           (!connection.structured || connection.prompt));
@@ -633,7 +550,7 @@
       get structured() { return Boolean(connection?.structured); },
       connect() { void connect(); },
       claimLedTest() {
-        if (connecting || serialProvider.value !== "loopback" || (connection &&
+        if (serialProvider.value !== "loopback" || (connection &&
             (!available(connection) || !connection.local || !connection.prompt || connection.ledTest))) {
           throw new Error("Select an available Loopback CLI to run the LED test.");
         }
@@ -798,7 +715,6 @@
         active.handle = open({
           onData(bytes) {
             readReply(active, decoder.decode(bytes, { stream: true }));
-            if (active.pico) readPicoHelp(active, bytes);
           },
           onState(state, reason) {
             if (connection !== active) return;
@@ -833,7 +749,7 @@
             }
             updateControls();
             if (state === "connected" && active.ready && active.focusCommand && !routingView &&
-                location.hash !== "#routing") command.focus();
+                location.hash !== "#routing") (active.pico ? picoInput : command).focus();
           },
         });
       } catch (error) {
@@ -858,7 +774,7 @@
     }
 
     async function connect() {
-      if (connecting || connection || !serialProvider.value) return;
+      if (connection || !serialProvider.value) return;
       if (serialProvider.value === "loopback") {
         connectLocal();
         return;
@@ -867,10 +783,11 @@
         connectSocket(picoEndpoint, "pico", picoSerial);
         return;
       }
+      if (connecting !== undefined) return;
       const generation = pageGeneration;
       let port;
       let opened = false;
-      connecting = true;
+      connecting = generation;
       inputError.textContent = "";
       showStatus("Choose a Web Serial port…");
       updateControls();
@@ -913,52 +830,43 @@
         }
         if (generation === pageGeneration) showStatus(message, !canceled);
       } finally {
-        connecting = false;
-        if (generation !== pageGeneration && !connection) showStatus(`${providerLabel(serialProvider.value)} disconnected.`);
+        connecting = undefined;
         updateControls();
       }
-    }
-
-    async function checkPicoCommands(active) {
-      if (!active?.pico || active.picoChecked || active.picoTrace || !available(active)) return;
-      active.picoChecked = true;
-      try {
-        const names = await exchange(active, "help", "pico-help");
-        if (connection === active && !active.closing) active.picoCommands = names;
-      } catch {
-        // The transcript is still readable. A new attachment is needed for another check.
-      }
-      if (connection === active) updateControls();
-    }
-
-    function admitsPicoCommand(active, line) {
-      if (picoReadCommands.has(line)) return true;
-      const names = active.picoCommands;
-      if (!names) return false;
-      if (line === "help") return true;
-      if (line === "inventory" || line === "status") return names.has(line);
-      return line.startsWith("help ") && names.has(line.slice(5));
     }
 
     async function sendCommand(event) {
       event.preventDefault();
       const active = connection;
       if (!active || active.closing || active.writer) return;
-      const line = command.value;
       inputError.textContent = "";
+      if (active.pico) {
+        if (!available(active)) return;
+        const value = picoInput.value;
+        if (value.length > picoInputLimit) {
+          inputError.textContent = "Send at most 8 KiB at a time.";
+          return;
+        }
+        const bytes = encoder.encode(value.endsWith("\n") ? value : value + "\n");
+        if (bytes.length > picoInputLimit) {
+          inputError.textContent = "Send at most 8 KiB at a time.";
+          return;
+        }
+        if (!active.handle.send(bytes)) {
+          void disconnect(active, "The Pico terminal could not send. Reconnect to continue.", true);
+          return;
+        }
+        picoInput.value = "";
+        return;
+      }
+      const line = command.value;
       if (!line) return;
       if (line.length > commandLimit || !/^[\t\x20-\x7e]+$/.test(line)) {
         inputError.textContent = "Enter one ASCII command of up to 63 bytes.";
         return;
       }
-      if (active.pico && !admitsPicoCommand(active, line)) {
-        inputError.textContent = active.picoCommands ? "Choose a supported read-only command or an advertised help topic." :
-          "Pico Diagnostics accepts TRACE and HUBTRACE. Use Check Pico commands to verify additional support.";
-        return;
-      }
-
       try {
-        if (!active.pico && available(active)) window.dispatchEvent(new Event("gridpico-local-cli-terminal"));
+        if (available(active)) window.dispatchEvent(new Event("gridpico-local-cli-terminal"));
         await exchange(active, line);
         if (connection === active && command.value === line) command.value = "";
       } catch (error) {
@@ -969,9 +877,10 @@
     connectButton.addEventListener("click", connect);
     disconnectButton.addEventListener("click", () => {
       if (connection) void disconnect(connection, connection.pico ? "Pico console disconnected." : undefined);
-      else if (connecting) {
+      else if (choosingSerial()) {
         pageGeneration++;
         showStatus("Serial selection canceled. Close the chooser to continue.");
+        updateControls();
       }
     });
     serialProvider.addEventListener("change", () => {
@@ -980,17 +889,19 @@
       serialNotice = "";
       inputError.textContent = "";
       if (connection) void disconnect(connection, `${providerLabel(serialProvider.value)} selected. Connect to continue.`);
-      else showStatus(connecting ? "Serial selection canceled. Close the chooser to continue." :
-        `${providerLabel(serialProvider.value)} selected. Connect to continue.`);
+      else showStatus(`${providerLabel(serialProvider.value)} selected. Connect to continue.`);
       notifyLocalCli();
       updateControls();
     });
     form.addEventListener("submit", sendCommand);
-    picoCheckButton.addEventListener("click", () => {
-      inputError.textContent = "";
-      void checkPicoCommands(connection);
+    for (const input of [command, picoInput]) {
+      input.addEventListener("input", () => { inputError.textContent = ""; });
+    }
+    picoInput.addEventListener("keydown", event => {
+      if (event.key !== "Enter" || event.shiftKey || event.isComposing) return;
+      event.preventDefault();
+      if (!sendButton.disabled && !event.repeat) form.requestSubmit();
     });
-    command.addEventListener("input", () => { inputError.textContent = ""; });
     command.addEventListener("paste", (event) => {
       if (/[\r\n]/.test(event.clipboardData.getData("text"))) {
         event.preventDefault();
@@ -1010,20 +921,29 @@
       if (connection) void disconnect(connection);
     });
 
-    window.addEventListener("DOMContentLoaded", async () => {
-      await window.gridpicoLocal?.ready;
+    function configureSerialProviders() {
       localSerial = window.gridpicoLocal?.openSerial;
       picoSerial = window.gridpicoLocal?.openPicoCdc;
+      const hadSelection = Boolean(serialProvider.value);
+      const add = (label, value) => {
+        if (!Array.from(serialProvider.options).some(option => option.value === value)) {
+          serialProvider.add(new Option(label, value));
+        }
+      };
       if (picoSerial) {
         picoEndpoint = "USB device selected by the Pi";
-        serialProvider.add(new Option(providerLabel("pico"), "pico"));
+        add(providerLabel("pico"), "pico");
       }
-      if (localSerial) serialProvider.add(new Option("Loopback CLI", "loopback"));
-      if (serial) serialProvider.add(new Option("Web Serial CDC", "cdc"));
+      if (localSerial) add("Loopback CLI", "loopback");
+      if (serial) add("Web Serial CDC", "cdc");
       if (!localPage && !picoSerial) {
         for (const controls of document.querySelectorAll("[data-serial-controls]")) controls.hidden = true;
         document.querySelector("#local-midi-only").hidden = routingView;
-      } else if (serialProvider.value === "pico") {
+      } else {
+        for (const controls of document.querySelectorAll("[data-serial-controls]")) controls.hidden = false;
+      }
+      if (hadSelection) return;
+      if (serialProvider.value === "pico") {
         showStatus(`Configured Pico: ${picoEndpoint} · via Pi ${location.origin}`);
       } else if (serialProvider.value === "loopback") {
         showStatus("Local CLI disconnected.");
@@ -1033,6 +953,11 @@
         showStatus("Web Serial is unavailable in this browser or context.", true);
       }
       updateControls();
+    }
+    window.addEventListener("gridpico-capabilities-updated", configureSerialProviders);
+    window.addEventListener("DOMContentLoaded", async () => {
+      await window.gridpicoLocal?.ready;
+      configureSerialProviders();
     });
 
   </script>

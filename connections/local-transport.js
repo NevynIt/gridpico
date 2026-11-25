@@ -17,6 +17,7 @@
   const roleDirection = new Map([["keybed", "send"], ["panel", "send"], ["led", "receive"],
     ["sequence", "send"], ["monitor", "receive"], ["log", "receive"]]);
   let capabilityStatus = hasSocketMidi ? "loading" : "offline";
+  let capabilityRetry;
   let capabilities;
   let startupPorts;
   let trustedLan = false;
@@ -250,7 +251,8 @@
     });
   }
 
-  function openBytes(path, { direction, onData, onState }, frameLimit, bufferLimit, onClosed, origin = location.origin) {
+  function openBytes(path, { direction, onData, onState }, frameLimit, bufferLimit, onClosed,
+      origin = location.origin, sendChunkSize) {
     const url = new URL(path, origin);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(url);
@@ -288,15 +290,24 @@
     return Object.freeze({
       send(bytes) {
         if (closing || direction === "receive" || socket.readyState !== WebSocket.OPEN ||
-            !(bytes instanceof Uint8Array) || bytes.byteLength === 0 || !frameLimit(bytes.byteLength)) {
+            !(bytes instanceof Uint8Array) || bytes.byteLength === 0 ||
+            (!sendChunkSize && !frameLimit(bytes.byteLength))) {
           return false;
         }
         if (socket.bufferedAmount + bytes.byteLength > bufferLimit) {
           close(4000, "Too much queued input");
           return false;
         }
-        socket.send(bytes);
-        return true;
+        try {
+          const chunkSize = sendChunkSize ?? bytes.byteLength;
+          for (let offset = 0; offset < bytes.byteLength; offset += chunkSize) {
+            socket.send(bytes.subarray(offset, offset + chunkSize));
+          }
+          return true;
+        } catch {
+          close(4000, "Could not send bytes");
+          return false;
+        }
       },
       close() {
         requestedClose = true;
@@ -428,7 +439,7 @@
     window.dispatchEvent(new CustomEvent("gridpico-target-changed", { detail }));
   }
 
-  function mountServerSelection(container, tool, { inPlace = false } = {}) {
+  function mountServerSelection(container, tool, { inPlace = false, preservePage = false } = {}) {
     if (!["/apc/", "/diagnostics/", "/fm/", "/midi-file/"].includes(tool)) throw new TypeError("Choose a Gridpico tool.");
     const offerSwitch = inPlace && tool === "/apc/" && documentOrigin === switchSource;
     const form = document.createElement("form");
@@ -445,7 +456,7 @@
     label.textContent = offerSwitch ? "Server address" : "MIDI server origin";
     button.id = "midi-server-open";
     button.type = "submit";
-    button.textContent = offerSwitch ? "Switch router" : "Open server";
+    button.textContent = offerSwitch ? "Switch router" : preservePage ? "Choose server" : "Open server";
     status.id = "midi-server-status";
     status.setAttribute("role", "status");
     field.setAttribute("aria-describedby", status.id);
@@ -456,7 +467,11 @@
     const fallback = document.createElement("a");
     fallback.id = "midi-server-fallback";
     fallback.hidden = true;
-    if (offerSwitch) form.append(fallback);
+    if (preservePage) {
+      fallback.target = "_blank";
+      fallback.rel = "noopener";
+    }
+    if (offerSwitch || preservePage) form.append(fallback);
     function offerNavigation(origin) {
       fallback.href = origin + tool;
       fallback.textContent = `Open Web APC on ${new URL(origin).host}`;
@@ -469,8 +484,8 @@
     }
     let pending;
     let failedBindings;
+    if (offerSwitch || preservePage) field.addEventListener("input", () => { fallback.hidden = true; });
     if (offerSwitch) {
-      field.addEventListener("input", () => { fallback.hidden = true; });
       window.addEventListener("pagehide", () => pending?.controller.abort());
       window.addEventListener("gridpico-target-bind-failed", event => {
         if (event.detail !== target || pending?.previous === target) return;
@@ -490,7 +505,7 @@
       if (pending) return;
       let origin;
       try {
-        origin = serverOrigin(field.value, offerSwitch);
+        origin = serverOrigin(field.value, offerSwitch || (preservePage && documentOrigin === switchSource));
         const exact = /^(?:http|ws):\/\/(?:127\.0\.0\.1:8767|192\.168\.0\.223:18768)\/?$/i.test(field.value.trim());
         if (offerSwitch && exact) {
           if (origin === target.origin) {
@@ -521,6 +536,17 @@
           }
           return;
         }
+        if (preservePage) {
+          status.removeAttribute("data-error");
+          fallback.hidden = origin === documentOrigin;
+          if (fallback.hidden) status.textContent = `Already using ${origin}.`;
+          else {
+            status.textContent = "Open the other router in a new tab to keep this terminal connected.";
+            fallback.href = origin + tool;
+            fallback.textContent = `Open Diagnostics on ${new URL(origin).host}`;
+          }
+          return;
+        }
         status.textContent = `Opening ${origin}…`;
         status.removeAttribute("data-error");
         window.location.assign(origin + tool);
@@ -542,6 +568,13 @@
 
   const transport = {
     ready: discover(),
+    retryCapabilities() {
+      if (capabilityStatus !== "unavailable") return Promise.resolve();
+      capabilityRetry ??= discover().then(() => {
+        if (capabilityStatus !== "unavailable") window.dispatchEvent(new Event("gridpico-capabilities-updated"));
+      }).finally(() => { capabilityRetry = undefined; });
+      return capabilityRetry;
+    },
     get capabilities() { return capabilities; },
     get capabilityStatus() { return capabilityStatus; },
     get target() { return target; },
@@ -566,22 +599,23 @@
       return socketMidi(portId, options);
     },
   };
-  const serialAdmitted = () => target.origin === documentOrigin && loopback &&
-    (capabilityStatus === "legacy" || target.capabilities?.actions.cli);
+  const serialAdmitted = () => loopback && (capabilityStatus === "legacy" || capabilities?.actions.cli) &&
+    (location.pathname === "/diagnostics/" || target.origin === documentOrigin);
   function serial(options) {
     if (!serialAdmitted()) throw new Error("The selected router has no local CLI connection.");
-    return track(options, callbacks => openBytes("/serial", callbacks, length => length <= 256, 8192));
+    const open = callbacks => openBytes("/serial", callbacks, length => length <= 256, 8192);
+    return location.pathname === "/diagnostics/" ? open(options) : track(options, open);
   }
   Object.defineProperty(transport, "openSerial", {
     get() {
       if (serialAdmitted()) return serial;
     },
   });
-  const picoCdcAdmitted = () => documentOrigin === switchDestination && target.origin === documentOrigin &&
+  const picoCdcAdmitted = () => documentOrigin === switchDestination &&
     location.pathname === "/diagnostics/" && capabilities?.actions.picoCdc === true;
   function openPicoCdc(options) {
     if (!picoCdcAdmitted()) throw new Error("Pico CDC is unavailable on this page.");
-    return track(options, callbacks => openBytes("/cdc", callbacks, length => length <= 256, 8192));
+    return openBytes("/cdc", options, length => length <= 256, 8192, undefined, documentOrigin, 256);
   }
   Object.defineProperty(transport, "openPicoCdc", {
     get() { return picoCdcAdmitted() ? openPicoCdc : undefined; },

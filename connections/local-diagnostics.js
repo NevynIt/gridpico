@@ -4,6 +4,23 @@ window.addEventListener("DOMContentLoaded", async () => {
   const adapter = window.gridpicoLocal;
   if (!adapter || location.pathname === "/routing/") return;
   await adapter.ready;
+  if (adapter.capabilityStatus === "unavailable") {
+    const notice = document.querySelector("#discovery-status");
+    const retry = document.querySelector("#discovery-retry");
+    notice.textContent = "Couldn’t load capabilities from " + location.origin + ".";
+    notice.hidden = retry.hidden = false;
+    await new Promise(resolve => {
+      retry.addEventListener("click", async () => {
+        retry.disabled = true;
+        await adapter.retryCapabilities();
+        retry.disabled = false;
+        if (adapter.capabilityStatus !== "unavailable") {
+          notice.hidden = retry.hidden = true;
+          resolve();
+        }
+      });
+    });
+  }
   const capabilities = adapter.capabilities;
   const localTool = location.protocol === "http:" && location.hostname === "127.0.0.1";
   if (localTool || adapter.trustedLan && capabilities) {
@@ -67,15 +84,9 @@ window.addEventListener("DOMContentLoaded", async () => {
   let requesting = false;
   let accessGranted = false;
 
-  adapter.mountServerSelection(connection, "/diagnostics/");
+  adapter.mountServerSelection(connection, "/diagnostics/", { preservePage: true });
   connection.hidden = false;
-  if (adapter.capabilityStatus === "unavailable") {
-    const notice = document.querySelector("#discovery-status");
-    const retry = document.querySelector("#discovery-retry");
-    notice.textContent = "Couldn’t load capabilities from " + location.origin + ".";
-    notice.hidden = retry.hidden = false;
-    retry.addEventListener("click", () => location.reload());
-  }
+  window.dispatchEvent(new Event("gridpico-diagnostics-midi-controls"));
   if (adapter.trustedLan && capabilities) {
     const status = document.querySelector("#local-midi-only");
     status.textContent = adapter.openPicoCdc ?
@@ -623,8 +634,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   port.addEventListener("input", changedRoute);
   destination.addEventListener("input", changedRoute);
   manualConfirm.addEventListener("change", updateControls);
+  let hasLoopbackCli = Boolean(routerCli?.loopback);
   window.addEventListener("gridpico-local-cli-binding", () => {
-    clearRouteCheck();
+    const next = Boolean(routerCli?.loopback);
+    if (next !== hasLoopbackCli) clearRouteCheck();
+    hasLoopbackCli = next;
     updateControls();
   });
   disconnect.addEventListener("click", () => finish("MIDI disconnected."));
