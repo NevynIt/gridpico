@@ -19,7 +19,7 @@ The repository includes the production MIDI router, Web APC and Diagnostics tool
 | [Pico bench quick reference](docs/PICO_BENCH.md) | Documentation | Current Pi Diagnostics access and physical Patchbay quick-start |
 | [Diagrams](docs/diagrams/README.md) | Documentation, with Architect and Session Manager review | Visual architecture/team maps and editable Mermaid sources |
 | [Editorial policy](docs/EDITORIAL_POLICY.md) | Documentation | Source homes, acceptance notes and owner curation |
-| [Full documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25-curated/gridpico-documentation.pdf) | Documentation | Dated offline snapshot from source commit `e689cdd`; [build instructions](docs/PDF_BUILD.md) |
+| [Full documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25-roadmap/gridpico-documentation.pdf) | Documentation | Dated offline snapshot from source commit `90ae9ae`; [build instructions](docs/PDF_BUILD.md) |
 
 ## Documentation owners
 
