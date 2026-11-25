@@ -54,30 +54,74 @@ static bool write_record(gridpico_cli_write_fn write, void *context,
 }
 
 typedef struct {
+    enum {
+        CLI_COMMAND_HELP,
+        CLI_COMMAND_INVENTORY,
+        CLI_COMMAND_STATUS,
+        CLI_COMMAND_LOGS,
+        CLI_COMMAND_COLOR,
+        CLI_COMMAND_ROUTE,
+        CLI_COMMAND_ROUTING,
+        CLI_COMMAND_TRACE,
+        CLI_COMMAND_HUBTRACE,
+        CLI_COMMAND_BOOTSEL
+    } command;
     const char *name;
     const char *detail;
 } cli_help_entry;
 
 static const cli_help_entry help_inventory = {
-    "inventory", "inventory -- list devices and ports"};
+    CLI_COMMAND_INVENTORY, "inventory", "inventory -- list devices and ports"};
 static const cli_help_entry help_status = {
-    "status", "status -- show the current Patch status"};
+    CLI_COMMAND_STATUS, "status", "status -- show the current Patch status"};
 static const cli_help_entry help_logs = {
-    "logs", "logs -- read retained diagnostic records"};
+    CLI_COMMAND_LOGS, "logs", "logs -- read retained diagnostic records"};
 static const cli_help_entry help_color = {
-    "color", "color get <device> | color set <device> #RRGGBB -- read or set a device color"};
+    CLI_COMMAND_COLOR, "color", "color get <device> | color set <device> #RRGGBB -- read or set a device color"};
 static const cli_help_entry help_color_readonly = {
-    "color", "color get <device> -- read a device color"};
+    CLI_COMMAND_COLOR, "color", "color get <device> -- read a device color"};
 static const cli_help_entry help_route = {
-    "route", "route <src> <dst> managed|raw [on|off] -- read or set a route, then read back its state"};
+    CLI_COMMAND_ROUTE, "route", "route <src> <dst> managed|raw [on|off] -- read or set a route, then read back its state"};
 static const cli_help_entry help_routing = {
-    "routing", "routing | routing <revision> <offset> -- read a bounded Routing snapshot page"};
+    CLI_COMMAND_ROUTING, "routing", "routing | routing <revision> <offset> -- read a bounded Routing snapshot page"};
+static const cli_help_entry help_trace = {
+    CLI_COMMAND_TRACE, "trace", "trace -- request platform TRACE diagnostics"};
+static const cli_help_entry help_hubtrace = {
+    CLI_COMMAND_HUBTRACE, "hubtrace", "hubtrace -- request platform HUBTRACE diagnostics"};
+static const cli_help_entry help_bootsel = {
+    CLI_COMMAND_BOOTSEL, "BOOTSEL", "BOOTSEL -- exact uppercase bytes plus LF after DTR; handled by the platform byte parser"};
+static const cli_help_entry help_self = {
+    CLI_COMMAND_HELP, "help", "help [command] -- list available commands or show command forms"};
+static const cli_help_entry help_color_get = {
+    CLI_COMMAND_COLOR, "color get", "color get <device> -- read a device color"};
+static const cli_help_entry help_color_set = {
+    CLI_COMMAND_COLOR, "color set", "color set <device> #RRGGBB -- set and read back a device color"};
+
+static const cli_help_entry *const command_table[] = {
+    &help_self, &help_inventory, &help_status, &help_logs, &help_color,
+    &help_route, &help_routing, &help_trace, &help_hubtrace, &help_bootsel
+};
+
+static const cli_help_entry *command_for_line(const char *line)
+{
+    const char *end = strchr(line, ' ');
+    const size_t name_size = end == NULL ? strlen(line) : (size_t)(end - line);
+    for (size_t i = 0; i < sizeof command_table / sizeof command_table[0]; ++i) {
+        const cli_help_entry *entry = command_table[i];
+        if (strlen(entry->name) == name_size &&
+            memcmp(entry->name, line, name_size) == 0) return entry;
+    }
+    if ((name_size == 5 && memcmp(line, "TRACE", 5) == 0)) return &help_trace;
+    if (name_size == 8 && memcmp(line, "HUBTRACE", 8) == 0) return &help_hubtrace;
+    return NULL;
+}
 
 static size_t help_entries(const gridpico_cli_frontend *frontend,
                            const cli_help_entry **entries, size_t capacity)
 {
     size_t count = 0;
-    if (capacity < 2) return 0;
+    if (capacity < 3) return 0;
+    entries[count++] = &help_self;
     entries[count++] = &help_inventory;
     entries[count++] = &help_status;
     if (frontend->read_logs != NULL && count < capacity) entries[count++] = &help_logs;
@@ -89,14 +133,57 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
         count < capacity) entries[count++] = &help_route;
     if (frontend->read_local_routing != NULL && count < capacity)
         entries[count++] = &help_routing;
+    if (frontend->start_platform != NULL &&
+        (frontend->platform_capabilities & GRIDPICO_CLI_PLATFORM_TRACE) != 0 &&
+        count < capacity) entries[count++] = &help_trace;
+    if (frontend->start_platform != NULL &&
+        (frontend->platform_capabilities & GRIDPICO_CLI_PLATFORM_HUBTRACE) != 0 &&
+        count < capacity) entries[count++] = &help_hubtrace;
+    if ((frontend->platform_capabilities & GRIDPICO_CLI_PLATFORM_BOOTSEL) != 0 &&
+        count < capacity) entries[count++] = &help_bootsel;
     return count;
 }
 
-static gridpico_result execute_help(gridpico_cli_frontend *frontend,
+static gridpico_result execute_help(gridpico_cli_frontend *frontend, const char *topic,
                                     gridpico_cli_write_fn write, void *context)
 {
-    const cli_help_entry *entries[6];
+    const cli_help_entry *entries[10];
     const size_t count = help_entries(frontend, entries, sizeof entries / sizeof entries[0]);
+    if (topic != NULL) {
+        if (strcmp(topic, "TRACE") == 0) topic = "trace";
+        else if (strcmp(topic, "HUBTRACE") == 0) topic = "hubtrace";
+        const cli_help_entry *selected = NULL;
+        if (strcmp(topic, "color get") == 0) {
+            if (frontend->read_device_color == NULL) return GRIDPICO_UNAVAILABLE;
+            selected = &help_color_get;
+        } else if (strcmp(topic, "color set") == 0) {
+            if (frontend->read_device_color == NULL || frontend->set_device_color == NULL)
+                return GRIDPICO_UNAVAILABLE;
+            selected = &help_color_set;
+        } else {
+            for (size_t i = 0; i < count; ++i) {
+                if (strcmp(entries[i]->name, topic) == 0) {
+                    selected = entries[i];
+                    break;
+                }
+            }
+            if (selected == NULL) {
+                static const char *const known[] = {
+                    "help", "inventory", "status", "logs", "color", "route",
+                    "routing", "trace", "hubtrace", "BOOTSEL"
+                };
+                for (size_t i = 0; i < sizeof known / sizeof known[0]; ++i) {
+                    if (strcmp(known[i], topic) == 0) return GRIDPICO_UNAVAILABLE;
+                }
+                return GRIDPICO_INVALID;
+            }
+        }
+        char record[GRIDPICO_CLI_RECORD_BYTES];
+        const int size = snprintf(record, sizeof record, "COMMAND %s", selected->detail);
+        if (size < 0 || (size_t)size >= sizeof record) return GRIDPICO_CAPACITY;
+        return write_record(write, context, record, (size_t)size)
+                   ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
+    }
     for (size_t i = 0; i < count; ++i) {
         char record[GRIDPICO_CLI_RECORD_BYTES];
         const int size = snprintf(record, sizeof record, "COMMAND %s", entries[i]->detail);
@@ -198,15 +285,33 @@ static bool port_assignment(const gridpico_patch_snapshot *snapshot,
 
 static bool format_port_record(gridpico_cli_write_fn write, void *context,
                                const gridpico_patch_snapshot *snapshot,
-                               const gridpico_patch_port *port)
+                               const gridpico_patch_port *port,
+                               const gridpico_apc_patch_snapshot *apc)
 {
     char record[GRIDPICO_CLI_RECORD_BYTES];
     char assignment[24];
     const char *state = connection_name(port->state);
     const char *direction = port->direction == GRIDPICO_PATCH_INPUT ? "in" : "out";
-    if (state == NULL || port->direction > GRIDPICO_PATCH_OUTPUT ||
-        !port_assignment(snapshot, port, assignment, sizeof assignment)) {
+    if (state == NULL || port->direction > GRIDPICO_PATCH_OUTPUT) {
         return false;
+    }
+    if (apc == NULL) {
+        if (!port_assignment(snapshot, port, assignment, sizeof assignment)) return false;
+    } else {
+        const gridpico_port_id *slots = port->direction == GRIDPICO_PATCH_INPUT
+                                            ? apc->layout.rows : apc->layout.columns;
+        const size_t slot_count = port->direction == GRIDPICO_PATCH_INPUT
+                                      ? GRIDPICO_PATCH_SOURCE_ROWS
+                                      : GRIDPICO_PATCH_DESTINATION_COLUMNS;
+        size_t slot = 0;
+        while (slot < slot_count && slots[slot] != port->id) ++slot;
+        if (slot == slot_count) {
+            memcpy(assignment, "-", 2);
+        } else {
+            const char *kind = port->direction == GRIDPICO_PATCH_INPUT ? "row" : "col";
+            const int count = snprintf(assignment, sizeof assignment, "%s:1:%zu", kind, slot + 1);
+            if (count < 0 || (size_t)count >= sizeof assignment) return false;
+        }
     }
     const int size = snprintf(record, sizeof record, "PORT %u %u %s %s %s ",
                               (unsigned)port->id, (unsigned)port->device,
@@ -222,39 +327,62 @@ static bool format_port_record(gridpico_cli_write_fn write, void *context,
 static gridpico_result write_inventory(gridpico_cli_frontend *frontend,
                                        gridpico_cli_write_fn write, void *context)
 {
-    gridpico_patch_snapshot snapshot;
-    const gridpico_result result = frontend->read_snapshot(frontend->session_context, &snapshot);
+    gridpico_patch_snapshot *snapshot = &frontend->snapshot_scratch;
+    const gridpico_result result = frontend->read_snapshot(frontend->session_context, snapshot);
     if (result != GRIDPICO_OK) {
         return result;
     }
-    if (snapshot.inventory.device_count > GRIDPICO_PATCH_MAX_DEVICES ||
-        snapshot.inventory.port_count > GRIDPICO_PATCH_MAX_PORTS) {
+    if (snapshot->inventory.device_count > GRIDPICO_PATCH_MAX_DEVICES ||
+        snapshot->inventory.port_count > GRIDPICO_PATCH_MAX_PORTS) {
         return GRIDPICO_CAPACITY;
     }
-    for (size_t p = 0; p < snapshot.inventory.port_count; ++p) {
-        if (find_device_index(&snapshot.inventory, snapshot.inventory.ports[p].device) < 0) {
+    for (size_t p = 0; p < snapshot->inventory.port_count; ++p) {
+        if (find_device_index(&snapshot->inventory, snapshot->inventory.ports[p].device) < 0) {
             return GRIDPICO_INVALID;
         }
-    }
-    if (frontend->read_device_color == NULL) {
-        return GRIDPICO_UNAVAILABLE;
     }
     gridpico_device_color colors[GRIDPICO_PATCH_MAX_DEVICES] = {{0}};
-    for (size_t i = 0; i < snapshot.inventory.device_count; ++i) {
-        const gridpico_result color_result = frontend->read_device_color(
-            frontend->session_context, snapshot.inventory.devices[i].id, &colors[i]);
-        if (color_result != GRIDPICO_OK) {
-            return color_result;
+    for (size_t i = 0; i < snapshot->inventory.device_count; ++i) {
+        if (frontend->read_device_color != NULL) {
+            const gridpico_result color_result = frontend->read_device_color(
+                frontend->session_context, snapshot->inventory.devices[i].id, &colors[i]);
+            if (color_result != GRIDPICO_OK) return color_result;
         }
     }
-    for (size_t i = 0; i < snapshot.inventory.device_count; ++i) {
-        const gridpico_patch_device *device = &snapshot.inventory.devices[i];
-        if (!format_device_record(write, context, device, &colors[i])) {
+    gridpico_apc_patch_snapshot *apc = frontend->read_apc_patch == NULL
+                                          ? NULL : frontend->apc_patch_scratch;
+    if (frontend->read_apc_patch != NULL) {
+        if (apc == NULL) return GRIDPICO_UNAVAILABLE;
+        const gridpico_result apc_result = frontend->read_apc_patch(frontend->session_context, apc);
+        if (apc_result != GRIDPICO_OK) return apc_result;
+        if (apc->port_count > GRIDPICO_PATCH_MAX_PORTS) return GRIDPICO_CAPACITY;
+    }
+    if (frontend->read_device_color == NULL && apc == NULL) return GRIDPICO_UNAVAILABLE;
+    for (size_t i = 0; i < snapshot->inventory.device_count; ++i) {
+        const gridpico_patch_device *device = &snapshot->inventory.devices[i];
+        gridpico_device_color unsupported_color = {0};
+        const gridpico_device_color *color = frontend->read_device_color == NULL
+                                                 ? &unsupported_color : &colors[i];
+        if (frontend->read_device_color == NULL) {
+            /* Pico has no color preference provider; expose that distinction. */
+            char record[GRIDPICO_CLI_RECORD_BYTES];
+            size_t name_length = 0;
+            if (!bounded_name_length(device->name, &name_length)) return GRIDPICO_INVALID;
+            const char *state = connection_name(device->state);
+            if (state == NULL) return GRIDPICO_INVALID;
+            int size = snprintf(record, sizeof record, "DEVICE %u %s - ",
+                                (unsigned)device->id, state);
+            if (size < 0 || (size_t)size >= sizeof record ||
+                !write_bytes(write, context, record, (size_t)size) ||
+                !write_quoted_name(write, context, device->name) ||
+                !write_record(write, context, "", 0)) return GRIDPICO_UNAVAILABLE;
+        } else if (!format_device_record(write, context, device, color)) {
             return GRIDPICO_INVALID;
         }
-        for (size_t p = 0; p < snapshot.inventory.port_count; ++p) {
-            const gridpico_patch_port *port = &snapshot.inventory.ports[p];
-            if (port->device == device->id && !format_port_record(write, context, &snapshot, port)) {
+        for (size_t p = 0; p < snapshot->inventory.port_count; ++p) {
+            const gridpico_patch_port *port = &snapshot->inventory.ports[p];
+            if (port->device == device->id &&
+                !format_port_record(write, context, snapshot, port, apc)) {
                 return GRIDPICO_INVALID;
             }
         }
@@ -418,23 +546,40 @@ static const char *result_name(gridpico_result result)
 static gridpico_result execute_status(gridpico_cli_frontend *frontend,
                                       gridpico_cli_write_fn write, void *context)
 {
-    gridpico_patch_snapshot snapshot;
-    const gridpico_result result = frontend->read_snapshot(frontend->session_context, &snapshot);
+    gridpico_patch_snapshot *snapshot = &frontend->snapshot_scratch;
+    const gridpico_result result = frontend->read_snapshot(frontend->session_context, snapshot);
     if (result != GRIDPICO_OK) return result;
-    if (snapshot.inventory.device_count > GRIDPICO_PATCH_MAX_DEVICES ||
-        snapshot.inventory.port_count > GRIDPICO_PATCH_MAX_PORTS) return GRIDPICO_CAPACITY;
+    if (snapshot->inventory.device_count > GRIDPICO_PATCH_MAX_DEVICES ||
+        snapshot->inventory.port_count > GRIDPICO_PATCH_MAX_PORTS) return GRIDPICO_CAPACITY;
     unsigned active = 0;
     unsigned pending = 0;
-    for (size_t row = 0; row < GRIDPICO_PATCH_SOURCE_ROWS; ++row) {
-        for (size_t column = 0; column < GRIDPICO_PATCH_DESTINATION_COLUMNS; ++column) {
-            if (snapshot.routes[row][column] == GRIDPICO_PATCH_ROUTE_ACTIVE) ++active;
-            else if (snapshot.routes[row][column] == GRIDPICO_PATCH_ROUTE_PENDING) ++pending;
+    gridpico_revision revision = snapshot->revision;
+    if (frontend->read_apc_patch != NULL) {
+        if (frontend->apc_patch_scratch == NULL) return GRIDPICO_UNAVAILABLE;
+        const gridpico_result apc_result = frontend->read_apc_patch(
+            frontend->session_context, frontend->apc_patch_scratch);
+        if (apc_result != GRIDPICO_OK) return apc_result;
+        const gridpico_apc_patch_snapshot *apc = frontend->apc_patch_scratch;
+        if (apc->port_count > GRIDPICO_PATCH_MAX_PORTS) return GRIDPICO_CAPACITY;
+        revision = apc->graph_revision;
+        for (size_t row = 0; row < GRIDPICO_PATCH_SOURCE_ROWS; ++row) {
+            for (size_t column = 0; column < GRIDPICO_PATCH_DESTINATION_COLUMNS; ++column) {
+                if (apc->cells[row][column].state == GRIDPICO_PATCH_ROUTE_ACTIVE) ++active;
+                else if (apc->cells[row][column].state == GRIDPICO_PATCH_ROUTE_PENDING) ++pending;
+            }
+        }
+    } else {
+        for (size_t row = 0; row < GRIDPICO_PATCH_SOURCE_ROWS; ++row) {
+            for (size_t column = 0; column < GRIDPICO_PATCH_DESTINATION_COLUMNS; ++column) {
+                if (snapshot->routes[row][column] == GRIDPICO_PATCH_ROUTE_ACTIVE) ++active;
+                else if (snapshot->routes[row][column] == GRIDPICO_PATCH_ROUTE_PENDING) ++pending;
+            }
         }
     }
     char record[GRIDPICO_CLI_RECORD_BYTES];
     const int size = snprintf(record, sizeof record, "STATUS %llu %zu %zu %u %u",
-                              (unsigned long long)snapshot.revision,
-                              snapshot.inventory.device_count, snapshot.inventory.port_count,
+                              (unsigned long long)revision,
+                              snapshot->inventory.device_count, snapshot->inventory.port_count,
                               active, pending);
     if (size < 0 || (size_t)size >= sizeof record) return GRIDPICO_CAPACITY;
     return write_record(write, context, record, (size_t)size) ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
@@ -562,6 +707,8 @@ static gridpico_result execute_local_route(gridpico_cli_frontend *frontend, cons
     if (!parse_local_route_command(line, &route, &has_enabled, &enabled)) {
         return GRIDPICO_INVALID;
     }
+    if (frontend->read_local_route == NULL ||
+        (has_enabled && frontend->set_local_route == NULL)) return GRIDPICO_UNAVAILABLE;
 
     if (has_enabled) {
         const gridpico_local_route_request request = {.route = route, .enabled = enabled};
@@ -830,7 +977,7 @@ static gridpico_result execute_routing(gridpico_cli_frontend *frontend, const ch
     size_t offset;
     if (!parse_routing_command(line, &continuation, &requested_revision, &offset))
         return GRIDPICO_INVALID;
-    if (frontend->read_local_routing == NULL) return GRIDPICO_INVALID;
+    if (frontend->read_local_routing == NULL) return GRIDPICO_UNAVAILABLE;
 
     gridpico_local_routing_snapshot snapshot = {0};
     const gridpico_result read_result = frontend->read_local_routing(
@@ -926,9 +1073,10 @@ static void terminal_application_command(EmbeddedCli *cli, char *args, void *con
 
 static bool register_help_bindings(gridpico_cli_frontend *frontend)
 {
-    const cli_help_entry *entries[6];
+    const cli_help_entry *entries[10];
     const size_t count = help_entries(frontend, entries, sizeof entries / sizeof entries[0]);
     for (size_t i = 0; i < count; ++i) {
+        if (strcmp(entries[i]->name, "help") == 0) continue;
         if (!embeddedCliAddBinding(frontend->terminal, (CliCommandBinding){
                 .name = entries[i]->name,
                 .help = entries[i]->detail,
@@ -939,7 +1087,20 @@ static bool register_help_bindings(gridpico_cli_frontend *frontend)
             return false;
         }
     }
-    return true;
+    /* Keep embedded-cli's parser/editor, but route its built-in help command
+     * through the same executor and metadata as Diagnostics. */
+    EmbeddedCliImpl *implementation = (EmbeddedCliImpl *)frontend->terminal->_impl;
+    for (uint16_t i = 0; i < implementation->bindingsCount; ++i) {
+        CliCommandBinding *binding = &implementation->bindings[i];
+        if (strcmp(binding->name, "help") == 0) {
+            binding->help = help_self.detail;
+            binding->tokenizeArgs = false;
+            binding->context = (void *)&help_self;
+            binding->binding = terminal_application_command;
+            return true;
+        }
+    }
+    return false;
 }
 
 gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
@@ -950,27 +1111,86 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
     if (frontend == NULL || frontend->read_snapshot == NULL || write == NULL || line == NULL) {
         return GRIDPICO_INVALID;
     }
+    bool asynchronous = false;
     bool inventory = false;
     gridpico_result result = parse_command(line, &inventory);
-    if (result == GRIDPICO_OK && inventory) result = write_inventory(frontend, write, write_context);
-    else if (result == GRIDPICO_INVALID && strcmp(line, "help") == 0)
-        result = execute_help(frontend, write, write_context);
-    else if (result == GRIDPICO_INVALID && strcmp(line, "status") == 0)
-        result = execute_status(frontend, write, write_context);
-    else if (result == GRIDPICO_INVALID && strcmp(line, "logs") == 0)
-        result = execute_logs(frontend, write, write_context);
-    else if (result == GRIDPICO_INVALID && strncmp(line, "color ", 6) == 0)
-        result = execute_color(frontend, line, write, write_context);
-    else if (result == GRIDPICO_INVALID && strncmp(line, "route ", 6) == 0 &&
-             frontend->set_local_route != NULL && frontend->read_local_route != NULL)
-        result = execute_local_route(frontend, line, write, write_context);
-    else if (result == GRIDPICO_INVALID &&
-             (strcmp(line, "routing") == 0 || strncmp(line, "routing ", 8) == 0) &&
-             frontend->read_local_routing != NULL)
-        result = execute_routing(frontend, line, write, write_context);
-    (void)write_record(write, write_context,
-                       result == GRIDPICO_OK ? "OK" : error_record(result),
-                       strlen(result == GRIDPICO_OK ? "OK" : error_record(result)));
+    if (result == GRIDPICO_OK && inventory) {
+        result = write_inventory(frontend, write, write_context);
+    } else if (result == GRIDPICO_INVALID) {
+        const cli_help_entry *entry = command_for_line(line);
+        if (entry == NULL) {
+            result = GRIDPICO_INVALID;
+        } else {
+            switch (entry->command) {
+            case CLI_COMMAND_HELP: {
+                const char *topic = strcmp(line, "help") == 0 ? NULL : line + 5;
+                if (topic != NULL && (*topic == '\0' ||
+                    (strchr(topic, ' ') != NULL && strcmp(topic, "color get") != 0 &&
+                     strcmp(topic, "color set") != 0))) {
+                    result = GRIDPICO_INVALID;
+                } else {
+                    result = execute_help(frontend, topic, write, write_context);
+                }
+                break;
+            }
+            case CLI_COMMAND_INVENTORY:
+                result = strcmp(line, "inventory") == 0
+                             ? write_inventory(frontend, write, write_context)
+                             : GRIDPICO_INVALID;
+                break;
+            case CLI_COMMAND_STATUS:
+                result = strcmp(line, "status") == 0
+                             ? execute_status(frontend, write, write_context)
+                             : GRIDPICO_INVALID;
+                break;
+            case CLI_COMMAND_LOGS:
+                result = strcmp(line, "logs") == 0
+                             ? execute_logs(frontend, write, write_context)
+                             : GRIDPICO_INVALID;
+                break;
+            case CLI_COMMAND_COLOR:
+                result = strncmp(line, "color ", 6) == 0
+                             ? execute_color(frontend, line, write, write_context)
+                             : GRIDPICO_INVALID;
+                break;
+            case CLI_COMMAND_ROUTE:
+                result = strncmp(line, "route ", 6) == 0
+                             ? execute_local_route(frontend, line, write, write_context)
+                             : GRIDPICO_INVALID;
+                break;
+            case CLI_COMMAND_ROUTING:
+                result = strcmp(line, "routing") == 0 || strncmp(line, "routing ", 8) == 0
+                             ? execute_routing(frontend, line, write, write_context)
+                             : GRIDPICO_INVALID;
+                break;
+            case CLI_COMMAND_TRACE:
+            case CLI_COMMAND_HUBTRACE: {
+                const unsigned capability = entry->command == CLI_COMMAND_TRACE
+                                                ? GRIDPICO_CLI_PLATFORM_TRACE
+                                                : GRIDPICO_CLI_PLATFORM_HUBTRACE;
+                const bool exact_form = entry->command == CLI_COMMAND_TRACE
+                    ? (strcmp(line, "trace") == 0 || strcmp(line, "TRACE") == 0)
+                    : (strcmp(line, "hubtrace") == 0 || strcmp(line, "HUBTRACE") == 0);
+                result = !exact_form ? GRIDPICO_INVALID :
+                         frontend->start_platform == NULL ||
+                                 (frontend->platform_capabilities & capability) == 0
+                             ? GRIDPICO_UNAVAILABLE
+                             : frontend->start_platform(frontend->platform_context, capability);
+                asynchronous = result == GRIDPICO_OK;
+                break;
+            }
+            case CLI_COMMAND_BOOTSEL:
+                /* Recovery is recognized only by the platform raw-byte parser. */
+                result = GRIDPICO_INVALID;
+                break;
+            }
+        }
+    }
+    if (!asynchronous) {
+        (void)write_record(write, write_context,
+                           result == GRIDPICO_OK ? "OK" : error_record(result),
+                           strlen(result == GRIDPICO_OK ? "OK" : error_record(result)));
+    }
     return result;
 }
 
@@ -1024,23 +1244,22 @@ gridpico_result gridpico_cli_init(gridpico_cli_frontend *frontend,
     if (frontend == NULL || read_snapshot == NULL || terminal_write == NULL) {
         return GRIDPICO_INVALID;
     }
-    *frontend = (gridpico_cli_frontend){
-        .session_context = session_context,
-        .read_snapshot = read_snapshot,
-        .read_device_color = read_device_color,
-        .set_device_color = set_device_color,
-        .log_context = log_context,
-        .read_logs = read_logs,
-        .terminal_write = terminal_write,
-        .terminal_write_context = terminal_write_context,
-    };
+    memset(frontend, 0, sizeof *frontend);
+    frontend->session_context = session_context;
+    frontend->read_snapshot = read_snapshot;
+    frontend->read_device_color = read_device_color;
+    frontend->set_device_color = set_device_color;
+    frontend->log_context = log_context;
+    frontend->read_logs = read_logs;
+    frontend->terminal_write = terminal_write;
+    frontend->terminal_write_context = terminal_write_context;
     EmbeddedCliConfig config = *embeddedCliDefaultConfig();
     config.invitation = "> ";
     config.rxBufferSize = GRIDPICO_CLI_RX_BYTES;
     /* embedded-cli reserves two bytes in the command buffer. */
     config.cmdBufferSize = GRIDPICO_CLI_LINE_BYTES + 2;
     config.historyBufferSize = GRIDPICO_CLI_HISTORY_BYTES;
-    config.maxBindingCount = 7;
+    config.maxBindingCount = 10;
     config.cliBuffer = frontend->library_storage;
     config.cliBufferSize = GRIDPICO_CLI_LIBRARY_BYTES;
     config.enableAutoComplete = false;
@@ -1055,6 +1274,29 @@ gridpico_result gridpico_cli_init(gridpico_cli_frontend *frontend,
     frontend->terminal->writeChar = terminal_write_char;
     frontend->terminal->onCommand = terminal_command;
     return GRIDPICO_OK;
+}
+
+void gridpico_cli_bind_platform(gridpico_cli_frontend *frontend,
+                                unsigned capabilities,
+                                gridpico_cli_start_platform_fn start,
+                                void *context)
+{
+    if (frontend == NULL) return;
+    const unsigned trace_capabilities = GRIDPICO_CLI_PLATFORM_TRACE |
+                                        GRIDPICO_CLI_PLATFORM_HUBTRACE;
+    if (start == NULL) capabilities &= ~trace_capabilities;
+    frontend->platform_capabilities = capabilities;
+    frontend->start_platform = start;
+    frontend->platform_context = context;
+}
+
+void gridpico_cli_bind_apc_patch(gridpico_cli_frontend *frontend,
+                                 gridpico_apc_patch_read_fn read_apc_patch,
+                                 gridpico_apc_patch_snapshot *scratch)
+{
+    if (frontend == NULL) return;
+    frontend->read_apc_patch = read_apc_patch;
+    frontend->apc_patch_scratch = read_apc_patch == NULL ? NULL : scratch;
 }
 
 void gridpico_cli_receive(gridpico_cli_frontend *frontend, const char *bytes, size_t size)

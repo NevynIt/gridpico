@@ -195,7 +195,10 @@
         <code>color get &lt;device-id&gt;</code> ·
         <code>color set &lt;device-id&gt; #RRGGBB</code>
       </p>
-      <p id="pico-examples" hidden>Read-only commands: <code>TRACE</code> and <code>HUBTRACE</code>. Routing is unavailable in this console.</p>
+      <div id="pico-examples" hidden>
+        <p><span id="pico-commands" role="status">Commands: TRACE and HUBTRACE.</span> Routing is unavailable in this console.</p>
+        <button id="pico-check-commands" type="button" disabled>Check Pico commands</button>
+      </div>
     </form>
     <section id="routing" hidden aria-labelledby="routing-title">
       <h2 id="routing-title">Routing</h2>
@@ -366,6 +369,10 @@
     const transcriptLimit = 16384;
     const localReplyLimit = 11 * 256; // Eight Routing records, header, terminator, echo and prompt.
     const localReplyTimeout = 5000;
+    const picoHelpTimeout = 3000;
+    const picoHelpLimit = 4096;
+    const picoHelpRecordLimit = 256;
+    const picoHelpCountLimit = 32;
     const encoder = new TextEncoder();
     const serialProvider = document.querySelector("#serial-provider");
     const connectButton = document.querySelector("#connect");
@@ -378,6 +385,8 @@
     const command = document.querySelector("#command");
     const sendButton = document.querySelector("#send");
     const inputError = document.querySelector("#input-error");
+    const picoCheckButton = document.querySelector("#pico-check-commands");
+    const picoCommands = document.querySelector("#pico-commands");
     let connecting = false;
     let pageGeneration = 0;
     let connection;
@@ -397,6 +406,26 @@
       return provider === "loopback" ? "Loopback CLI" : "Web Serial CDC";
     }
 
+    function updatePicoCommands(active) {
+      picoCheckButton.disabled = !available(active) || active.picoChecked || Boolean(active.picoTrace);
+      let message = "Commands: TRACE and HUBTRACE.";
+      if (active?.pending?.picoHelp) message = "Checking the attached Pico for supported commands…";
+      else if (active?.picoCommands) {
+        const admitted = ["TRACE", "HUBTRACE", "help [topic]"];
+        for (const name of ["inventory", "status"]) {
+          if (active.picoCommands.has(name)) admitted.push(name);
+        }
+        message = `Commands: ${admitted.join(", ")}. Use a command name from the help reply as a topic.`;
+      } else if (active?.picoChecked) {
+        message = "The Pico did not confirm additional commands. TRACE and HUBTRACE remain available.";
+      } else if (active?.picoTrace?.overlap) {
+        message = "Reconnect before checking Pico commands after overlapping trace requests.";
+      } else if (active?.picoTrace) {
+        message = "Waiting for the Pico trace to finish before checking commands. Reconnect if it does not finish.";
+      }
+      if (picoCommands.textContent !== message) picoCommands.textContent = message;
+    }
+
     function updateControls() {
       const ready = available(connection) && !connection.ledTest && (!connection.structured || connection.prompt);
       connectButton.disabled = !serialProvider.value || connecting || Boolean(connection);
@@ -408,6 +437,7 @@
       sendButton.disabled = !ready;
       document.querySelector("#examples").hidden = picoSelected;
       document.querySelector("#pico-examples").hidden = !picoSelected;
+      updatePicoCommands(picoSelected && connection?.pico && !connection.closing ? connection : undefined);
       command.setAttribute("aria-describedby", (picoSelected ? "pico-examples" : "examples") + " input-error");
       window.dispatchEvent(new Event("gridpico-local-cli-queue"));
     }
@@ -431,9 +461,62 @@
       if (pending?.written && (!pending.expectReply || pending.reply !== undefined)) finishCommand(active);
     }
 
+    function readPicoHelp(active, bytes) {
+      const request = active.pending;
+      const check = request?.picoHelp;
+      if (connection !== active || active.closing || !check || request.reply !== undefined) return;
+      if (performance.now() >= check.deadline) {
+        finishCommand(active, new Error("The Pico did not finish the help reply."));
+        return;
+      }
+      const invalid = () => finishCommand(active, new Error("The Pico returned an invalid help reply."));
+      for (const byte of bytes) {
+        if (++check.bytes > picoHelpLimit || check.line.length >= picoHelpRecordLimit) return invalid();
+        check.line += String.fromCharCode(byte);
+        if (byte !== 0x0a) continue;
+        const line = check.line;
+        check.line = "";
+        if (!check.names.size && !check.banner && line === "Gridpico RP2040 router\n") {
+          check.banner = true;
+          continue;
+        }
+        if (line === "OK\r\n" && check.names.has("help")) {
+          request.reply = check.names;
+          completeCommand(active);
+          return;
+        }
+        const match = /^COMMAND ([a-z]+|BOOTSEL)(?: [\x21-\x7e][\x20-\x7e]*)? -- [\x21-\x7e][\x20-\x7e]*\r\n$/.exec(line);
+        if (!match || check.names.has(match[1]) || check.names.size >= picoHelpCountLimit) return invalid();
+        check.names.add(match[1]);
+      }
+    }
+
+    function readPicoTraceEnd(active, chunk) {
+      const trace = active.picoTrace;
+      if (!trace || trace.overlap) return;
+      for (const character of chunk) {
+        if (character !== "\n") {
+          if (trace.line !== null) trace.line = trace.line.length < 32 ? trace.line + character : null;
+          continue;
+        }
+        const line = trace.line;
+        trace.line = "";
+        const ended = trace.command === "TRACE" ? line === "END TRACE" : /^END HUBTRACE [0-9]+$/.test(line);
+        if (ended || /^ERR (INVALID|CAPACITY|UNAVAILABLE)\r$/.test(line)) {
+          active.picoTrace = undefined;
+          updateControls();
+          return;
+        }
+      }
+    }
+
     function readReply(active, chunk) {
       if (connection !== active || active.closing) return;
       appendTranscript(chunk);
+      if (active.pico) {
+        readPicoTraceEnd(active, chunk);
+        return;
+      }
       if (!active.structured && !active.pending?.expectReply) return;
       active.tail = (active.tail + chunk).slice(-localReplyLimit);
       if (active.tail !== "> " && !active.tail.endsWith("\r\n> ")) return;
@@ -481,8 +564,15 @@
       active.tail = "";
       return new Promise((resolve, reject) => {
         const request = { resolve, reject, expectReply };
+        if (expectReply === "pico-help") {
+          request.picoHelp = { deadline: performance.now() + picoHelpTimeout, bytes: 0, line: "", names: new Set() };
+        }
         request.timer = setTimeout(() => {
           if (active.pending !== request) return;
+          if (request.picoHelp) {
+            finishCommand(active, new Error("The Pico did not finish the help reply."));
+            return;
+          }
           const plainFallback = !active.local && !active.structured && request.written && request.expectReply;
           const message = plainFallback ? "Web Serial did not finish the Routing check. The plain terminal remains available." :
             "The serial session did not finish the command. Reconnect and read back any attempted edit.";
@@ -490,8 +580,13 @@
           finishCommand(active, new Error(message));
           if (!plainFallback) void disconnect(active, message, true);
           updateControls();
-        }, localReplyTimeout);
+        }, request.picoHelp ? picoHelpTimeout : localReplyTimeout);
         active.pending = request;
+        if (active.pico && !active.picoChecked && picoReadCommands.has(line)) {
+          // A deferred CLI error can represent several overlapping trace submissions.
+          if (active.picoTrace) active.picoTrace.overlap = true;
+          else active.picoTrace = { command: line, line: "" };
+        }
         updateControls();
         void writeBytes(active, encoder.encode(line + "\n")).then(() => {
           if (active.pending !== request || active.closing) return;
@@ -703,6 +798,7 @@
         active.handle = open({
           onData(bytes) {
             readReply(active, decoder.decode(bytes, { stream: true }));
+            if (active.pico) readPicoHelp(active, bytes);
           },
           onState(state, reason) {
             if (connection !== active) return;
@@ -823,6 +919,27 @@
       }
     }
 
+    async function checkPicoCommands(active) {
+      if (!active?.pico || active.picoChecked || active.picoTrace || !available(active)) return;
+      active.picoChecked = true;
+      try {
+        const names = await exchange(active, "help", "pico-help");
+        if (connection === active && !active.closing) active.picoCommands = names;
+      } catch {
+        // The transcript is still readable. A new attachment is needed for another check.
+      }
+      if (connection === active) updateControls();
+    }
+
+    function admitsPicoCommand(active, line) {
+      if (picoReadCommands.has(line)) return true;
+      const names = active.picoCommands;
+      if (!names) return false;
+      if (line === "help") return true;
+      if (line === "inventory" || line === "status") return names.has(line);
+      return line.startsWith("help ") && names.has(line.slice(5));
+    }
+
     async function sendCommand(event) {
       event.preventDefault();
       const active = connection;
@@ -834,8 +951,9 @@
         inputError.textContent = "Enter one ASCII command of up to 63 bytes.";
         return;
       }
-      if (active.pico && !picoReadCommands.has(line)) {
-        inputError.textContent = "Pico Diagnostics accepts only TRACE and HUBTRACE.";
+      if (active.pico && !admitsPicoCommand(active, line)) {
+        inputError.textContent = active.picoCommands ? "Choose a supported read-only command or an advertised help topic." :
+          "Pico Diagnostics accepts TRACE and HUBTRACE. Use Check Pico commands to verify additional support.";
         return;
       }
 
@@ -868,6 +986,10 @@
       updateControls();
     });
     form.addEventListener("submit", sendCommand);
+    picoCheckButton.addEventListener("click", () => {
+      inputError.textContent = "";
+      void checkPicoCommands(connection);
+    });
     command.addEventListener("input", () => { inputError.textContent = ""; });
     command.addEventListener("paste", (event) => {
       if (/[\r\n]/.test(event.clipboardData.getData("text"))) {

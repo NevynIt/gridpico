@@ -105,6 +105,16 @@ if(GRIDPICO_RP2040_PATCHBAY_BENCH)
     target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_PATCHBAY_BENCH)
     target_sources(gridpico_rp2040_router PRIVATE "${root}/frontends/apc/apc_physical.c")
     target_link_options(gridpico_rp2040_router PRIVATE "LINKER:--wrap=midid_xfer_cb")
+    if(NOT GRIDPICO_RP2040_KEYS_BENCH AND NOT GRIDPICO_RP2040_FLASH_STARTUP_FAULT)
+        # CDC records require integer and string formatting only.
+        target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_MATRIX_CLI PICO_PRINTF_SUPPORT_FLOAT=0)
+        target_sources(gridpico_rp2040_router PRIVATE cdc_cli.c "${root}/frontends/cli/cli_frontend.c")
+        if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+            # Keep reply formatting frames separate from Session reads on the 4 KiB core-0 stack.
+            set_source_files_properties("${root}/frontends/cli/cli_frontend.c"
+                PROPERTIES COMPILE_OPTIONS "-fno-inline-functions-called-once")
+        endif()
+    endif()
 endif()
 if(GRIDPICO_RP2040_KEYS_BENCH)
     if(NOT GRIDPICO_RP2040_PATCHBAY_BENCH OR GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)

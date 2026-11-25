@@ -32,6 +32,9 @@
 #ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
 #include "onboard_status.h"
 #endif
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+#include "cdc_cli.h"
+#endif
 
 #if TUSB_VERSION_NUMBER != 2100
 #error "Build the router with TinyUSB 0.21.0"
@@ -88,6 +91,12 @@ typedef struct {
 static gridpico_pico_router router;
 static gridpico_bootsel_line command;
 static bool banner_pending;
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+enum { CDC_OUTPUT_BYTES_PER_PASS = 64 };
+static uint32_t cdc_output_budget;
+static gridpico_cdc_cli cdc_cli;
+static gridpico_cli_frontend cli;
+#endif
 static uint64_t native_led_refresh_at;
 static host_interface interfaces[CFG_TUH_MIDI];
 static uint8_t host_endpoints_out[CFG_TUH_MIDI];
@@ -95,10 +104,12 @@ static uint8_t apc_interface = NO_INTERFACE;
 static uint8_t synth_interface = NO_INTERFACE;
 static bool apc_ambiguous;
 static bool synth_ambiguous;
-#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+#if defined(GRIDPICO_RP2040_PATCHBAY_BENCH) && !defined(GRIDPICO_RP2040_MATRIX_CLI)
 enum { CIRCUIT_TRACE_PEER = GRIDPICO_PICO_PEERS };
 static uint8_t circuit_interface = NO_INTERFACE;
 static bool circuit_ambiguous;
+#endif
+#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
 static uint32_t apc_led_generation;
 static uint32_t native_led_generation;
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
@@ -150,7 +161,10 @@ typedef struct {
 } trace_row;
 
 static trace_row trace_rows[TRACE_ROWS], trace_snapshot[TRACE_ROWS];
-static uint8_t trace_head, trace_count, trace_cursor, trace_remaining, trace_command;
+static uint8_t trace_head, trace_count, trace_cursor, trace_remaining;
+#ifndef GRIDPICO_RP2040_MATRIX_CLI
+static uint8_t trace_command;
+#endif
 
 static void fill_row(trace_row *row, char kind, uint8_t index, const uint8_t *bytes, size_t count)
 {
@@ -217,26 +231,30 @@ static uint8_t snapshot_pio(trace_row *rows)
 enum { EXTRA_SNAPSHOT_ROWS = 0 };
 #endif
 
+static void start_trace(void)
+{
+    const gridpico_route_snapshot pad = gridpico_pico_router_pad_status(&router);
+    const uint8_t state[] = {pad.enabled, pad.active, apc_interface, synth_interface};
+    const unsigned history_limit = TRACE_ROWS - EXTRA_SNAPSHOT_ROWS - 1;
+    const unsigned history = trace_count < history_limit ? trace_count : history_limit;
+    for (unsigned i = 0; i < history; ++i) {
+        trace_snapshot[i] = trace_rows[(trace_head + TRACE_ROWS - history + i) % TRACE_ROWS];
+    }
+    unsigned count = history;
+    fill_row(&trace_snapshot[count++], 'S', 0, state, sizeof(state));
+#ifdef GRIDPICO_RP2040_PIO_DIAGNOSTICS
+    count += snapshot_pio(&trace_snapshot[count]);
+#endif
+    trace_cursor = 0;
+    trace_remaining = (uint8_t)(count + 1);
+}
+
+#ifndef GRIDPICO_RP2040_MATRIX_CLI
 static void trace_request(uint8_t byte)
 {
     static const uint8_t name[] = "TRACE";
     if (byte == '\n') {
-        if (trace_command == sizeof(name) - 1) {
-            const gridpico_route_snapshot pad = gridpico_pico_router_pad_status(&router);
-            const uint8_t state[] = {pad.enabled, pad.active, apc_interface, synth_interface};
-            const unsigned history_limit = TRACE_ROWS - EXTRA_SNAPSHOT_ROWS - 1;
-            const unsigned history = trace_count < history_limit ? trace_count : history_limit;
-            for (unsigned i = 0; i < history; ++i) {
-                trace_snapshot[i] = trace_rows[(trace_head + TRACE_ROWS - history + i) % TRACE_ROWS];
-            }
-            unsigned count = history;
-            fill_row(&trace_snapshot[count++], 'S', 0, state, sizeof(state));
-#ifdef GRIDPICO_RP2040_PIO_DIAGNOSTICS
-            count += snapshot_pio(&trace_snapshot[count]);
-#endif
-            trace_cursor = 0;
-            trace_remaining = (uint8_t)(count + 1);
-        }
+        if (trace_command == sizeof(name) - 1) start_trace();
         trace_command = 0;
     } else if (trace_command < sizeof(name) - 1 && byte == name[trace_command]) {
         ++trace_command;
@@ -244,6 +262,7 @@ static void trace_request(uint8_t byte)
         trace_command = UINT8_MAX;
     }
 }
+#endif
 #else
 static void add_trace(char kind, uint8_t index, const uint8_t *bytes, size_t count)
 {
@@ -254,12 +273,77 @@ static void add_trace(char kind, uint8_t index, const uint8_t *bytes, size_t cou
 }
 #endif
 
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+static bool trace_active(void)
+{
+#ifdef GRIDPICO_RP2040_BENCH_TRACE
+    if (trace_remaining != 0) return true;
+#endif
+#ifdef GRIDPICO_RP2040_HUB_TRACE
+    return gridpico_hub_trace_serial_active();
+#else
+    return false;
+#endif
+}
+
+static gridpico_result start_cli_platform(void *context, unsigned requested)
+{
+    (void)context;
+    if (trace_active()) return GRIDPICO_UNAVAILABLE;
+#ifdef GRIDPICO_RP2040_BENCH_TRACE
+    if (requested == GRIDPICO_CLI_PLATFORM_TRACE) {
+        start_trace();
+        return GRIDPICO_OK;
+    }
+#endif
+#ifdef GRIDPICO_RP2040_HUB_TRACE
+    if (requested == GRIDPICO_CLI_PLATFORM_HUBTRACE) {
+        gridpico_hub_trace_serial_start();
+        return GRIDPICO_OK;
+    }
+#endif
+    (void)requested;
+    return GRIDPICO_UNAVAILABLE;
+}
+
+static void bind_matrix_cli(void)
+{
+    unsigned capabilities = GRIDPICO_CLI_PLATFORM_BOOTSEL;
+#ifdef GRIDPICO_RP2040_BENCH_TRACE
+    capabilities |= GRIDPICO_CLI_PLATFORM_TRACE;
+#endif
+#ifdef GRIDPICO_RP2040_HUB_TRACE
+    capabilities |= GRIDPICO_CLI_PLATFORM_HUBTRACE;
+#endif
+    cli.session_context = &router.session;
+    cli.read_snapshot = gridpico_patch_session_read_snapshot;
+    /* CLI reads and panel refreshes share the serialized foreground. */
+    gridpico_cli_bind_apc_patch(&cli, gridpico_patch_session_read_apc_patch, &router.panel_scratch);
+    gridpico_cli_bind_platform(&cli, capabilities, start_cli_platform, NULL);
+}
+
+static uint32_t send_cdc(const char *message, uint32_t length)
+{
+    const uint32_t sent = tud_cdc_write(message, length);
+    cdc_output_budget -= sent;
+    tud_cdc_write_flush();
+    return sent;
+}
+#endif
+
 static bool write_cdc(const char *message, uint32_t length)
 {
     if (!tud_cdc_connected() || tud_cdc_write_available() < length) return false;
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+    if (length > cdc_output_budget) return false;
+    /* Each trace/banner record fits the checked FIFO space. This is the only
+       foreground writer, and TinyUSB does not overwrite while DTR is set. */
+    return send_cdc(message, length) == length;
+#else
     tud_cdc_write(message, length);
     tud_cdc_write_flush();
     return true;
+#endif
 }
 
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
@@ -321,6 +405,11 @@ static _Noreturn void request_bootsel(void)
 #ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
     gridpico_onboard_show(GRIDPICO_ONBOARD_BOOTSEL);
 #endif
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+    /* Retire queued CLI bytes. A USB packet already in flight may still finish. */
+    tud_cdc_write_clear();
+    cdc_output_budget = sizeof(reply) - 1;
+#endif
     bool replied = false;
     do {
         if (!replied) replied = write_cdc(reply, sizeof(reply) - 1);
@@ -329,18 +418,32 @@ static _Noreturn void request_bootsel(void)
     enter_rom();
 }
 
+static void reset_cdc_requests(void)
+{
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+    gridpico_cdc_cli_reset(&cdc_cli);
+#endif
+#ifdef GRIDPICO_RP2040_BENCH_TRACE
+    trace_remaining = 0;
+#ifndef GRIDPICO_RP2040_MATRIX_CLI
+    trace_command = 0;
+#endif
+#endif
+#ifdef GRIDPICO_RP2040_HUB_TRACE
+    gridpico_hub_trace_serial_reset();
+#endif
+}
+
 void tud_cdc_line_state_cb(uint8_t index, bool dtr, bool rts)
 {
     (void)rts;
     if (index == 0 && gridpico_bootsel_set_dtr(&command, dtr)) {
         tud_cdc_n_read_flush(index);
         banner_pending = dtr;
-#ifdef GRIDPICO_RP2040_BENCH_TRACE
-        trace_command = trace_remaining = 0;
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+        tud_cdc_n_write_clear(index);
 #endif
-#ifdef GRIDPICO_RP2040_HUB_TRACE
-        gridpico_hub_trace_serial_reset();
-#endif
+        reset_cdc_requests();
     }
 }
 
@@ -357,30 +460,14 @@ void tud_umount_cb(void)
 #endif
 #endif
     gridpico_pico_router_attach(&router, GRIDPICO_PICO_WEB, false);
-#ifdef GRIDPICO_RP2040_BENCH_TRACE
-    trace_command = trace_remaining = 0;
-#endif
-#ifdef GRIDPICO_RP2040_HUB_TRACE
-    gridpico_hub_trace_serial_reset();
-#endif
+    reset_cdc_requests();
 }
 
-static void service_cdc(void)
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+__attribute__((noinline))
+#endif
+static void pump_cdc_trace(void)
 {
-    static const char banner[] = "Gridpico RP2040 router\n";
-    if (!tud_cdc_connected()) return;
-    if (banner_pending && write_cdc(banner, sizeof(banner) - 1)) banner_pending = false;
-    uint8_t bytes[32];
-    const uint32_t count = tud_cdc_read(bytes, sizeof(bytes));
-    for (uint32_t i = 0; i < count; ++i) {
-        if (gridpico_bootsel_feed(&command, bytes[i])) request_bootsel();
-#ifdef GRIDPICO_RP2040_BENCH_TRACE
-        trace_request(bytes[i]);
-#endif
-#ifdef GRIDPICO_RP2040_HUB_TRACE
-        gridpico_hub_trace_serial_byte(bytes[i]);
-#endif
-    }
 #ifdef GRIDPICO_RP2040_BENCH_TRACE
     if (trace_remaining == 1) {
         if (write_cdc("END TRACE\n", 10)) --trace_remaining;
@@ -401,6 +488,52 @@ static void service_cdc(void)
 #ifdef GRIDPICO_RP2040_HUB_TRACE
     if (trace_remaining == 0) gridpico_hub_trace_serial_pump(write_cdc);
 #endif
+}
+
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+/* Keep terminal framing and rendering off the musical foreground stack frame. */
+__attribute__((noinline))
+#endif
+static void service_cdc(void)
+{
+    static const char banner[] = "Gridpico RP2040 router\n";
+    if (!tud_cdc_connected()) return;
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+    cdc_output_budget = CDC_OUTPUT_BYTES_PER_PASS;
+#else
+    if (banner_pending && write_cdc(banner, sizeof(banner) - 1)) banner_pending = false;
+#endif
+    uint8_t bytes[32];
+    const uint32_t received = tud_cdc_read(bytes, sizeof(bytes));
+    for (uint32_t i = 0; i < received; ++i) {
+        if (gridpico_bootsel_feed(&command, bytes[i])) request_bootsel();
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+        gridpico_cdc_cli_feed(&cdc_cli, &cli, bytes[i], bytes[i] == '\n' && trace_active());
+#else
+#ifdef GRIDPICO_RP2040_BENCH_TRACE
+        trace_request(bytes[i]);
+#endif
+#ifdef GRIDPICO_RP2040_HUB_TRACE
+        gridpico_hub_trace_serial_byte(bytes[i]);
+#endif
+#endif
+    }
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+    if (banner_pending) {
+        if (!write_cdc(banner, sizeof(banner) - 1)) return;
+        banner_pending = false;
+    }
+    if (!trace_active()) {
+        const char *reply;
+        uint32_t length = (uint32_t)gridpico_cdc_cli_offer(&cdc_cli, &reply);
+        const uint32_t available = tud_cdc_write_available();
+        if (length > available) length = available;
+        if (length > cdc_output_budget) length = cdc_output_budget;
+        if (length != 0) gridpico_cdc_cli_sent(&cdc_cli, send_cdc(reply, length));
+        return;
+    }
+#endif
+    pump_cdc_trace();
 }
 
 static uint8_t select_interface(uint16_t vid, uint16_t pid, uint8_t number, uint8_t cables, bool *ambiguous)
@@ -441,7 +574,7 @@ static void reconcile_host(void)
     replace_attachment(GRIDPICO_PICO_SYNTH, &synth_interface,
                        select_interface(GRIDPICO_SYNTH_VID, GRIDPICO_SYNTH_PID, GRIDPICO_SYNTH_INTERFACE,
                                         1, &synth_ambiguous));
-#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+#if defined(GRIDPICO_RP2040_PATCHBAY_BENCH) && !defined(GRIDPICO_RP2040_MATRIX_CLI)
     circuit_interface = select_interface(0x1235, 0x0139, 1, 1, &circuit_ambiguous);
 #endif
 }
@@ -702,7 +835,7 @@ static void service_host(void)
         gridpico_pico_packet packet;
         for (unsigned i = 0; i < RX_BATCH && tuh_midi_packet_read(index, packet.bytes); ++i) {
             if (index == apc_interface) receive(GRIDPICO_PICO_APC, &packet);
-#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+#if defined(GRIDPICO_RP2040_PATCHBAY_BENCH) && !defined(GRIDPICO_RP2040_MATRIX_CLI)
             else if (index == circuit_interface && (packet.bytes[0] == 8 || packet.bytes[0] == 9) &&
                      (packet.bytes[1] >> 4) == packet.bytes[0] &&
                      packet.bytes[2] < 128 && packet.bytes[3] < 128) {
@@ -891,6 +1024,9 @@ int main(void)
 #endif
         enter_rom();
     }
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+    bind_matrix_cli();
+#endif
 #ifdef GRIDPICO_RP2040_FLASH_STARTUP_FAULT
     show_startup_fault(boot_deadline);
 #endif

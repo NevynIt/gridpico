@@ -15,19 +15,35 @@ enum {
     GRIDPICO_CLI_RECORD_BYTES = 192
 };
 
+enum {
+    GRIDPICO_CLI_PLATFORM_TRACE = 1u,
+    GRIDPICO_CLI_PLATFORM_HUBTRACE = 2u,
+    GRIDPICO_CLI_PLATFORM_BOOTSEL = 4u
+};
+
 typedef void (*gridpico_cli_write_fn)(void *context, const char *bytes, size_t size);
+typedef gridpico_result (*gridpico_cli_start_platform_fn)(void *context, unsigned command);
 
 typedef struct {
     void *session_context;
     gridpico_patch_read_snapshot_fn read_snapshot;
     gridpico_patch_read_device_color_fn read_device_color;
     gridpico_patch_set_device_color_fn set_device_color;
+    /* Reused synchronously by inventory and status; keep frontend in static
+     * or other caller-owned long-lived storage. */
+    gridpico_patch_snapshot snapshot_scratch;
+    /* Optional editable APC projection, with caller-owned scratch. */
+    gridpico_apc_patch_read_fn read_apc_patch;
+    gridpico_apc_patch_snapshot *apc_patch_scratch;
     /* Optional local-router controls. They share session_context and are
      * assigned by the owning runtime after gridpico_cli_init. */
     gridpico_local_set_route_fn set_local_route;
     gridpico_local_read_route_fn read_local_route;
     /* Optional full Routing projection, supplied by configured profiles. */
     gridpico_local_read_routing_fn read_local_routing;
+    unsigned platform_capabilities;
+    gridpico_cli_start_platform_fn start_platform;
+    void *platform_context;
     void *log_context;
     gridpico_read_diagnostic_log_fn read_logs;
     CLI_UINT library_storage[BYTES_TO_CLI_UINTS(GRIDPICO_CLI_LIBRARY_BYTES)];
@@ -48,9 +64,26 @@ gridpico_result gridpico_cli_init(gridpico_cli_frontend *frontend,
                                  gridpico_cli_write_fn terminal_write,
                                  void *terminal_write_context);
 
+/* Bind optional platform operations after init and before the first process.
+ * start receives TRACE or HUBTRACE only; BOOTSEL stays in the platform byte
+ * parser and is exposed here only as conditional help metadata.
+ */
+void gridpico_cli_bind_platform(gridpico_cli_frontend *frontend,
+                                unsigned capabilities,
+                                gridpico_cli_start_platform_fn start,
+                                void *context);
+
+/* Bind optional live APC placement/status projection before first command.
+ * The snapshot storage remains caller-owned and is borrowed only for a read.
+ */
+void gridpico_cli_bind_apc_patch(gridpico_cli_frontend *frontend,
+                                 gridpico_apc_patch_read_fn read_apc_patch,
+                                 gridpico_apc_patch_snapshot *scratch);
+
 /* Execute a complete UTF-8 command line. Diagnostics and serial terminal
- * command callbacks use this same handler. Output consists only of CRLF
- * terminated protocol records and one final OK/ERR record.
+ * command callbacks use this same handler. Synchronous commands emit CRLF
+ * records and a final OK/ERR. A successful TRACE/HUBTRACE start is
+ * asynchronous and emits no immediate record; BOOTSEL is never started here.
  */
 gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
                                          const char *line,

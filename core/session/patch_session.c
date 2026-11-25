@@ -69,10 +69,8 @@ gridpico_result gridpico_patch_session_read_snapshot(void *context, gridpico_pat
         return result;
     }
 
-    gridpico_patch_snapshot snapshot = {
-        .revision = graph.revision,
-        .inventory = graph.inventory,
-    };
+    gridpico_port_id source_rows[GRIDPICO_PATCH_SOURCE_ROWS] = {0};
+    gridpico_port_id destination_columns[GRIDPICO_PATCH_DESTINATION_COLUMNS] = {0};
     size_t source_count = 0;
     size_t destination_count = 0;
     for (size_t i = 0; i < graph.inventory.port_count; ++i) {
@@ -87,7 +85,7 @@ gridpico_result gridpico_patch_session_read_snapshot(void *context, gridpico_pat
                 }
                 return GRIDPICO_CAPACITY;
             }
-            snapshot.source_rows[source_count++] = port->id;
+            source_rows[source_count++] = port->id;
         } else if (port->direction == GRIDPICO_PATCH_OUTPUT) {
             if (destination_count == GRIDPICO_PATCH_DESTINATION_COLUMNS) {
                 if (session->read_local_graph != NULL) {
@@ -95,21 +93,26 @@ gridpico_result gridpico_patch_session_read_snapshot(void *context, gridpico_pat
                 }
                 return GRIDPICO_CAPACITY;
             }
-            snapshot.destination_columns[destination_count++] = port->id;
+            destination_columns[destination_count++] = port->id;
         }
     }
 
+    /* Finish all fallible checks before overwriting the caller's snapshot. */
+    out->revision = graph.revision;
+    out->inventory = graph.inventory;
+    memcpy(out->source_rows, source_rows, sizeof(source_rows));
+    memcpy(out->destination_columns, destination_columns, sizeof(destination_columns));
+    memset(out->routes, 0, sizeof(out->routes));
     for (size_t i = 0; i < graph.branch_count; ++i) {
         const gridpico_patch_branch *branch = &graph.branches[i];
-        const size_t row = find_slot(snapshot.source_rows, source_count, branch->source);
-        const size_t column = find_slot(snapshot.destination_columns, destination_count,
+        const size_t row = find_slot(source_rows, source_count, branch->source);
+        const size_t column = find_slot(destination_columns, destination_count,
                                         branch->destination);
         if (row < source_count && column < destination_count) {
-            snapshot.routes[row][column] = branch->state;
+            out->routes[row][column] = branch->state;
         }
     }
 
-    *out = snapshot;
     return GRIDPICO_OK;
 }
 

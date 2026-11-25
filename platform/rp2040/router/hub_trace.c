@@ -219,20 +219,28 @@ void gridpico_hub_trace_serial_reset(void)
     output = false;
 }
 
+void gridpico_hub_trace_serial_start(void)
+{
+    const uint32_t interrupts = save_and_disable_interrupts();
+    snapshot_count = count;
+    snapshot_lost = lost;
+    snapshot_failed = has_failure;
+    if (has_failure) snapshot_failure = failure;
+    restore_interrupts(interrupts);
+    cursor = 0;
+    output = true;
+}
+
+bool gridpico_hub_trace_serial_active(void)
+{
+    return output;
+}
+
 void gridpico_hub_trace_serial_byte(uint8_t byte)
 {
     static const uint8_t name[] = "HUBTRACE";
     if (byte == '\n') {
-        if (command == sizeof(name) - 1) {
-            const uint32_t interrupts = save_and_disable_interrupts();
-            snapshot_count = count;
-            snapshot_lost = lost;
-            snapshot_failed = has_failure;
-            if (has_failure) snapshot_failure = failure;
-            restore_interrupts(interrupts);
-            cursor = 0;
-            output = true;
-        }
+        if (command == sizeof(name) - 1) gridpico_hub_trace_serial_start();
         command = 0;
     } else if (command < sizeof(name) - 1 && byte == name[command]) {
         ++command;
