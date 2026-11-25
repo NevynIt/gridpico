@@ -22,7 +22,9 @@ Verified firmware and fixture baseline `e97a343`. The canonical browser release 
 | Save and board status | Corrected Save codec and transaction passed host fixtures. Optional GP16 status passed offline checks. | Target Save writes remain disabled because bounded USB/PIO pause and resume are unverified. Physical power-cut recovery and persisted settings remain open. Hardware LED/optical evidence, cadence, preview and compatible board LED/PIO configuration. |
 | USB and Circuit | Physical census found three MIDI devices and two hubs. SRAM captured passive Circuit Tracks note ingress. Home ↔ Circuit works on the live Pi with 16 neutral, inspection-only positions. | Seven-device qualification, MiniFuse enumeration, attributable P-95 DIN MIDI, and Circuit egress. Circuit pattern editing, transport and the shared engine remain open. |
 | Web APC | “KNOB CTL” is removed on the live Pi, with eight controls retained. | This check covered presentation. |
-| Diagnostics | Live Chrome on installed Matrix `0104` sent one `TRACE`, received Active and `END TRACE`, and observed socket close. | Pico typed Routing, Diagnostics outbound MIDI and deployed browser-to-Pico MIDI remain open. |
+| CLI and Diagnostics | Normal Pico `3ae97ba` (UF2 `a3080f33…`, full flash `99ad85bc…`) passed BOOTSEL and no-write return. On the canonical Pi `3ae97ba` release (manifest `a1eece7e…`, runner `9d13d387…`), direct Diagnostics reached Pico help, inventory, status and TRACE. A separate browser run reached Pi loopback help, inventory and status via strict SSH. Recorder WAV unchanged and zero MIDI transmitted. | Pico typed Routing, Diagnostics outbound MIDI and deployed browser-to-Pico MIDI remain open. |
+
+The all-docs PDF and repository snapshot were published from `7f31f2e`. Owner-led curation awaits editorial policy agreement. [Download the documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25/gridpico-documentation.pdf)
 
 [Scoped acceptance details](#current-acceptance-audit)
 
