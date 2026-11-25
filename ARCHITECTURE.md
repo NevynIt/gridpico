@@ -1,23 +1,17 @@
-# gridpico — initial architecture
+# Gridpico architecture
 
-**Status:** architecture baseline with approved transport contracts.
-**Owner:** Architect. **Product authority:** human, through Strategist.
-**Baseline:** decisions agreed on 22 November 2026.
-**Related:** [Product brief](PRODUCT_BRIEF.md), [public contracts](api/README.md), [team coordination](AGENT_TEAM_COORDINATION.md), [diagrams](docs/diagrams/README.md).
-
-This document describes responsibility boundaries, dependencies and design constraints. Project Manager owns task sequencing and the roadmap.
+**Owner** Architect. **Product authority** Human, through Strategist.
+[Product brief](PRODUCT_BRIEF.md) · [Public contracts](api/README.md) · [Roadmap](ROADMAP.md) · [Diagrams](docs/diagrams/README.md)
 
 ## 1. Product and design intent
 
 Gridpico is a portable, controller-independent MIDI workstation kernel. It connects and enhances existing MIDI devices through routing, transformations and, later, Circuit-Tracks-inspired sequencing. The initial instrument set is Yamaha P-95, Arturia MicroFreak, Akai APC Key 25 mk2 and Novation Circuit Tracks, with an optional computer. The piano's physical MIDI connection is supplied through a suitable interface; the kernel sees logical MIDI endpoints.
 
-The planned embedded deployment uses RP2040. Native USB connects to the computer as a device, and PIO USB hosts instruments through a hub. The same product must also run as a Linux or Windows application. Raspberry Pi Zero runs the Linux ARM application.
-
-The first proof passed in a Linux x86_64 container. It exercises production Session/control, MIDI graph and transpose against deterministic in-process MIDI services. The [proof contract](api/README.md#linux-x86_64-route-and-transpose-proof) defines the scope of that evidence. The standalone rehearsal and RP2040 acceptance depend on access to hardware.
+RP2040 uses native USB to a computer and PIO USB to host instruments through a hub. Linux and Windows use OS MIDI services. Raspberry Pi Zero runs the Linux ARM application.
 
 The portable kernel, platform backends and firmware handle MIDI. Tracks target MIDI destinations. Browser Monitor and standalone instrument peers generate sound at the receiving end.
 
-CodeZero/GridZero, miniMIDI and rpico-bridge are references and experimental evidence only. There is no legacy code, configuration, wire-protocol or storage compatibility requirement. Reusing the development-container recipe is tooling reuse, not adoption of another product's implementation.
+CodeZero/GridZero, miniMIDI and rpico-bridge are design references. Gridpico defines its own code, configuration, wire and storage contracts. [Sources](docs/SOURCES.md)
 
 ## 2. Architectural rules
 
@@ -55,7 +49,9 @@ Application Assembly supplies the execution context. Platform callbacks submit b
 
 The basic route is **source selection → processor chain → destination(s)**. Fan-out can have independent branches and processor settings. The patch grid and advanced editing operate on this one model, not separate routing engines.
 
-Device bindings use logical identity and user aliases. Stage 3 supports opt-in Linux USB input selection when the adapter can prove one match. The physical gate covers scoped cleanup on unplug and a verified return on a fresh input generation. Missing or ambiguous input matches leave enabled routes Pending. A USB output selector reserves its port and stays Pending. Operators can still configure an explicit numeric ALSA output. Generation-bound verified output awaits a separate transport and delivery review. [USB replacement contract](api/routing.md#verified-usb-replacement)
+Bindings use stable logical IDs and user aliases. Platform adapters report device, interface, cable and direction independently of MIDI channel, display name and attachment generation. Session keeps desired routes and placements across detach. Graph scopes cleanup to the affected generation and reconciles remaining release debt on a verified replacement. Missing or ambiguous identity leaves routes Pending. Aliases change labels only.
+
+The production registry starts from an Assembly-validated configuration. Runtime registration and retirement of discovered ports is the direction for dynamic Patchbay and still needs target qualification. The Linux USB selector supports verified input only. An output selector reserves its logical port and stays Pending. Operators can configure an explicit numeric ALSA output. [Verified USB replacement](api/routing.md#verified-usb-replacement)
 
 Represent cable/port, MIDI channel and device identity separately. USB packet framing belongs in adapters. The core event contract must preserve ordinary MIDI, realtime messages and bounded/streamed SysEx without assuming every message is a four-byte USB packet.
 
@@ -77,7 +73,7 @@ Reserve these concepts now:
 - Per-target reported capacities rather than UI assumptions about unlimited tracks or events.
 - Project sections for sequence data that can be introduced without changing the frontend boundary.
 
-GridZero supplies interaction ambitions: recording/playback, 16/32-step editing, multiple patterns, quantized selection, chains, scenes and later automation/step parameters. Eight track selectors and eight pattern memories are reference design targets, **not a frozen memory allocation or first-release commitment**. The planning team must choose the supported subset and capacities. A track is MIDI sequencing/performance state, not a synth instance.
+Sequence capacity and playback behavior belong to the supported engine profile. Tracks store MIDI sequencing and performance state. The controller layout places no requirement on engine allocation. [Sequencer workflows](USE_CASES.md#deferred-sequencing-on-two-surfaces)
 
 ### Projects and live configuration
 
@@ -99,46 +95,41 @@ The computer-visible read-only filesystem is **not** this writable project store
 
 Inside the APC frontend, keep protocol decoding/encoding separate from view/gesture interpretation even though one owner initially owns both. Other frontends neither impersonate the APC nor import its view implementation.
 
-Physical and simulated panel messages reach the production APC frontend through Computer connections or platform MIDI. The frontend translates panel gestures into typed commands and renders state-derived LED feedback. Keybed notes enter the production MIDI graph through musical ingress. The desktop passive viewport and the installed Pico editable Patchbay use the same logical route model. Keep their exercised capabilities explicit until the product paths converge. [APC viewport contract](api/routing.md#apc-viewport) · [Installed matrix](api/pico-target.md#installed-patchbay-matrix)
+Physical and simulated Panel MIDI reaches the production APC frontend through platform MIDI or Computer connections. The frontend submits typed commands and renders state-derived LED feedback. Keybed MIDI enters the Graph through musical ingress. The desktop viewport and Pico Patchbay use the same logical route model. [APC viewport](api/routing.md#apc-viewport) · [Editable Patchbay](api/routing.md#editable-physical-apc-patchbay)
 
-Independently running components exchange MIDI or the serial CLI byte stream. On RP2040, the browser can select computer-visible MIDI ports. The desktop WebSocket adapter carries the same APC messages to the production frontend. Router inventory, status and route control are available through the local serial CLI. Typed routing, port registration and delivery accounting stay within the production runtime.
+Independently running components exchange MIDI or serial CLI bytes. The CLI frontend uses one typed command registry for dispatch and help on Pico and Pi, with each runtime advertising only the forms its providers support. Serial authority follows the selected target. The Pi CLI controls the Pi router. The Pico CLI exposes readback and cooperative recovery, with typed Routing and Save unavailable. Registration, route state and accepted-delivery accounting remain inside the production runtime. [Shared terminal contract](api/pico-target.md#first-shared-cli-on-pico-and-pi)
 
 The piano frontend must remember whether a press/pedal transition was consumed or forwarded until its matching release, even across mode changes. Gesture interpretation is frontend-owned; ordinary MIDI note/sustain cleanup stays graph-owned. RGB-strip drawing describes logical feedback; the physical strip driver is a platform service.
 
 ### Web landing page and browser MIDI
 
-Assembly owns `scripts/web-ui.sh` as the computer entry point for the production web home. Connections hosts the landing page with links to Web APC, Diagnostics, Routing and the optional FM instrument. Assembly stages `HOME.HTM` with relative links to self-contained `INDEX.HTM`, `DIAG.HTM` and `FM.HTM` for read-only `GRIDPICO` distribution. Staged-file checks verified direct opening. Routing through local CDC and actual mounted Pico access remain pending. [Web startup and evidence](api/browser-midi.md)
+Assembly owns `scripts/web-ui.sh` as the production web entry point. Connections serves the tools from one release bundle. The offline home opens self-contained HTML tools, with hardware access conditional on the browser, selected device and target. [Browser entry points](api/browser-midi.md#entry-points-and-packaging)
 
 Connections shares one in-page browser MIDI layer for provider and port selection, send, receive and binding lifecycle. Web MIDI can select ordinary OS ports, including OS-exposed RTP-MIDI endpoints when the browser grants access. The WebSocket provider binds directional ports to the production router over the existing binary MIDI wire. This shared layer is a code boundary inside the page. Diagnostics opens its serial CLI stream independently. [Browser MIDI and landing page contract](api/browser-midi.md)
 
-The Home-linked Routing view shares the local loopback CLI session with Diagnostics. The six-port default and 18-port desktop profile both expose it. It displays named directional ports and occupancy separately from desired and active route state. The CLI owns route commands and replies. The browser keeps its own provider, permission and selected-port state. The local Web Serial CDC option for Routing and direct Web MIDI to physical APC LED RX remain Stage 3 gates. [Routing and serial](api/routing.md#routing-through-the-local-cli)
+Routing shares the Diagnostics terminal implementation. It displays named directional ports and occupancy separately from Off, Pending and Active. Route edits use the selected router's typed serial CLI and a fresh authoritative readback. A connection or transcript alone establishes no edit authority. [Routing and serial](api/routing.md#routing-through-the-local-cli)
 
 ### Browser Monitor
 
-Diagnostics hosts Monitor, MIDI Log and routed LED replay in the production web tools. Web APC owns the controller surface. Monitor and MIDI Log bind independently to selectable MIDI inputs. Monitor starts audio from live Note On and releases voices on the corresponding Note Off for its binding. MIDI Log shows its own received bytes. Monitor audio starts after explicit enablement. Master volume, per-channel sound or mute, lightweight presets and bounded voice state belong to the local Monitor. The earlier Route and Patch demos retain their verified Capture paths. [Browser roles](api/browser-midi.md#production-startup-and-page-roles)
+Diagnostics hosts Monitor, MIDI Log and routed LED replay. Monitor and MIDI Log bind independently to selectable MIDI inputs and consume the bytes delivered to their own port. Monitor owns its local audio, channel settings and bounded voices, which start after explicit enablement. [Browser roles](api/browser-midi.md#production-startup-and-page-roles)
 
 Track voices by destination, MIDI channel and key so two channels using the same key can sound and release independently. Muting a channel releases its voices. Disabling audio or losing the connection releases all browser voices. The graph continues to own MIDI cleanup, including releases that occur after the browser has disconnected. The Monitor uses the existing routed MIDI delivery path and runs independently of its timing and acceptance.
 
 ### Optional instrument peers
 
-Sound-generating peers open ordinary MIDI inputs. Stock FluidSynth and the standalone wrapper each received MIDI through the production Pi ALSA route and produced a verified local WAV. The wrapper owns the engine process, SoundFont and local output. The standalone browser FM instrument uses the shared receive adapter and owns its built-in voice, Web Audio and local voice cleanup. Routed Note On and Note Off were verified through loopback WebSocket and selected ALSA Web MIDI ports. Both peers ship independently from the router and firmware. [Instrument-peer contracts and evidence](api/instrument-peers.md)
+Sound-generating peers open ordinary MIDI inputs and own their synthesis and audio output. The FluidSynth wrapper owns its engine process and SoundFont. Browser FM owns its built-in voice, Web Audio and voice cleanup. Both run independently of the router and firmware. [Instrument peers](api/instrument-peers.md)
 
-The optional Web Synth uses an explicitly published receive-only WSS MIDI output and retains its own interface, engine and local audio. The actual engine passed on the private same-LAN bench. Any operator release requires a reviewed, independently hosted and credited synth with complete corresponding source and notices, plus separately approved origin and enrollment. Gridpico retains the staged offline FM instrument. [Web Synth peer contract](api/instrument-peers.md#optional-hosted-web-synth)
+An optional hosted Web Synth uses an explicitly published receive-only WSS MIDI output. The external synth owns its interface and engine and requires separately reviewed origin, enrollment, corresponding source and notices for distribution. [Web Synth peer contract](api/instrument-peers.md#optional-hosted-web-synth)
 
 ### Patch and Circuit views
 
-Preserve GridZero's useful interaction ideas without inheriting its synth requirements:
+Patchbay presents five source rows and eight destination columns with navigation for additional endpoints. The shared inventory maps logical ports to the viewport. A route may fan out to multiple destinations. The frontend renders route state and shares supported device color preferences with the CLI. [Patch controls](api/patchbay-controls.md)
 
-- Patch view uses all 40 pads as a five-source by eight-destination matrix, with navigation outside the matrix and pages for additional endpoints.
-- The shared Patch inventory maps logical input and output ports to source rows and destination columns. One source can route to multiple destinations. Device color preferences are shared by APC and CLI. Route feedback reflects route state.
-- Desired and active routes have distinct visible states. GridZero's green/amber/rejected feedback is an initial reference, subject to a documented palette.
-- Future Circuit view can use the top eight pads for tracks and the lower 32 for steps/editors, with the keybed supplying musical notes.
-- Both views operate the same routes, tracks and transport. Changing views does not stop musical behavior.
-- Synth master-filter/volume behavior is not inherited. Any encoder allocation for external-instrument MIDI controls must be explicitly specified.
+Changing views preserves running routes and transport. Future physical sequencer controls and encoder mappings for external instruments belong to the frontend contract.
 
-Published Patch controls pin the implemented gestures, mappings and feedback. The first Circuit browser page can ship independently as an inspection-only 16-step view. Show that the selected router lacks a sequencer. Step focus is presentation state. Playback, pitch edits, pattern data, timing and MIDI output require the shared backend. Do not enable those controls based on page availability. [Patch controls](api/patchbay-controls.md) · [Circuit preview](USE_CASES.md#deferred-sequencing-on-two-surfaces)
+The Circuit browser preview presents 16 inspection positions. Step focus is presentation state. Playback, pitch edits, pattern data, timing and MIDI output depend on the shared sequencer. Report unavailable controls when the selected router lacks that backend. [Circuit workflow](USE_CASES.md#deferred-sequencing-on-two-surfaces)
 
-The standalone Diagnostics page exposes the local serial CLI and connection status offline. Its MIDI controls send sequences through a separately selected MIDI port. Computer connections owns both transports and the browser client. The CLI frontend owns command text and calls Session/control for inventory, device colors and route commands. Application Assembly packages Diagnostics on the read-only `GRIDPICO` drive. [Diagnostics and local router](api/local-router.md)
+Diagnostics selects a serial CLI target independently of its MIDI ports. Pi loopback, the authorized LAN CDC relay to the exact attached Pico and local Web Serial have separate admission and give access only to the selected target. [Diagnostics providers](api/browser-midi.md#shared-in-page-adapter)
 
 ## 5. Platform contracts and five platform-group owners
 
@@ -152,18 +143,20 @@ The [platform contracts](api/README.md#platform-services) cover MIDI endpoints a
 | **Windows HAL** `platform/windows/` | Windows MIDI/time/storage services and Windows-specific runtime integration |
 | **Simulation backend** `sim/platform/` | Deterministic fake MIDI, clock, storage and feedback behind the same contracts |
 
-Linux uses one HAL implementation with separate target build and test settings. The native ALSA adapter sits under `platform/linux/` and builds for both x86-64 and arm64. The Pi arm64 bench has its own verified receipts and cleanup results. Additional Linux targets require their own build and runtime evidence. [Linux MIDI adapter](api/linux-midi-adapter.md)
+Linux uses one HAL implementation with separate x86-64 and arm64 build and test settings. The native adapter selects ALSA sequencer ports. [Linux MIDI adapter](api/linux-midi-adapter.md)
 
-Raspberry Pi Zero runs the Linux application. It is not required to emulate RP2040 USB device behavior, CDC or a mounted disk. A Windows or Linux application talks to devices through the OS and distributes/serves UI assets locally. Direct USB hosting here means using OS services, not writing a desktop USB host stack.
+Raspberry Pi Zero runs the Linux application. Linux and Windows use OS services for USB and MIDI and distribute or serve their UI assets locally.
 
-The opt-in Pi boot profile exposes the APC controller on a single trusted private WLAN address. Its optional recorder receives MIDI on a dedicated local managed output and uses a separate stock FluidSynth process to produce a finalized WAV. The LAN browser can control that recording and download the completed file. Inventory and serial CLI stay on Pi loopback, accessible to the operator through the strict SSH path. Pi deployment, recorder and boot evidence have their own acceptance. [Pi LAN router and recorder](api/pi-recorder.md)
+The opt-in Pi boot profile provides a private LAN web listener and an independent loopback CLI reachable through strict SSH. The LAN can expose the authorized Pico CDC relay. The optional recorder receives on a dedicated local managed output and uses a separate FluidSynth process to produce a finalized WAV. [Pi LAN router and recorder](api/pi-recorder.md)
 
 ### Network MIDI transports
 
 Gridpico supports two product transports for production routes and selectable MIDI ports. Each has independent acceptance evidence.
 
-- **RTP-MIDI** uses native OS-presented MIDI ports and the selected platform's RTP service. On Linux, the production router binds ALSA sequencer ports provided by `rtpmidid`. The Linux↔Linux run observed exact receipt and scoped release on selected disconnects. Repeatability, controlled packet loss and timing require further evidence. Windows uses native OS-presented RTP ports with acceptance deferred to the nominated Windows target. [Linux ALSA adapter](api/linux-midi-adapter.md) · [Network MIDI status](ROADMAP.md#network-midi-and-browser) · [Windows RTP endpoints](https://microsoft.github.io/MIDI/sdk-reference/Transports/Rtp/)
-- **WebSocket MIDI** defaults to the verified IPv4 loopback profile. The opt-in cross-host profile binds a selected LAN address and authenticates standard browser and native clients over TLS. Both listeners use the same directional binary MIDI bindings and production route and cleanup rules. The cross-host listener serves MIDI controls. The local serial listener retains its independent CLI byte stream. Two-host native-client receipt, scoped release and fresh binding were verified with the Pi listener. Isolated headed Linux Chrome verified same-origin receipt and a distinct-origin browser synth over a private LAN after top-level certificate selection. Two-host browser acceptance and public-origin Local Network Access remain pending. [WebSocket MIDI contract](api/websocket-midi.md)
+- **RTP-MIDI** uses native OS-presented MIDI ports. On Linux, the production router binds ALSA sequencer ports provided by `rtpmidid`. Windows uses its OS-presented endpoints when available. [Linux ALSA adapter](api/linux-midi-adapter.md) · [Windows RTP endpoints](https://microsoft.github.io/MIDI/sdk-reference/Transports/Rtp/)
+- **WebSocket MIDI** defaults to IPv4 loopback. The opt-in authenticated cross-host listener binds a configured LAN address and uses the same directional binary MIDI and cleanup rules. Its grants cover authorized MIDI roles. Serial has independent admission. [WebSocket MIDI contract](api/websocket-midi.md)
+
+[Network MIDI acceptance](ROADMAP.md#network-midi-and-browser)
 
 The operator selects available ports and routes explicitly. A local adapter's acceptance establishes its own delivery boundary. Actual remote receipt and peer loss require evidence for the selected transport.
 
@@ -180,19 +173,13 @@ The next native USB allocation uses one composite device.
 | CDC | Shared CLI transport and target recovery |
 | Planned read-only mass storage `GRIDPICO` | Static HTML tools and offline documentation |
 
-This is the next standard native allocation. The three MIDI pairs share one physical USB endpoint pair. The read-only census verified actual enumeration. Promote the descriptor after asymmetric send and receive, mode and release cleanup, and target resource and recovery checks. Keep exact source and verified flash rollback for the installed release until replacement passes. [Three-pair contract and census](api/pico-target.md#next-native-keys-and-patchbay-increment)
+The three proposed MIDI pairs share one physical USB endpoint pair. Enumeration is verified. Asymmetric traffic, mode and release cleanup, target resources and verified recovery gate promotion from the current two-pair deployment. [Three-pair contract](api/pico-target.md#next-native-keys-and-patchbay-increment)
 
-The read-only volume contains `HOME.HTM`, the standalone `INDEX.HTM` and `DIAG.HTM` tools, documentation and a version manifest. Generate its immutable filesystem image at build time and serve it directly from flash. Host writes are rejected at the storage protocol boundary. Keep it separate from writable settings and projects, with defined behavior during flash operations.
-
-At revision `36c61af1`, rpico-bridge sets up a native TinyUSB composite device with one MIDI cable pair, CDC and build-optional MSC. Its PIO host task services a separate root port. It links the prebuilt documentation image into read-only data and serves bounded reads while rejecting writes. These source patterns are reference evidence for firmware planning. [Composite descriptor](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_device.c#L62-L71) · [Host and device servicing](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_host.c#L70-L108) · [Image build](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/CMakeLists.txt#L64-L89) · [Read-only storage callbacks](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/firmware/usb_docs_msc.c#L46-L88)
-
-The reference records a complete read of its 512 KiB drive and reported write protection. Gridpico must verify mounted-drive behavior and MIDI service during disk activity on its own target. Users open the offline HTML explicitly. [Reference bench results](https://github.com/NevynIt/rpico-bridge/blob/36c61af1e03c799b60c250dd41263a174b5ee5f4/docs/STATE.md)
+The planned read-only `GRIDPICO` volume serves an immutable build-time image from flash with offline browser tools, documentation and a version manifest. Reject host writes at the storage protocol boundary and keep the volume separate from writable settings. Verify mounted reads, write rejection and concurrent MIDI service on Gridpico hardware. [Browser packaging](api/browser-midi.md#entry-points-and-packaging)
 
 ### Single-product staging
 
-1. Reuse `frontends/cli` on Pico and Pi. Start with `help`, `help <command>`, `status` and `inventory` through one command table for dispatch and help. Use the selected runtime's actual providers for each advertised command and subform. A known form without a provider reports unavailable. Keep the existing bounded line and reply contract and typed Session callbacks. Size the Pico parser, stack and nonblocking CDC reply path on the linked target, including full-width status revisions. Preserve the cooperative BOOTSEL path and its authority from early startup. Verify a real Pico USB CDC terminal and the Pi loopback terminal. Diagnostics sends CLI bytes through its selected authorized provider and consumes that target's replies. Keep the Pico-via-Pi Diagnostics form on its existing read-oriented scope until the new forms are explicitly admitted. A transcript connection does not establish typed Routing support.
-2. Register live USB MIDI inventory within target bounds, then bind operator-selected directional ports and controller roles to stable logical IDs. Adapters report interface and cable identity separately from MIDI channel, attachment generation and display name. Match a return to a uniquely verified identity or an explicit operator-bound physical path. Conflicts stay visible and routes stay Pending. Aliases change labels only. Graph currently reads a startup registry, so qualifying runtime registration and retirement is a dependency for dynamic Patchbay. Session preserves desired routes and placements while detach and replacement retire scoped releases. Publish measured device, hub, interface, endpoint, branch and release bounds independently. A volatile binding is available before target Save is qualified.
-3. Advance one normal Pico and one normal Pi release from verified source, then retire superseded product toggles and fixed bench routes. Qualify the real rig's selected routing and three-pair native roles, watchdog/BOOTSEL and exact readback before promotion. Keep probes and deterministic fixtures in testing or release history. A retained rollback image does not impose a second product profile or legacy format compatibility. The Circuit browser preview is independent of these steps.
+Advance one verified Pico release and one verified Pi release. Keep probes and deterministic fixtures outside normal product startup. Replace fixed bench device roles with bounded runtime inventory and explicit role binding as the target supports them. Promote updates only with exact source, reviewed flash coverage, verified readback and tested BOOTSEL or rollback. [Pico release and recovery](api/pico-target.md#recovery-and-release) · [Current product scope](ROADMAP.md#current-product-status)
 
 ## 6. Dependencies and replaceability
 
@@ -208,17 +195,11 @@ Arrows in the [architecture diagram](docs/diagrams/README.md) show data or contr
 
 Application Assembly publishes one effective capacity profile for each supported target or deterministic simulation setup, with backend input and domain validation. Optional features report availability separately. Kernel limits apply before a configuration becomes live. Queues and other performance resources have finite bounds and explicit exhaustion behavior. Frontends page endpoints and report limits using the current profile and command results. The [capacity contract](api/README.md#capacity-profiles) lists the required units and admission rules.
 
-The verified desktop profile maps the five-by-eight APC viewport over six managed source rows and nine managed destination columns. Its 18 directional ports and 200 release credits reflect the tested desktop workload. Registry backing, live peer admission, fan-out, held occurrences, release capacity and queue isolation are target-specific. Pico's three-pair census and its mixed-traffic qualification are distinct. WSS publication is independent of registry size. [Configurable profile contract](api/routing.md#profile-and-admission)
+Qualify registry, live peer admission, fan-out, held occurrences, release capacity and queue isolation per target. A larger registry grants no additional WSS publication. [Configured profile contract](api/routing.md#profile-and-admission)
 
 ## 7. Agent mapping and ownership
 
-One implementation module means one proposed owner seat. The six kernel modules, five interface modules and five platform-group modules yield **16 implementation seats**. Testing, Builder and Documentation add three independent seats. With the four initial planning/session seats, the proposed full roster is **23 agents**, not 23 agents to start now.
-
-APC frontend owner additionally acts as **Interfaces Lead**. Application Assembly owner additionally acts as **Platforms Lead**. These are advisory duties, not extra seats or competing managers. Architect guides the kernel directly, owns all public contracts and resolves cross-area design questions. Project Manager alone assigns work.
-
-Each source file has one owner. `api/` belongs to Architect; build/glue code belongs to Application Assembly; `tests/` belongs to Testing; user documentation belongs to Documentation except the explicitly owned planning documents. Builder runs builds and does not repair source.
-
-See the coordination agreement for approvals, escalation and session lifecycle.
+The [team coordination agreement](AGENT_TEAM_COORDINATION.md) defines path ownership, area leads, approvals and session lifecycle.
 
 ## 8. Verification requirements, not a roadmap
 
@@ -226,18 +207,12 @@ Acceptance must eventually cover the same interaction through APC simulation, ph
 
 Browser Monitor verification covers a transposed note from the live destination feed, voice cleanup and channel isolation. Observe the same normalized MIDI destination trace with monitoring enabled and disabled.
 
-The approved one-pad demo separates route enablement from runtime activity. Session/control publishes committed intent, the graph completes held-note release before disabling, and the production APC frontend derives LED feedback from the route snapshot. Surface and keybed messages use distinct paths over the local connection. [One-pad route and surface contract](api/README.md#one-pad-apc-route-toggle)
-
 Maintain separate evidence for deterministic simulation, Linux x86, Linux ARM, Windows and RP2040 hardware. Test capacities/overflow, malformed configuration, SysEx concurrency, external clock transitions, device identity ambiguity and power-loss behavior where applicable.
 
 Maintain separate transport results for verified WebSocket loopback, cross-host browser and native WebSocket, Linux RTP-MIDI and Windows RTP-MIDI. Verify actual MIDI receipts and scoped cleanup. Cross-host WebSocket acceptance also exercises TLS client admission, origin checks, port authorization and isolation of the local CLI. [WebSocket MIDI acceptance](api/websocket-midi.md#integration-handoff-and-acceptance)
 
-The [roadmap](ROADMAP.md) records sequencing, implemented profiles and verification results.
+See [current acceptance](ROADMAP.md#current-product-status) for verified outcomes and remaining target gates.
 
 ## 9. Decisions intentionally left to planning
 
-The native Linux x86_64 proof uses portable C11 and shared in-process types for route Apply, state queries and note delivery. [Native proof contract](api/README.md#linux-x86_64-route-and-transpose-proof)
-
-The planning team still needs to resolve additional target build profiles, measured capacity and timing thresholds, the selected Circuit behavior baseline and physical deployment wiring.
-
-The initial documents are maintained collaboratively with single-file ownership. Human-approved changes to product scope, module boundaries or agent seats flow through Strategist. References and experimental evidence are recorded in [Sources](docs/SOURCES.md).
+Open design decisions include the capacity and timing thresholds for additional targets and the supported Circuit sequencing behavior.

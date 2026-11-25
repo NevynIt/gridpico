@@ -1,6 +1,6 @@
 # Configurable router profiles and Routing
 
-**Owner** Architect. **Status** Desktop profile, local Routing and passive APC viewport independently verified. Physical device access and USB identity verification remain Stage 3 gates. [Desktop acceptance](#both-axis-acceptance-registration) · [Local router baseline](local-router.md) · [Browser MIDI](browser-midi.md)
+**Owner** Architect. **Status** Desktop Routing and the passive APC viewport are independently verified. Physical USB identity replacement retains a separate hardware gate. [Desktop acceptance](#both-axis-acceptance-registration) · [Local router](local-router.md) · [Browser MIDI](browser-midi.md)
 
 ## Profile and admission
 
@@ -15,8 +15,6 @@ The verified [desktop configuration](../app/profiles/desktop.conf) registers 8 d
 Use the existing `gridpico_local_registry` inventory plus its capabilities vector in port registration order. [Graph types](local_router.h) carry the `gridpico_local_profile` limits alongside it. Counts come from the registry. Keep per-direction queue limits explicit in the bind result and cap Raw at one exclusive branch. Count enabled Pending branches against the configured branch and fan-out limits. The configured initializer copies the registry and limits on success. Existing initializers keep their signatures and prior active counts. Check all counts, per-source fan-out and staging resources against backing before publishing the profile. Assembly owns the startup configuration and validation.
 
 The desktop build has shared backing for 8 devices, 18 ports, 13 branches, 50 occurrences and 200 credits. Per-occurrence membership is bounded by configured fan-out. Assembly stages up to 285 MIDI frames per dispatch with 18 additional fault slots. The MIDI budget covers 200 owed releases, two 40-frame page allowances, four fan-out frames and one Raw frame. Desktop binding queues are 64 frames except the 128-frame Panel input. Serial retains its independent 8 KiB queue in each direction.
-
-A strict C11 `sizeof` probe of the pre-extension x86-64 headers measured 464 bytes for inventory, 504 for Patch graph state, 664 for the Patch snapshot, 4,672 for graph storage, 64 for Session, 4,680 for output staging and 22,792 for the entire local runtime.
 
 The integrated x86-64 build measures 1,200 bytes for inventory, 1,320 for Patch graph state, 1,400 for the Patch snapshot, 8,440 for graph storage, 208 for Session, 3,636 for output staging and 26,296 for the local runtime. The Routing snapshot is 1,656 bytes and a viewport page is 232 bytes. These are compiled sizes, independent of a fixture's admitted workload. Rebuild consumers of the widened C structs together. Native transpose and native Patch proof traces matched the published baselines.
 

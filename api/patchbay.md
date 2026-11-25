@@ -1,6 +1,6 @@
 # Patchbay, inventory and Diagnostics
 
-**Owner** Architect. **Status** Native Patch, shared APC/CLI colors and simulated Diagnostics verified. Mounted-drive and real Pico CDC checks remain pending. The [architecture](../ARCHITECTURE.md) defines the module boundaries. The [one-pad demo](README.md#one-pad-apc-route-toggle) remains an independent baseline regression. [Patch and Diagnostics evidence](https://github.com/NevynIt/gridpico/blob/f8b15cd0f43c519f3b27296d7c24677e49fbffe4/ROADMAP.md#next-approved-product-work-after-web-apc-protocol-and-timed-leds)
+**Owner** Architect. **Status** Native Patch, shared APC/CLI colors and simulated offline Diagnostics were verified on their fixtures. For the installed Pico and the separate mounted-drive gate, see the [Pico target](pico-target.md) and [current acceptance](../ROADMAP.md#current-product-status). [Patch fixture evidence](https://github.com/NevynIt/gridpico/blob/f8b15cd0f43c519f3b27296d7c24677e49fbffe4/ROADMAP.md#next-approved-product-work-after-web-apc-protocol-and-timed-leds)
 
 ## Shared state and commands
 
