@@ -1,6 +1,6 @@
 # Pi router deployment
 
-The Pi Zero 2 W runs `gridpico-router.service` as the `pi` user. The canonical Pi release and the attached Pico's normal firmware are both built from [`3ae97ba4b2f37b486812ab389066c6bc2bc551a0`](https://github.com/NevynIt/gridpico/commit/3ae97ba4b2f37b486812ab389066c6bc2bc551a0). The Pi uses the portable AArch64 router, Debian Trixie Node 20.19.2, and locked `ws` 8.23.0. The recorder uses stock FluidSynth 2.4.4 and the separately packaged TimGM6mb SoundFont.
+The Pi Zero 2 W runs `gridpico-router.service` as the `pi` user. The live browser bundle is `602768bfdf9250866e52fcf29b5bd2fa10c46986` on Pi runtime `3ae97ba4b2f37b486812ab389066c6bc2bc551a0`. The attached Pico runs normal firmware `9626a8ec68a496529d4aa920d0a10b073b7e5571`. The Pi uses the portable AArch64 router, Debian Trixie Node 20.19.2, and locked `ws` 8.23.0. The recorder uses stock FluidSynth 2.4.4 and the separately packaged TimGM6mb SoundFont. [Current release evidence](../../ROADMAP.md#current-product-status)
 
 | Endpoint | Access |
 | --- | --- |
@@ -11,7 +11,7 @@ The Pi router's `/serial` is loopback-only. The LAN Pico console uses the select
 
 Use direct LAN access from trusted devices on the approved subnet. The LAN listener admits by source address and has no per-user login. Eligible browsers share the same router, APC bindings and recorder slot.
 
-Both listeners serve the same verified shared UI bundle, with manifest SHA-256 `a1eece7ed45e6ac982a6e0bae14cf6073c247b1b92d7db44f1f7c2896a7d529c`. The per-deployment capability descriptor is served separately at `/ui-capabilities.json`.
+Both listeners serve the same verified shared UI bundle. The manifest SHA-256 is `a947543c5643e73110d47f495edcc0d0498fa7aeda2e004b4236f369b3ef3d19`, and the ZIP SHA-256 is `42fc3dcab94f98d9ee438ac40e246e11ec05f3a87c10af6f559309bc30a39d95`. The per-deployment capability descriptor is served separately at `/ui-capabilities.json`.
 
 | Listener | Bundle files |
 | --- | --- |
@@ -32,8 +32,8 @@ The Pi user owns `~/.local/share/gridpico-router/` and installs the unit at `~/.
 
 | Path | Purpose |
 | --- | --- |
-| `current` | Symlink to the explicitly selected `release/<commit>`. |
-| `current/RELEASE` and `current/SHA256SUMS` | Pin and per-file manifest for the installed snapshot. |
+| `current` | Symlink to the explicitly selected immutable release directory. |
+| `current/RELEASE`, `current/BROWSER_RELEASE`, and `current/SHA256SUMS` | Pi runtime pin, browser source pin, and per-file manifest for the installed snapshot. |
 | `launch.sh` | Supplies the private runtime and invokes the selected release's canonical `scripts/web-ui.sh` in prepared mode. |
 | `config/trusted-lan.json` and `config/recorder.json` | Selected LAN address and recorder paths. |
 | `runtime/node/` and `runtime/fluidsynth/` | Privately extracted runtime dependencies. |
@@ -50,15 +50,21 @@ From an authenticated Pi user shell:
 systemctl --user status gridpico-router.service
 journalctl --user -u gridpico-router.service -n 40 --no-pager
 cd ~/.local/share/gridpico-router
-cat current/RELEASE
+cat current/RELEASE current/BROWSER_RELEASE
 (cd current && sha256sum -c SHA256SUMS)
 ```
 
+### Clear development connections for maintenance
+
+Jill grants standing permission to close verified Gridpico development MIDI and CDC connections gracefully for approved work. Confirm the recorder reports `state: idle` and `activeId: null` on both listeners, and record the latest WAV size and SHA-256. Identify the exact service, affected peers and Pico tty holder using socket and process metadata. Pause if ownership is ambiguous, an unrelated client would be affected, or the recorder is active.
+
+Close the identified peers through their normal disconnect path. For a stuck CDC attachment, a graceful termination signal to the verified relay child lets the service close that connection. If graceful closure is insufficient, restart only `gridpico-router.service` after rechecking recorder idle and confirming every affected peer is in scope. Leave unrelated clients and host processes alone. Confirm the scoped peers and tty/RawMIDI holders are clear, both listeners are healthy, the expected release is active, and the latest WAV size and SHA-256 match.
+
 ### Update and rollback
 
-Build a reviewed commit, verify the archive SHA-256 after SFTP, and extract it to a new `release/<commit>` directory. Verify its file manifest and record the size and SHA-256 of `recordings/latest.wav`. Defer cutover while the recorder is active, clients are connected, or the Pico tty is held. Use an atomic symlink rename and confirm `/recordings/status` reports `state: idle` with `activeId: null` immediately before restarting `gridpico-router.service`. After restart, check both listeners, the pinned bundle, and the latest WAV hash and size. The unit never pulls from Git or deploys a new release unattended.
+Build a reviewed commit, verify the archive SHA-256 after SFTP, and extract it to a new release directory. Verify its file manifest and record the size and SHA-256 of `recordings/latest.wav`. Before an approved cutover, clear eligible development connections as described above. Use an atomic symlink rename once the peer and holder checks are clear, then confirm `/recordings/status` reports `state: idle` with `activeId: null` immediately before restarting `gridpico-router.service`. After restart, check both listeners, the pinned bundle, and the latest WAV hash and size. The unit never pulls from Git or deploys a new release unattended.
 
-The prior canonical release `5a12c9fced437b3f37ccda4a481084ae239889c0` remains installed. The prior symlink, launcher, configuration and WAV snapshot are retained in the private `state/cli-promotion.DHYqOJ/` directory. If health checks fail, restore the prior release symlink, launcher and exact configuration for the rollback restart.
+The previous browser bundle `05a1585f2d4be9acc7013db2de32433f2580f0d2` remains installed on the same `3ae97ba` runtime. The private `state/browser-idle-retry.ECMa9X/` directory retains the prior link and cutover checks. If health checks fail, restore the prior release symlink and verify the launcher and exact configuration before the rollback restart.
 
 ## Record and download
 
@@ -66,7 +72,7 @@ The prior canonical release `5a12c9fced437b3f37ccda4a481084ae239889c0` remains i
 2. In **Recordings**, click **Start** and wait for **Recording**. Play and release notes in the APC Keybed.
 3. Click **Stop** and wait for **Download**. The recorder also stops automatically after 60 seconds of capture and adds a short release tail.
 
-The Pi keeps one finalized WAV, up to 12 MiB. A successful new take replaces it. A failed take leaves the previous completed file available. To retrieve the latest file over the existing authenticated SSH connection, open SFTP and use `get`.
+The Pi keeps one finalized WAV, up to 12 MiB. A successful new take replaces it. A failed take leaves the previous completed file available. At the last hardware gate, the idle recorder's completed WAV was 610,604 bytes with SHA-256 `5941db852389c625e911988cbf1122170d5224c674339c969cd846fd4cc23f7b`. To retrieve the latest file over the existing authenticated SSH connection, open SFTP and use `get`.
 
 ```text
 sftp -o StrictHostKeyChecking=yes pi@192.168.0.223
@@ -92,8 +98,8 @@ Open **Diagnostics** at `http://127.0.0.1:18767/diagnostics/` through the SSH fo
 
 ### Pico console from Diagnostics
 
-Open **Diagnostics** at `http://192.168.0.223:18768/diagnostics/`. Select **Pico via Pi · LAN WebSocket CDC** and click **Connect**. Send `TRACE` or `HUBTRACE` for readback. Click **Check Pico commands** to query live help and enable `help`, advertised help topics, and the advertised `inventory` and `status` commands. This console admits read-only commands to the selected Pico.
+Open **Diagnostics** at `http://192.168.0.223:18768/diagnostics/`. Select **Pico via Pi · LAN WebSocket CDC** and click **Connect**. Send `help`, `help inventory`, or `inventory`, then click **Disconnect** when finished.
 
-Live browser testing verified both paths and the rollout preserved the latest WAV. [Current release evidence](../../ROADMAP.md#current-product-status)
+The browser and Pi relay carry a transparent serial byte stream. The terminal adds a final LF when needed. The selected Pico firmware determines which commands it accepts, what they do, and what bytes it returns. Live browser testing verified the help and inventory replies, including the Pico's `ERR INVALID` for an unknown command. A separate guarded route edit and restore passed on `602768b` through this same console. [Raw terminal contract and live check](../../api/browser-midi.md#shared-in-page-adapter) · [Guarded Routing acceptance](../../api/routing.md#target-routing-and-guarded-edits)
 
 The attached Waveshare RP2040-Zero enumerates at USB path `1-1` as `1209:0001`, `bcdDevice 0104`. Firmware identity, direct CDC recovery and flash rollback are documented with the target. [Pico target and recovery](../../api/pico-target.md)
