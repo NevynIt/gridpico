@@ -80,6 +80,9 @@ static const gridpico_local_registry registry = {
 #endif
         GRIDPICO_LOCAL_PORT_MANAGED, GRIDPICO_LOCAL_PORT_MANAGED,
     },
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+    .native_virtual_cable = {WEB_KEYS, WEB_EXPORT},
+#endif
 };
 
 static size_t note_queue_index(gridpico_pico_peer peer)
