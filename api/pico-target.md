@@ -6,7 +6,11 @@
 
 The bench uses Waveshare RP2040-Zero with native USB to the Pi and a separately powered PIO USB hub on GP14 D+ and GP15 D−, common ground and VBUS open at the breakout. [Bench wiring](../docs/HARDWARE.md)
 
-Identify the board by its exact upstream path and current descriptors. Assert DTR and send exact `BOOTSEL` followed by LF. Verify the same-board ROM appears and that the approved application returns after reboot. The firmware sends `OK BOOTSEL` plus LF and services native USB for the existing bounded acknowledgement window of about 100 ms before reset. Use 115200 8N1 with no flow control. Before writing, retain matching verified full-flash reads and a known-good rollback image, and verify the selected artifact and erase extent.
+Jill's standing authorization covers repeated firmware flashes on the identified **DEV Pico only**, including occupied old-firmware sectors in the candidate's erase extent. It covers those sectors without separate approval or a requirement to preserve old flash contents. Keep verified, board-compatible firmware and a way to reach ROM BOOTSEL for recovery. The existing protections for Pi services, the recorder and verified development clients apply during bench maintenance. [Pi maintenance procedure](../platform/linux/PI_ROUTER.md#clear-development-connections-for-maintenance)
+
+Before writing, match the board's upstream USB path and current descriptors, including its board serial when available. Check its flash size in ROM and verify the exact artifact hash and erase extent.
+
+For cooperative BOOTSEL, use 115200 8N1 with no flow control, assert DTR and send exact `BOOTSEL` followed by LF. The firmware sends `OK BOOTSEL` plus LF and services native USB for about 100 ms before reset. Match the ROM to the same board. After writing, verify the programmed image by readback, boot it and check its native USB identity and startup. Verify cooperative BOOTSEL and normal return before promotion. If the new application fails, use ROM to load and verify the known-good firmware.
 
 Arm the watchdog before USB and router initialization. Failure before arming remains outside watchdog recovery. The bench's direct Pi root-port connection has no verified independent MCU reset and can require physical intervention. A link reset or an unmeasured VBUS transition does not establish recovery.
 
@@ -20,7 +24,7 @@ At the first application entry, read the SDK watchdog-enable reset classificatio
 
 Startup requires local initialization, a successful foreground service pass and advancement of the stock PIO frame counter from its post-init baseline within the four-second startup deadline. This checks that the frame scheduler runs even with an empty bus. If native USB sees a host reset or setup during startup, also require CDC interface `0` data endpoints to become ready by the same deadline. CDC class readiness is independent of DTR, terminals, relays and browsers. Without native host activity the board can complete startup locally. Downstream instruments and hub occupancy do not gate startup. Clear the marker after readiness and keep the normal runtime watchdog. A later runtime watchdog reset starts a normal boot. Preserve the exact cooperative CDC BOOTSEL line and bounded acknowledgement before clearing the marker, disabling the watchdog and entering ROM. [Pico-PIO-USB frame counter](https://github.com/sekigon-gonnoc/Pico-PIO-USB/blob/0.7.3/src/pio_usb_host.c#L349-L393)
 
-Verify the normal flash readback, native enumeration, route state and cooperative BOOTSEL before promoting an update. If the startup recovery path changes, independently exercise a fault image that starves after arming and before readiness. It must enter stable ROM without DTR or a CDC command. Keep the fault trigger out of the operational image.
+Verify the target's routing behavior before promotion. If the startup recovery path changes, independently exercise a fault image that starves after arming and before readiness. It must enter stable ROM without DTR or a CDC command. Keep the fault trigger out of the operational image.
 
 The flashed fault trial at `a3a6112` reached stable same-board ROM without a tty open or CDC command. The installed Matrix has separate cooperative recovery evidence. [Installed release](#installed-patchbay-matrix)
 

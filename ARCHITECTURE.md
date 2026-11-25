@@ -179,7 +179,7 @@ The planned read-only `GRIDPICO` volume serves an immutable build-time image fro
 
 ### Single-product staging
 
-Advance one verified Pico release and one verified Pi release. Keep probes and deterministic fixtures outside normal product startup. Replace fixed bench device roles with bounded runtime inventory and explicit role binding as the target supports them. Promote updates only with exact source, reviewed flash coverage, verified readback and tested BOOTSEL or rollback. [Pico release and recovery](api/pico-target.md#recovery-and-release) · [Current product scope](ROADMAP.md#current-product-status)
+Advance one verified Pico release and one verified Pi release. Keep probes and deterministic fixtures outside normal product startup. Replace fixed bench device roles with bounded runtime inventory and explicit role binding as the target supports them. Qualify Pico updates with exact source and artifact identity, readback on the identified board and verified BOOTSEL recovery. [Pico release and recovery](api/pico-target.md#recovery-and-release) · [Current product scope](ROADMAP.md#current-product-status)
 
 ## 6. Dependencies and replaceability
 
