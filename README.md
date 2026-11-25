@@ -17,7 +17,7 @@ The repository includes the production MIDI router, Web APC and Diagnostics tool
 | [Container and first-run setup](docs/SETUP.md) | Documentation | Development environment and startup guidance |
 | [At a glance](docs/AT_A_GLANCE.md) and [other documentation](docs/) | Documentation | User-facing overview, setup, validation and hardware references |
 | [Diagrams](docs/diagrams/README.md) | Documentation, with Architect and Session Manager review | Visual architecture/team maps and editable Mermaid sources |
-| [Editorial policy draft](docs/EDITORIAL_POLICY_DRAFT.md) | Documentation, for leadership review | Proposed curation and preservation rules |
+| [Editorial policy](docs/EDITORIAL_POLICY.md) | Documentation | Source homes, acceptance notes and owner curation |
 | [Full documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25/gridpico-documentation.pdf) | Documentation | Downloadable, revision-stamped offline snapshot; [build instructions](docs/PDF_BUILD.md) |
 
 ## Documentation owners
