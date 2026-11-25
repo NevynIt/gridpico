@@ -5,153 +5,391 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Gridpico · Circuit</title>
 <style>
-  :root {
-    color-scheme: dark;
-    font: 1rem/1.5 system-ui, sans-serif;
-    color: #f0f4f2;
-    background: #121617;
-  }
+  :root { font: 1rem/1.5 system-ui, sans-serif; color: #173334; background: #edf1ea; }
   * { box-sizing: border-box; }
   body { margin: 0; }
-  main {
-    width: min(calc(100% - 2rem), 48rem);
-    margin: 0 auto;
-    padding: clamp(1rem, 6vw, 4rem) 0;
-  }
-  a { color: #a3efbd; }
-  h1 { margin: .65rem 0 1.3rem; font-size: clamp(2.35rem, 7vw, 3.5rem); line-height: 1.1; letter-spacing: -.045em; }
-  h2 { margin: 0; font-size: clamp(1.2rem, 4vw, 1.65rem); }
+  main { width: min(calc(100% - 1rem), 55rem); margin: auto; padding: clamp(1rem, 3vw, 2.4rem) 0 2rem; }
+  a { color: #19545a; }
+  h1 { margin: .35rem 0 .85rem; font-size: clamp(2.2rem, 5vw, 3.3rem); line-height: 1.05; letter-spacing: -.045em; }
   p { margin: 0; }
-  .pattern {
-    padding: clamp(.75rem, 4vw, 2rem);
-    border: 1px solid #546461;
-    border-radius: .55rem;
-    background: #1b2424;
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid #154699; outline-offset: 2px; }
+  .chassis {
+    container-type: inline-size;
+    padding: clamp(.4rem, 2vw, 1.45rem);
+    border: 1px solid #8fa89f;
+    border-top: 5px solid #28676c;
+    border-radius: .65rem;
+    background: #f9f8f0;
+    box-shadow: 0 8px 22px #284e4214;
   }
-  .pattern-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: .25rem 1rem;
-    margin-bottom: 1rem;
+  .face {
+    --gap: clamp(.19rem, .9cqw, .5rem);
+    --rail: clamp(2.15rem, 9cqw, 5rem);
+    display: grid;
+    grid-template-columns: var(--rail) minmax(0, 1fr) var(--rail);
+    gap: var(--gap);
   }
-  .inspection { color: #bdd0c8; min-height: 1.5em; }
-  .steps {
+  .macros, .utilities {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: var(--rail) repeat(8, minmax(0, 1fr)) var(--rail);
+    gap: var(--gap);
+  }
+  .macros { margin-bottom: .35rem; row-gap: .25rem; }
+  .dial {
+    display: grid;
+    align-content: start;
+    justify-items: center;
+    gap: .22rem;
+    min-width: 0;
+    border: 0;
+    padding: 0;
+    background: transparent;
+    font-size: clamp(.52rem, 1.34cqw, .79rem);
+    line-height: 1.15;
+    text-align: center;
+  }
+  .dial::before {
+    content: "";
+    width: min(74%, 3.6rem);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    border: 1px solid #809d94;
+    background: radial-gradient(circle, #426363 0 55%, #e3e9e1 57% 68%, #687e76 70%);
+  }
+  .dial.volume { grid-column: 1; grid-row: 1; }
+  .dial.filter { grid-column: 10; grid-row: 2; }
+  .dial:nth-child(2n) { grid-row: 2; }
+  .dial:nth-child(2n + 3) { grid-row: 1; }
+  .tracks, .pads {
     display: grid;
     grid-template-columns: repeat(8, minmax(0, 1fr));
-    gap: clamp(.2rem, 1vw, .65rem);
-    list-style: none;
-    margin: 0;
-    padding: 0;
+    gap: var(--gap);
   }
-  .step {
-    width: 100%;
+  .rail { display: grid; grid-template-rows: repeat(4, 1fr); gap: var(--gap); }
+  .control {
     min-width: 0;
-    min-height: clamp(2.75rem, 9vw, 4.75rem);
+    min-height: 2.3rem;
+    padding: .22rem .1rem;
+    border: 1px solid #a2b9af;
+    border-radius: .25rem;
+    background: #e4ece4;
+    font-size: clamp(.50rem, 1.52cqw, .85rem);
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+  }
+  .control small { display: block; font-size: .85em; margin-top: .15rem; }
+  .control:disabled { color: #526761; background: #f0f1e9; border-style: dashed; }
+  .control:not(:disabled), .pad { cursor: pointer; }
+  .control[aria-pressed="true"] { border-color: #28676c; background: #d0e4db; font-weight: 700; }
+  .compact-name { display: none; }
+  .octave::before {
+    content: "";
+    display: inline-block;
+    border-inline: .3rem solid transparent;
+    border-bottom: .43rem solid currentColor;
+  }
+  .octave-down::before { transform: rotate(180deg); }
+  .pad {
+    min-width: 0;
+    min-height: clamp(2.75rem, 9cqw, 4.3rem);
     padding: 0;
-    border: 1px solid #71817d;
+    border: 1px solid #8baca4;
     border-radius: .35rem;
-    color: inherit;
-    background: #202929;
-    font: 600 clamp(.8rem, 2vw, 1.15rem)/1 ui-monospace, monospace;
-    cursor: pointer;
-    touch-action: manipulation;
+    background: #e1ebe4;
+    font: 650 clamp(.67rem, 1.8cqw, 1rem)/1.12 ui-monospace, monospace;
+    touch-action: none;
+    user-select: none;
   }
-  .step:hover { border-color: #b9d0c6; }
-  :focus-visible { outline: 2px solid #def3e9; outline-offset: 3px; }
-  .step:focus { outline: 2px solid #def3e9; outline-offset: -4px; }
-  .transport {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: .55rem 1rem;
-    margin-top: 1.35rem;
-    padding-top: 1rem;
-    border-top: 1px solid #546461;
+  .pad[data-kind="note"], .pad[data-kind="velocity"], .pad[data-kind="gate"] { background: #e8e8f1; border-color: #a5a5bc; }
+  .pad:hover { border-color: #315c60; }
+  .pad[data-inspected] { box-shadow: inset 0 0 0 2px #28676c; }
+  .pad[data-held] { color: white; background: #28676c; border-color: #173f43; }
+  .pad:focus-visible, .control:focus-visible { outline-offset: -3px; }
+  .readout {
+    color: #eff8f2;
+    background: #19383b;
+    border-radius: .45rem;
+    margin-top: .65rem;
+    padding: .75rem .9rem;
   }
-  .transport-controls { display: flex; flex-wrap: wrap; gap: .4rem; }
-  .transport button {
-    padding: .4rem .65rem;
-    border: 1px dashed #6d7b78;
-    border-radius: .3rem;
-    color: #aebeba;
-    background: transparent;
-    font: inherit;
+  #inspection { font-weight: 650; }
+  #gesture { min-height: 1.5em; }
+  .help { color: #385952; margin-top: .55rem; font-size: .875rem; }
+  @container (max-width: 460px) {
+    .utilities .control small { display: none; }
+    .control { letter-spacing: -.025em; }
   }
-  #sequencer-status { color: #cbd7d4; font-size: .9rem; }
+  @container (min-width: 330px) and (max-width: 460px) {
+    .face { --rail: 2.45rem; }
+  }
+  @container (max-width: 329px) {
+    .full-name { display: none; }
+    .compact-name { display: inline; white-space: nowrap; }
+  }
 </style>
 </head>
 <body>
 <main>
   <nav aria-label="Gridpico"><a href="/">Gridpico home</a></nav>
   <h1>Circuit</h1>
-  <section class="pattern" aria-labelledby="pattern-title">
-    <header class="pattern-header">
-      <h2 id="pattern-title">Track 1 · Pattern 1</h2>
-      <p class="inspection" id="inspection" role="status">Choose a step or use the arrow keys.</p>
-    </header>
-    <ol class="steps" aria-label="Step positions">
-      <li><button type="button" class="step" aria-label="Step 1 of 16">1</button></li>
-      <li><button type="button" class="step" aria-label="Step 2 of 16" tabindex="-1">2</button></li>
-      <li><button type="button" class="step" aria-label="Step 3 of 16" tabindex="-1">3</button></li>
-      <li><button type="button" class="step" aria-label="Step 4 of 16" tabindex="-1">4</button></li>
-      <li><button type="button" class="step" aria-label="Step 5 of 16" tabindex="-1">5</button></li>
-      <li><button type="button" class="step" aria-label="Step 6 of 16" tabindex="-1">6</button></li>
-      <li><button type="button" class="step" aria-label="Step 7 of 16" tabindex="-1">7</button></li>
-      <li><button type="button" class="step" aria-label="Step 8 of 16" tabindex="-1">8</button></li>
-      <li><button type="button" class="step" aria-label="Step 9 of 16" tabindex="-1">9</button></li>
-      <li><button type="button" class="step" aria-label="Step 10 of 16" tabindex="-1">10</button></li>
-      <li><button type="button" class="step" aria-label="Step 11 of 16" tabindex="-1">11</button></li>
-      <li><button type="button" class="step" aria-label="Step 12 of 16" tabindex="-1">12</button></li>
-      <li><button type="button" class="step" aria-label="Step 13 of 16" tabindex="-1">13</button></li>
-      <li><button type="button" class="step" aria-label="Step 14 of 16" tabindex="-1">14</button></li>
-      <li><button type="button" class="step" aria-label="Step 15 of 16" tabindex="-1">15</button></li>
-      <li><button type="button" class="step" aria-label="Step 16 of 16" tabindex="-1">16</button></li>
-    </ol>
-    <div class="transport">
-      <div class="transport-controls" role="group" aria-label="Transport and pitch" aria-describedby="sequencer-status">
-        <button type="button" disabled>Play</button>
-        <button type="button" disabled>Stop</button>
-        <button type="button" disabled>Edit pitch</button>
+  <section class="chassis" aria-label="Circuit control surface" aria-describedby="availability">
+    <div class="face">
+      <div class="macros" role="group" aria-label="Master and macro controls"></div>
+      <div class="utilities" role="group" aria-label="Utility controls"></div>
+      <button type="button" class="control" data-compact="Pset" disabled>Preset</button>
+      <div class="tracks" role="group" aria-label="Inspect a track"></div>
+      <button type="button" class="control" data-view="Patterns" data-compact="Ptns" aria-pressed="false" aria-label="Patterns, Shift function View Lock">Patterns<small>View Lock</small></button>
+      <div class="rail" role="group" aria-label="Step views">
+        <button type="button" class="control" data-view="Note" aria-pressed="true" aria-label="Note, Shift function Expand">Note<small>Expand</small></button>
+        <button type="button" class="control" data-view="Velocity" data-compact="Vel" aria-pressed="false" aria-label="Velocity, Shift function Fixed">Velocity<small>Fixed</small></button>
+        <button type="button" class="control" data-view="Gate" data-compact="Gate" aria-pressed="false" aria-label="Gate, Shift function Micro Step">Gate<small>Micro Step</small></button>
+        <button type="button" class="control" data-compact="P.Set" aria-label="Pattern Settings, Shift function Probability" disabled>Pattern<br>Settings<small>Probability</small></button>
       </div>
-      <p id="sequencer-status">Sequencer unavailable on this router</p>
+      <div class="pads" role="group" aria-label="Pad positions"></div>
+      <div class="rail" role="group" aria-label="Modes and transport" aria-describedby="availability">
+        <button type="button" class="control" data-compact="Mix" disabled>Mixer</button>
+        <button type="button" class="control" data-compact="FX" aria-label="FX, Shift function Side Chain" disabled>FX<small>Side Chain</small></button>
+        <button type="button" class="control" data-compact="Rec" aria-label="Record, Shift function Rec Quantise" disabled>Record<small>Rec Quantise</small></button>
+        <button type="button" class="control" data-compact="Play" disabled>Play / Stop</button>
+      </div>
     </div>
+    <div class="readout">
+      <p id="inspection" role="status"></p>
+      <p id="gesture" role="status"></p>
+      <p id="availability">Playback, recording and saves require the shared sequencer.</p>
+    </div>
+    <p class="help">Hold a step and press a lower pad, or inspect them in sequence.</p>
+    <p class="help">Use <kbd>1–8</kbd> or <kbd>Q–I</kbd> for steps, <kbd>A–K</kbd> or <kbd>Z–,</kbd> for lower pads. Arrow keys move focus.</p>
   </section>
 </main>
 <script>
 "use strict";
 
-const grid = document.querySelector(".steps");
-const steps = [...grid.querySelectorAll(".step")];
+const tracks = ["Synth 1", "Synth 2", "MIDI 1", "MIDI 2", "Drum 1", "Drum 2", "Drum 3", "Drum 4"];
+const shortcuts = [
+  "Digit1", "Digit2", "Digit3", "Digit4", "Digit5", "Digit6", "Digit7", "Digit8",
+  "KeyQ", "KeyW", "KeyE", "KeyR", "KeyT", "KeyY", "KeyU", "KeyI",
+  "KeyA", "KeyS", "KeyD", "KeyF", "KeyG", "KeyH", "KeyJ", "KeyK",
+  "KeyZ", "KeyX", "KeyC", "KeyV", "KeyB", "KeyN", "KeyM", "Comma",
+];
+const grid = document.querySelector(".pads");
 const inspection = document.querySelector("#inspection");
-const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -8, ArrowDown: 8 };
-let tabStop = steps[0];
+const gesture = document.querySelector("#gesture");
+const views = [...document.querySelectorAll("[data-view]")];
+const held = new Map();
+let track = "MIDI 1";
+let view = "Note";
+let page = 0;
+let inspected = null;
+let touched = null;
+let focusIndex = 0;
+
+function button(parent, label, classes, secondary = "", disabled = false) {
+  const element = document.createElement("button");
+  element.type = "button";
+  element.className = classes;
+  element.textContent = label;
+  element.disabled = disabled;
+  if (secondary) {
+    const legend = document.createElement("small");
+    legend.textContent = secondary;
+    element.append(legend);
+    element.setAttribute("aria-label", `${label}, Shift function ${secondary}`);
+  }
+  parent.append(element);
+  return element;
+}
+
+const macros = document.querySelector(".macros");
+button(macros, "Master Volume", "dial volume", "", true).dataset.compact = "Vol";
+["Oscillator", "Oscillator Mod", "Amp Envelope", "Filter Envelope",
+  "Filter Frequency", "Resonance", "Modulation", "FX"].forEach((label, index) => {
+  const dial = button(macros, `${index + 1} ${label}`, "dial", "", true);
+  dial.style.gridColumn = index + 2;
+  dial.dataset.compact = `M${index + 1}`;
+});
+button(macros, "Master Filter", "dial filter", "", true).dataset.compact = "Filter";
+const utilities = document.querySelector(".utilities");
+button(utilities, "Scales", "control", "", true).dataset.compact = "Scl";
+button(utilities, "", "control octave octave-down", "", true).setAttribute("aria-label", "Octave down");
+button(utilities, "", "control octave", "", true).setAttribute("aria-label", "Octave up");
+const stepPage = button(utilities, "1–16", "control");
+for (const [label, short, secondary] of [["Tempo / Swing", "BPM", "Tap"], ["Clear", "Clr", "Click"],
+  ["Duplicate", "Dup", "Mutate"], ["Save", "Save", "Setup"], ["Projects", "Proj", "Packs"], ["Shift", "Shift"]]) {
+  button(utilities, label, "control", secondary, true).dataset.compact = short;
+}
+
+const trackButtons = tracks.map(name => {
+  const item = button(document.querySelector(".tracks"), name, "control");
+  item.dataset.compact = name[0] + name.at(-1);
+  function inspectTrack() {
+    if (track === name) return;
+    track = name;
+    clearInspection();
+  }
+  item.addEventListener("focus", inspectTrack);
+  item.addEventListener("click", inspectTrack);
+  return item;
+});
+for (const item of document.querySelectorAll("[data-compact]")) {
+  item.setAttribute("aria-label", item.getAttribute("aria-label") ?? item.textContent.trim());
+  const full = document.createElement("span");
+  full.className = "full-name";
+  full.append(...item.childNodes);
+  const compact = document.createElement("span");
+  compact.className = "compact-name";
+  compact.textContent = item.dataset.compact;
+  compact.setAttribute("aria-hidden", "true");
+  item.append(full, compact);
+}
+const pads = shortcuts.map(code => {
+  const pad = button(grid, "", "pad");
+  pad.setAttribute("aria-keyshortcuts", code === "Comma" ? "," : code.replace(/^(Digit|Key)/, ""));
+  return pad;
+});
+
+function padLabel(index) {
+  if (view === "Patterns") return `${tracks[index % 8]} · Pattern ${Math.floor(index / 8) + 1}`;
+  if (index < 16) return `Step ${page * 16 + index + 1}`;
+  const kind = view === "Note" ? "Note pad" : view === "Velocity" ? "Velocity position" : "Gate position";
+  return `${kind} ${index - 15}`;
+}
+
+function draw() {
+  const pressed = new Set(held.values());
+  const label = view === "Patterns" && inspected !== null
+    ? `Pattern ${Math.floor(inspected / 8) + 1}` : inspected === null ? "" : padLabel(inspected);
+  const position = label ? ` · ${label}` : "";
+  inspection.textContent = `Local inspection · ${track} · ${view}${position}`;
+  gesture.textContent = touched === null ? "" : view === "Patterns" || inspected === null
+    ? padLabel(touched) : `${padLabel(inspected)} + ${padLabel(touched)}`;
+  for (const [index, pad] of pads.entries()) {
+    pad.toggleAttribute("data-held", pressed.has(index));
+    pad.toggleAttribute("data-inspected", index === inspected);
+    pad.tabIndex = index === focusIndex ? 0 : -1;
+  }
+  trackButtons.forEach((item, index) => item.setAttribute("aria-pressed", String(tracks[index] === track)));
+}
+
+function showView() {
+  for (const [index, pad] of pads.entries()) {
+    const number = index - 15;
+    pad.textContent = view === "Patterns" ? `P${Math.floor(index / 8) + 1}`
+      : index < 16 ? page * 16 + index + 1 : `${view[0]}${number}`;
+    pad.dataset.kind = view === "Patterns" || index < 16 ? "position" : view.toLowerCase();
+    pad.setAttribute("aria-label", padLabel(index));
+  }
+  views.forEach(item => item.setAttribute("aria-pressed", String(item.dataset.view === view)));
+  stepPage.textContent = page ? "17–32" : "1–16";
+  stepPage.setAttribute("aria-label", `Step page, ${stepPage.textContent}`);
+  stepPage.disabled = view === "Patterns";
+  draw();
+}
+
+function clearInspection() {
+  held.clear();
+  inspected = null;
+  touched = null;
+  showView();
+}
+
+function inspectPad(index) {
+  if (view === "Patterns" || index < 16) {
+    inspected = index;
+    if (view === "Patterns") track = tracks[index % 8];
+    touched = [...held.values()].findLast(i => view !== "Patterns" && i >= 16) ?? null;
+  } else {
+    inspected = [...held.values()].findLast(i => i < 16) ?? inspected;
+    touched = index;
+  }
+}
+
+function press(input, index) {
+  if (held.has(input)) return;
+  held.set(input, index);
+  inspectPad(index);
+  draw();
+}
+
+function release(input) {
+  if (!held.delete(input)) return;
+  if (view !== "Patterns") inspected = [...held.values()].findLast(index => index < 16) ?? inspected;
+  touched = [...held.values()].findLast(index => view !== "Patterns" && index >= 16) ?? null;
+  draw();
+}
+
+function cancel() {
+  held.clear();
+  touched = null;
+  draw();
+}
+
+function padIndex(target) {
+  return pads.indexOf(target.closest(".pad"));
+}
+
+for (const item of views) item.addEventListener("click", () => {
+  if (view === item.dataset.view) return;
+  view = item.dataset.view;
+  clearInspection();
+});
+stepPage.addEventListener("click", () => {
+  page = 1 - page;
+  clearInspection();
+});
 
 grid.addEventListener("focusin", event => {
-  const button = event.target;
-  tabStop.tabIndex = -1;
-  button.tabIndex = 0;
-  tabStop = button;
-  inspection.textContent = button.getAttribute("aria-label");
+  const index = padIndex(event.target);
+  if (index < 0) return;
+  focusIndex = index;
+  if (!held.size) inspectPad(index);
+  draw();
 });
-
+grid.addEventListener("pointerdown", event => {
+  const index = padIndex(event.target);
+  if (event.button !== 0 || index < 0) return;
+  press(event.pointerId, index);
+  pads[index].setPointerCapture(event.pointerId);
+  pads[index].focus();
+});
 grid.addEventListener("click", event => {
-  if (event.target.matches(".step")) event.target.focus();
+  const index = padIndex(event.target);
+  if (index < 0 || event.detail !== 0) return;
+  inspectPad(index);
+  draw();
 });
+for (const type of ["pointerup", "pointercancel", "lostpointercapture"]) {
+  document.addEventListener(type, event => release(event.pointerId));
+}
 
-grid.addEventListener("keydown", event => {
-  const index = steps.indexOf(event.target);
-  const key = event.key;
-  if (key === "Home" || key === "End") {
+const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -8, ArrowDown: 8 };
+document.addEventListener("keydown", event => {
+  if (event.altKey || event.ctrlKey || event.metaKey) return;
+  if (event.key === "Escape") { cancel(); return; }
+  const focused = padIndex(event.target);
+  if (focused >= 0 && Object.hasOwn(offsets, event.key)) {
     event.preventDefault();
-    steps[key === "Home" ? 0 : steps.length - 1].focus();
-  } else if (Object.hasOwn(offsets, key)) {
-    event.preventDefault();
-    if ((key === "ArrowLeft" && index % 8 === 0) || (key === "ArrowRight" && index % 8 === 7)) return;
-    steps[index + offsets[key]]?.focus();
+    if ((event.key === "ArrowLeft" && focused % 8 === 0) ||
+        (event.key === "ArrowRight" && focused % 8 === 7)) return;
+    pads[focused + offsets[event.key]]?.focus();
+    return;
+  }
+  const activation = focused >= 0 && (event.key === " " || event.key === "Enter");
+  const index = activation ? focused : shortcuts.indexOf(event.code);
+  if (index < 0) return;
+  event.preventDefault();
+  if (!event.repeat) {
+    press(event.code, index);
+    if (!activation) pads[index].focus();
   }
 });
+document.addEventListener("keyup", event => release(event.code));
+window.addEventListener("blur", cancel);
+window.addEventListener("pagehide", cancel);
+document.addEventListener("visibilitychange", () => { if (document.hidden) cancel(); });
+showView();
 </script>
 </body>
 </html>
