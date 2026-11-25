@@ -1,184 +1,89 @@
 # Gridpico Web APC
 
-Run `./scripts/web-ui.sh` from the repository root on the host or in WSL
-with the Compose dev service running. Choose **Web APC** on Gridpico home.
-In the offline package, open `HOME.HTM` and choose **Web APC** in a browser
-that supports Web MIDI. [Launcher and local router setup](../../connections/README.md#local-router)
+Run `./scripts/web-ui.sh` from the repository root on the Docker host or in
+WSL with Python 3 and the Compose `dev` service running. Choose **Web APC**
+on [Gridpico Home](http://127.0.0.1:8767/) to open `/apc/`. For the offline
+`GRIDPICO` package, open `HOME.HTM` and choose **Web APC** in a browser that
+supports Web MIDI. [Launcher and local router setup](../../connections/README.md#local-router) · [Offline tools](../../connections/README.md#offline-tools)
 
-For the separate legacy preview, open [index.html](index.html) directly or
-serve it from the repository root and open [the preview](http://127.0.0.1:8000/).
+## Local router
+
+The canonical loopback launcher tries each published starter binding once.
+The page shows the selected server and the state of each role. Browser TX
+binds a router input. Browser RX binds a router output.
+
+| Web APC role | Default router port | APC function |
+| --- | --- | --- |
+| Keybed TX | `1` Keybed input | Sends Port 0 notes |
+| Panel TX | `2` Panel input | Sends Port 1 button presses and releases |
+| LED RX | `3` LED feedback output | Displays received Port 1 LED feedback |
+
+Use **Retry** after a failed binding or choose a configured port for that
+role. The local Diagnostics CLI's `inventory` command lists the router port
+IDs. For system MIDI, select **Web MIDI** on the role, choose **Allow Web
+MIDI**, then choose a system output for TX or a system input for LED RX and
+click **Connect**. The offline page starts with Web MIDI where supported.
+Replacing a binding releases held input on the old link when it is still
+available. Replacing LED RX clears its display until fresh feedback arrives.
+[Browser role contract](../../api/browser-midi.md#production-startup-and-page-roles)
+
+On the canonical loopback page, use **Switch router** for the configured Pi
+endpoint. If the switch fails, the page offers to open Web APC at the requested
+address. On pages with **Open server**, use it to open Web APC at a supported
+origin. Authenticated HTTPS pages with a published Keybed input also offer
+the optional **Laptop keybed bridge**, which shares the exclusive Keybed
+binding. Disconnect the surface's Keybed TX before starting that bridge.
+[Endpoint switching](../../api/browser-midi.md#isolated-web-apc-in-place-gate) · [WSS server selection](../../api/browser-midi.md#server-selection-and-status) · [Laptop keybed bridge](../../api/pico-target.md#laptop-keybed-bridge)
+
+Open **Diagnostics** for Monitor, MIDI Log and LED tests. The canonical
+launcher enables the pitch-preserving Keybed routes to Monitor (`1 → 5`)
+and MIDI Log (`1 → 6`). Choose **Enable audio** in Diagnostics and play a
+fresh note after the receivers connect. The **Run LED test** action displays
+received feedback inside Diagnostics and needs the exclusive LED RX port
+`3`. Release Web APC's LED RX before running it if that binding is active.
+For timed replay to the Web APC surface, use the separate Raw route from
+Diagnostics TX `4` to Web APC LED RX `3`.
+[LED test lifecycle](../../api/local-router.md#one-action-local-diagnostics-led-test) · [Timed replay setup](../../connections/README.md#timed-rgb-pads)
+
+## Play the controller
+
+Play with a pointer, touch or the shortcuts printed on the keys. Tab skips
+the musical keys and reaches the panel controls, which support Space and
+Enter. At startup, **Q** plays middle C (note 60 on channel 1), the keybed
+spans notes 48–72, and the fixed press velocity is 96. Octave buttons shift
+the keybed locally. Cancellation, lost pointer capture, Escape and leaving
+the page release held controls.
+
+The surface omits the **Knob Ctrl** legend. All eight knobs retain individual
+accessible names. Drag a knob or use its arrow keys to turn it. Knob detents
+and Sustain remain local in the production surface. The pad matrix and MIDI
+mapping follow the APC protocol, and the printed labels follow the user guide.
+[Communications Protocol v1.1 diagram](https://raw.githubusercontent.com/NevynIt/miniMIDI/main/ref/Keyboards/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1%20%281%29.pdf) · [Akai User Guide v1.2](https://cdn.inmusicbrands.com/akai/apc-key-25-mkii/APC%20Key%2025%20mk2%20-%20User%20Guide%20-%20v1.2.pdf)
+
+## Legacy preview and Route
+
+Open [index.html](index.html) directly or serve the standalone preview from
+the repository root and open [the preview](http://127.0.0.1:8000/).
 
 ```sh
 python3 -m http.server 8000 --bind 127.0.0.1 --directory web/apc
 ```
 
-Play using a pointer, touch, or the shortcuts printed on the keys. Tab
-skips the keybed and reaches the panel controls, which respond to Space
-and Enter. Middle C is the key marked **Q**
-at start-up, MIDI note 60 on channel 1. The octave buttons shift the keybed
-locally. Cancellation, lost pointer capture, Escape, and leaving the page
-release held controls. Panel buttons and Sustain show their local pressed state.
-
-The pad matrix and MIDI mapping follow the
-[Akai Communications Protocol v1.1 diagram in miniMIDI](https://raw.githubusercontent.com/NevynIt/miniMIDI/main/ref/Keyboards/APC%20Key%2025%20mk2%20-%20Communication%20Protocol%20-%20v1.1%20%281%29.pdf).
-The printed labels follow the [Akai User Guide v1.2](https://cdn.inmusicbrands.com/akai/apc-key-25-mkii/APC%20Key%2025%20mk2%20-%20User%20Guide%20-%20v1.2.pdf).
-The legacy Route view annotates its Route pad below the controller face.
-The display uses 1-based MIDI channels.
-The initial note range 48–72 and fixed press velocity 96 are simulator defaults.
-
-## Listen in the legacy Route view
-
-Start the [legacy one-pad Route host](../../connections/README.md),
-select **Monitor**, and choose **Enable audio**. With the default +12 Route active,
-hold **Q** to hear destination note 72 (C5, about 523.25 Hz). Release **Q** or
-press Escape to end the note. The **Capture** tab continues to record routed
-destination events while you view Monitor, including when audio is off.
-
-Master volume starts at 35%. **Listen to** defaults to **All**. Select
-**MIDI 1** through **MIDI 16** to hear just that channel. Changing the
-filter stops excluded voices and plays only fresh notes when they return
-to the filter. Capture and routing continue on all channels.
-
-Each channel can use Sine, Triangle, Square or Mute. A new sound choice applies
-to the next received Note On.
-Muting a channel releases that channel's voices. Disabling audio or losing
-the connection clears all voices. Starting audio or reconnecting waits for
-fresh destination events. The monitor uses up to 25 voices, including release
-tails. At capacity it reclaims a releasing voice before a sounding voice.
-Audio settings are local to the open page. The presets work offline, and
-the standalone preview opens silent with an empty capture.
-
-## Legacy Route adapter
-
-The standalone page opens disconnected. In the connected Route view, the
-Computer connections adapter calls `window.gridpicoApc.connect(sendKeybed)` after the
-`{"type":"ready"}` message on the same-origin `/demo/midi` WebSocket.
-[Local Web APC connection contract](../../api/README.md#local-browser-demo-connection)
-
-- `sendKeybed(event)` receives keybed notes as
-  `{ type: "note-on" | "note-off", channel, note, velocity }`.
-  The surface emits channel 1 with velocity 96 for a press and 0 for a release,
-  including cancellation. Send each object in order to simulated keybed ingress.
-- The returned `receiveCapture(event)` renders one destination note event of
-  the same shape. Feed it each newly accepted destination record once, in capture
-  order, preserving velocity. The panel shows the most recent 100 note records
-  for the attachment.
-- Call the returned `close()` on disconnect. For graceful shutdown call it
-  while ingress can still accept releases. Transport-side ingress cleanup
-  is required on link loss.
-
-## Route and connection
-
-After an unexpected connection loss, **Reconnect** opens one fresh Web APC
-connection. Wait for green Route feedback before playing. A fresh connection
-clears the prior capture, starts with the default Route, and has
-audio off until explicitly enabled. Held keys from the old connection are
-released locally and do not play on the fresh connection.
-
-In the legacy Route view, the bottom-left **Route** pad toggles routing
-from the simulated APC keybed (input 1), through +12 semitones, to simulated
-MIDI capture (output 2). The route status starts at **Disconnected**, shows
-**Waiting for feedback** on attach, and changes to **Active** or **Off** as
-LED messages arrive. Green means the route is active. The amber outline
-shows when the pad is held.
-To check the toggle, hold **Q** and press the pad. Capture shows one release
-for note 72 as the pad goes dark. Release **Q**, press the pad again, and play
-a fresh **Q** to hear or capture the transposed note again.
-
-The pad-capable adapter passes an optional second argument to
-`gridpicoApc.connect(sendKeybed, sendSurface)`. The page sends `90 00 7F`
-on press and `80 00 00` on release or cancellation. Call the returned
-`receiveSurface(bytes)` with `96 00 15` for green or `96 00 00` for dark.
-The pad clears its LED state on disconnect. For browser smoke tests, use
-`#route-pad`, with `data-led` for received state and `data-held` for the
-gesture. [One-pad APC route toggle contract](../../api/README.md#one-pad-apc-route-toggle)
+The connected one-pad demo has its own Route pad, Capture and Monitor. Its
+default route transposes the simulated keybed by +12. With green Route
+feedback, hold **Q** to capture note 72 (C5). To hear it, choose **Enable
+audio** in the demo's Monitor tab. Monitor has local volume, channel
+filtering, and per-channel sound or mute. After reconnecting, wait for green
+feedback, enable audio if needed and play a fresh note.
+[One-pad launch and smoke check](../../connections/README.md#one-pad-web-apc-demo) · [Legacy browser framing](../../api/README.md#local-browser-demo-connection) · [Route pad and LED contract](../../api/README.md#one-pad-apc-route-toggle)
 
 ## Connected Patch
 
-Start the separate [Patch host](../../connections/README.md#connected-patch-view)
-and open Web APC Patch at `/patch/`. It shows the actual device and port
-inventory, the occupied source rows and destination columns, and unassigned
-ports such as **Panel** and **LED feedback**. Use **Refresh inventory** to
-request a new snapshot. A disconnect clears the inventory and LED page.
-After an unexpected loss, **Reconnect** opens one fresh Patch connection
-with all routes Off. Prior routes and held keys do not carry over. Enable
-the routes you want and turn on Monitor audio explicitly.
-
-Press a pad at the intersection of a source row and destination column.
-An outlined pad has both ports assigned. The LED shows the last authoritative
-state in the complete 40-pad route page. Dark is Off, orange is Pending,
-and green is Active. The same keybed still sends Port 0 notes.
-
-When the connection supports the color layer, hold physical Shift or use
-**Hold Shift**. Press the scene for a source row or the track for a destination
-column to select its device. Choose pad `00`–`03` as shown in **Device colors**.
-The separate color panel displays the selected device and its received APC
-palette preview. While the color layer is open, the grid shows the last route
-page. Release Shift for fresh route feedback.
-
-Patch Capture shows the latest 100 accepted note records with their destination
-port name, ID and generation. To hear Patch through the browser, enable the
-route to the **Monitor** destination and choose **Enable audio**. The browser plays only
-deliveries for its attached Web Monitor receiver. Instrument releases and
-stale-generation releases leave current Monitor voices alone. Receiver detach
-clears its voices. Reattach waits for fresh deliveries and leaves the local
-audio and channel settings in effect. A full connection loss still turns
-audio off and clears voices. Route view retains its original capture feed.
-[Patch browser contract](../../api/patchbay-controls.md#read-only-browser-inventory) · [Web Monitor contract](../../api/web-monitor-proposal.md#framing-and-readiness-order)
-
-## Local router
-
-The production `/apc/` page handles keybed and panel input and displays
-received LED feedback. Sustain and knob detents stay local to the surface.
-The page shows the transport, server and connection state of each role.
-The canonical loopback launcher selects WebSocket and tries each default
-port once. If a port is busy or unavailable, check `inventory` in the local
-Diagnostics CLI. Use **Retry** or choose another configured port for that
-role. Browser TX binds a router input and browser RX binds a router output.
-
-| Web APC control | Default router port |
-| --- | --- |
-| Keybed TX | `1` Keybed |
-| Panel TX | `2` Panel |
-| LED RX | `3` LED feedback |
-
-Open **Diagnostics** from Web APC to keep the controller connected in its
-own tab. Diagnostics owns Monitor, MIDI Log, and LED replay. The canonical
-launcher sets up the pitch-preserving routes from Keybed to Monitor (`1 → 5`)
-and MIDI Log (`1 → 6`). Diagnostics attempts both receiver connections on
-startup. Choose **Enable audio** in Diagnostics, then return to Web APC and
-play a fresh note once the receivers are connected.
-
-Enter a **MIDI server origin** and choose **Open server** to load `/apc/` there.
-Use HTTP or WS for `127.0.0.1` and the configured HTTPS or WSS origin for a
-remote server. Enter the scheme, host and port, with an optional trailing
-slash. Remote access requires a trusted server certificate and an enrolled
-client certificate.
-[Server choices and admission](../../api/browser-midi.md#server-selection-and-status)
-
-Choose a transport independently for Keybed TX, Panel TX and LED RX. For
-system MIDI, select **Web MIDI** on the role and click **Allow Web MIDI**.
-Grant browser access, then choose a system output for TX or a system input
-for LED RX and click **Connect**. Use **Refresh MIDI ports** after changing
-devices. The offline package starts in Web MIDI when the browser supports
-it and requests permission from the same button.
-
-Keybed notes and panel button pairs use separate TX links. Rebinding sends
-releases on the old available link. A lost link clears its held controls.
-Changing LED RX clears its display until fresh feedback arrives. When you
-change a role's transport, its old binding closes and the other roles stay
-connected. Select the new port and connect explicitly.
-
-For a WebSocket LED check, connect Web APC LED RX and the Diagnostics LED
-Sequence TX, run `route 4 3 raw on` in the local Diagnostics CLI for the
-default IDs, and wait for Active. Send solid/off or run **Timed RGB pads**
-in Diagnostics. Web APC renders the received frames and the restored
-production page after the Raw lease ends. [Diagnostics replay setup](../../connections/README.md#timed-rgb-pads)
-
-The startup workflow passed in Linux Chromium with the production router
-and a Compose stand-in. Real Linux ALSA ports verified Web MIDI send, receive,
-and device loss. Windows/WSL launcher and remote desktop browser mTLS
-verification remain open. [Startup acceptance](../../ROADMAP.md#approved-follow-up--controller-and-diagnostics-startup)
+The separate Patch demo at `/patch/` shows received inventory and committed
+route LEDs. Its Capture has destination-tagged records, and its Monitor plays
+only the attached Monitor receiver's deliveries. A fresh Patch connection
+starts with routes Off.
+[Patch host and operator steps](../../connections/README.md#connected-patch-view) · [Patch inventory and color layers](../../api/patchbay-controls.md#read-only-browser-inventory) · [Patch Monitor contract](../../api/web-monitor-proposal.md#framing-and-readiness-order)
 
 ## Legacy Protocol Lab
 

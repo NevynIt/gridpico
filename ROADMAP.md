@@ -14,7 +14,7 @@
 
 ### Current product status
 
-Verified firmware and fixture baseline `e97a343`. The canonical browser release `5a12c9fced437b3f37ccda4a481084ae239889c0` is live on the Pi with an exact shared archive match and the recorder WAV preserved.
+Verified firmware and fixture baseline `e97a343`. The canonical Pi browser release is `3ae97ba`, including Circuit and Web APC, with the recorder WAV preserved.
 
 | Area | Verified scope | Still open |
 | --- | --- | --- |
@@ -24,7 +24,7 @@ Verified firmware and fixture baseline `e97a343`. The canonical browser release 
 | Web APC | “KNOB CTL” is removed on the live Pi, with eight controls retained. | This check covered presentation. |
 | CLI and Diagnostics | Normal Pico `3ae97ba` (UF2 `a3080f33…`, full flash `99ad85bc…`) passed BOOTSEL and no-write return. On the canonical Pi `3ae97ba` release (manifest `a1eece7e…`, runner `9d13d387…`), direct Diagnostics reached Pico help, inventory, status and TRACE. A separate browser run reached Pi loopback help, inventory and status via strict SSH. Recorder WAV unchanged and zero MIDI transmitted. | Pico typed Routing, Diagnostics outbound MIDI and deployed browser-to-Pico MIDI remain open. |
 
-The all-docs PDF and repository snapshot were published from `7f31f2e`. Owner-led curation awaits editorial policy agreement. [Download the documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25/gridpico-documentation.pdf)
+The all-docs PDF and repository snapshot were published from `7f31f2e`. Owner-led curation is beginning under the approved policy, with Git history as the archive. [Editorial policy](docs/EDITORIAL_POLICY.md) [Download the documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25/gridpico-documentation.pdf)
 
 [Scoped acceptance details](#current-acceptance-audit)
 

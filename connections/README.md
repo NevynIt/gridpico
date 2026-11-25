@@ -1,6 +1,7 @@
 # Gridpico computer connections
 
-For the production web tools, start the [local router](#local-router).
+For the production web tools, run the [canonical launcher](#local-router)
+and open Gridpico Home.
 The one-pad and Patch views below are separate demo profiles.
 
 ## One-pad Web APC demo
@@ -116,11 +117,14 @@ browser audio on the `/demo/midi` connection.
 
 ## Local router
 
-Run `./scripts/web-ui.sh` from the repository root. Open the
-[Gridpico home](http://127.0.0.1:8767/) and choose **Web APC**,
-**Diagnostics**, **Routing**, or an installed optional tool. The launcher uses the
-running Docker Compose `dev` service and Python 3 on the host or WSL. Run
-`./scripts/web-ui.sh --help` for launcher usage.
+With the Docker Compose `dev` service running, run `./scripts/web-ui.sh`
+from the repository root on the Docker host or WSL with Python 3. The
+launcher opens [Gridpico Home](http://127.0.0.1:8767/) or prints that URL
+for you to open. Choose **Web APC**, **Diagnostics**, **Routing**, or an
+installed optional tool. In the served bundle, **Circuit** opens a
+16-step sequencer surface preview. You can inspect the steps without
+connecting hardware. Playback and physical Circuit Tracks control remain
+outside the preview. Run `./scripts/web-ui.sh --help` for launcher usage.
 
 The launcher selects the `--web-ui` profile in the host and router. Before
 readiness, the router enables managed Keybed → Monitor (`1 → 5`) and
@@ -161,8 +165,9 @@ loopback desktop with:
 ```
 
 On a trusted-LAN bundle listener, Web APC uses the published controller
-bindings, while Diagnostics and Routing show the local or SSH loopback path
-for CLI work. Recordings appears on Home when configured.
+bindings. Diagnostics can offer the attached Pico console, while the Pi
+router CLI and Routing use the SSH loopback path. Recordings appears on
+Home when configured.
 [Shared bundle contract](../api/browser-midi.md#shared-bundle-and-endpoint-selection)
 
 ### Manual profile
@@ -340,31 +345,34 @@ runs also need a fresh Raw on command.
 
 ### Pi trusted LAN and recordings
 
-The Pi boot service can opt in to the trusted WLAN listener and recorder:
-
-```sh
-node connections/local-host.js --profile app/profiles/pi.conf \
-  --trusted-lan-config /path/to/trusted-lan.json \
-  --recorder-config /path/to/recorder.json \
-  /path/to/gridpico_local_router 18767
-```
-
-The trusted LAN file selects `wlan0`, address `192.168.0.223`, port
-`18768` and CIDR `192.168.0.0/24`. The address and subnet must already be
-active at startup. Open [the Pi home](http://192.168.0.223:18768/) and use
+The Pi service uses the canonical launcher in prepared mode. See the
+[Pi router deployment guide](../platform/linux/PI_ROUTER.md) for service
+setup, the trusted LAN profile, SSH forwarding and recorder operations.
+Open [Pi Home](http://192.168.0.223:18768/) and use
 **Web APC** and **Recordings** in separate tabs. This private LAN uses
 plaintext HTTP and WebSocket with no per-user account. Devices admitted by
 the listener share the first-claim APC MIDI roles, the single recorder, and
 its latest download. Use the authorized SSH forward on literal loopback
 `127.0.0.1:18767` for the Pi CLI. The laptop app still defaults to `8767`.
 
-The recorder configuration takes absolute `soundfont`, `alsaSender` and
-`spool` paths. Use an owner-only spool directory and the Pi recorder MIDI
-helper. Start a take, wait for Recording, and play the APC keybed. A take
-lasts up to 60 seconds. Stop finalizes its release tail before the download
-appears. A failed take preserves the latest valid WAV. After a restart,
-refresh Recordings to get the current download link.
-[Pi service and recorder contract](../api/pi-recorder.md)
+### Pico via Pi in Diagnostics
+
+From Pi Home, open **Diagnostics**, choose **Pico via Pi · LAN WebSocket CDC**
+and click **Connect**. Check that the terminal shows the connected Pico
+and the Pi relay address. `TRACE` and `HUBTRACE` are available without a
+command check. Choose **Check Pico commands** while the terminal is idle.
+Diagnostics sends `help` for this check once per attachment. After a
+complete reply, it allows the commands the firmware advertised from
+`help [topic]`, `inventory` and `status`. Use a command name shown in the
+reply for the optional help topic.
+
+If the check times out or the reply is incomplete or invalid, use
+`TRACE` and `HUBTRACE`. Reconnect to check a fresh attachment. After
+overlapping trace requests, reconnect before checking commands.
+This read-only form leaves maintenance commands, including `BOOTSEL`, to
+the separately configured [Pico console](#separate-pico-service). For Pi
+router commands use **Loopback CLI** through the SSH forward. For a
+direct USB terminal use **Web Serial CDC**.
 
 ### Opt-in HTTPS/WSS MIDI
 

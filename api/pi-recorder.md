@@ -1,6 +1,6 @@
 # Pi LAN router and recorder
 
-**Owner** Architect. **Status** Pi release `40161d9ca5cafd7eab1b47c6b0816c236cd13565` is deployed. Independent testing verified recording and SSH fallback on `048accf`, then verified recorder availability and preservation of the latest WAV on `40161d9`. This profile uses the production router and a separate FluidSynth peer. [Pi maintenance](../platform/linux/PI_ROUTER.md) · [Local router](local-router.md) · [Instrument peers](instrument-peers.md) · [Authenticated WSS](websocket-midi.md)
+**Owner** Architect. **Status** The live Pi release `3ae97ba` retained the finalized WAV and reported an idle recorder during CLI verification. Independent testing verified recording and SSH fallback on `048accf` and recorder availability after restart on `40161d9`. This profile uses the production router and a separate FluidSynth peer. [Current release evidence](../ROADMAP.md#current-product-status) · [Pi maintenance](../platform/linux/PI_ROUTER.md) · [Local router](local-router.md) · [Instrument peers](instrument-peers.md) · [Authenticated WSS](websocket-midi.md)
 
 ## Pi service and admission
 

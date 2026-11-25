@@ -19,6 +19,8 @@ node connections/local-host.js --profile app/profiles/desktop.conf build/web-ui/
 
 For example, enter `route 11 18 managed on` in Diagnostics. The route is Pending until its input and output attach. The default `./scripts/web-ui.sh` uses the six-port profile. Running the router without flags starts the bare CLI profile.
 
+In Diagnostics, `help` lists the commands available on the connected router. [Shared CLI reference](../../frontends/cli/README.md)
+
 ## File format
 
 Use a whitespace-separated file. Blank lines and lines starting with `#` are ignored. Names take the rest of their line and may contain spaces. Keep names to 31 UTF-8 bytes. Each device and port ID is a positive 16-bit integer. The order of device rows and port rows sets their inventory order.
