@@ -157,9 +157,10 @@
   .track { width: 67%; }
   .printed-control { display: grid; justify-items: center; align-content: center; gap: .16rem; min-width: 0; }
   .printed-control > .legend { max-width: 100%; overflow-wrap: anywhere; }
-  .legend { color: #f2eef4; font: 650 clamp(.42rem, .76vw, .625rem)/1.1 var(--mono); text-align: center; }
+  .legend, .panel::after { color: #f2eef4; font: 650 clamp(.42rem, .76vw, .625rem)/1.1 var(--mono); text-align: center; }
   .soft-keys-label { position: absolute; top: 0; right: 0; }
-  .knob-ctrl-label { grid-column: 5 / 9; }
+  /* Preserve the final panel grid row and its spacing. */
+  .panel::after { content: ""; grid-column: 5 / 9; min-height: 1lh; }
   .legend-arrow {
     display: block; width: 0; height: 0; border: .24rem solid transparent;
     border-top: 0; border-bottom: .33rem solid currentColor; transform: rotate(var(--legend-turn));
@@ -658,12 +659,10 @@ for (let track = 0; track < 8; track++) {
     0x40 + track, trackLegends[track], arrowTurns[track]);
 }
 printedButton(panel, "", "control scene stop", "Stop All Clips", 0x51, "Stop All Clips");
-for (const [label, classes] of [["Soft Keys", "legend soft-keys-label"], ["Knob Ctrl", "legend knob-ctrl-label"]]) {
-  const printed = document.createElement("span");
-  printed.textContent = label;
-  printed.className = classes;
-  panel.append(printed);
-}
+const softKeysLabel = document.createElement("span");
+softKeysLabel.textContent = "Soft Keys";
+softKeysLabel.className = "legend soft-keys-label";
+panel.append(softKeysLabel);
 for (let number = 1; number <= 8; number++) {
   const slot = document.createElement("li");
   knobs.append(slot);
