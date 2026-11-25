@@ -105,6 +105,10 @@ The starter repository contained documents and development tooling. Additional o
 
 Every named agent may communicate directly with another using supported Herdr facilities. Useful messages contain the relevant task/topic, issue or result, evidence and the decision needed. Avoid broadcasts, empty acknowledgments, routine “still working” chatter and copy-and-paste relay through the human.
 
+Queue routine follow-ups for the next turn where native Codex delivery to the recipient's session has been verified. If there is no verified queue for that session, submit through Herdr when the recipient is idle. An accepted queue ID confirms submission. Use immediate steering only for changes that need the active turn's attention and keep the message out of a human's open draft.
+
+In the shared container, use `./scripts/seat-send architect 'message'`. The helper looks up the original native session in Session Manager's roster and adds the `FROM` line. From a shell that cannot identify your pane, use `--from <name@location>`. If the helper reports an offline seat, request any authorized lifecycle operation through Session Manager. In the default Codex terminal keymap, Tab queues the current message.
+
 | Situation | Decision owner / path |
 | --- | --- |
 | Missing, ambiguous or unsuitable contract | Architect; consult the area lead when helpful |
@@ -127,7 +131,7 @@ A human may ask any agent a brief direct question. Answer that question without 
 
 The human approves direction through Strategist. Architect defines/clarifies minimal contracts within that direction. Project Manager assigns a bounded task with owner, write scope and acceptance criteria. The owner implements and reports evidence. Testing independently checks behavior/contracts; Builder executes builds/tests. Defects return to the responsible owner under Project Manager's coordination.
 
-**UI design before implementation.** The approved persistent UI Designer seat owns the use cases as a product reference alongside the brief. The designer maps the user journey and usable defaults, explores visuals with ImageGen for new or substantially reworked screens, and reviews proposed UI choices before implementation. Architect checks feasibility and contracts with the designer. Project Manager links the reviewed workflow and visual reference in assignments. Module owners aim for a good, usable result with room to adapt visual details. Testing independently checks that workflows, visual hierarchy and states are clear. Ask UI Designer first about uncertain choices and escalate unresolved product decisions to the human through Strategist.
+**UI design before implementation.** The approved persistent UI Designer seat owns the use cases as a product reference alongside the brief. When discussing major web or physical UI changes or new workflows, share a visual concept with the human for review. A single ImageGen sheet can show several states or the steps of a workflow. The designer maps the journey and usable defaults and reviews proposed UI choices before implementation. Architect checks feasibility and contracts with the designer. Project Manager links the reviewed workflow and visual reference in assignments. Module owners aim for a good, usable result with room to adapt visual details. Testing independently checks that workflows, visual hierarchy and states are clear. Ask UI Designer first about uncertain choices and escalate unresolved product decisions to the human through Strategist.
 
 Project Manager accepts completed work and coordinates integration. All agents can inspect `git status`, `diff`, `log` and `show`. **Project Manager is the normal committer/pusher by convention**, not by an invented structural ban on everyone else.
 
