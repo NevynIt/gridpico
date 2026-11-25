@@ -19,7 +19,7 @@ sources = {
     "local-routing.js": "connections/local-routing.js",
     "local-led-test.js": "connections/local-led-test.js",
 }
-for tool in ("fm", "midi-file"):
+for tool in ("fm", "midi-file", "circuit"):
     source = f"web/{tool}/index.html"
     if (root / source).is_file():
         sources[f"{tool}/index.html"] = source

@@ -12,8 +12,9 @@ const pages = new Map([
   ["/recordings/", "recordings/index.html"],
   ["/fm/", "fm/index.html"],
   ["/midi-file/", "midi-file/index.html"],
+  ["/circuit/", "circuit/index.html"],
 ]);
-const optionalPages = new Set(["/fm/", "/midi-file/"]);
+const optionalPages = new Set(["/fm/", "/midi-file/", "/circuit/"]);
 const scripts = ["local-transport", "local-home", "local-diagnostics", "local-routing", "local-led-test"];
 const allowed = new Map([...pages, ...scripts.map(name => [`/${name}.js`, `${name}.js`])]);
 const digest = bytes => createHash("sha256").update(bytes).digest("hex");

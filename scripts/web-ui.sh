@@ -8,6 +8,7 @@ usage() {
 Usage: ./scripts/web-ui.sh [--profile CHECKOUT_FILE]
        ./scripts/web-ui.sh --runner PATH [--port PORT] [--no-open] [--web-ui]
            [--profile FILE] [--trusted-lan-config FILE]
+           [--trusted-lan-pico-cdc-config FILE]
            [--recorder-config FILE] [--wss-config FILE]
 
 With no runner specified, build and serve through the running Compose dev service.
@@ -30,7 +31,7 @@ if [[ $# == 0 || ( $# == 2 && $1 == --profile && -n $2 ) ]]; then
     exec bash "$root/scripts/web-loopback.sh" ui "$@"
 fi
 
-runner= port= profile= lan_config= recorder_config= wss_config=
+runner= port= profile= lan_config= pico_cdc_config= recorder_config= wss_config=
 web_ui=false
 no_open=false
 read_option() {
@@ -45,6 +46,7 @@ while (( $# )); do
         --port) read_option port "$1" "${2-}"; shift ;;
         --profile) read_option profile "$1" "${2-}"; shift ;;
         --trusted-lan-config) read_option lan_config "$1" "${2-}"; shift ;;
+        --trusted-lan-pico-cdc-config) read_option pico_cdc_config "$1" "${2-}"; shift ;;
         --recorder-config) read_option recorder_config "$1" "${2-}"; shift ;;
         --wss-config) read_option wss_config "$1" "${2-}"; shift ;;
         --web-ui)
@@ -71,6 +73,7 @@ host=("$root/connections/local-host.js" --ui-descriptor)
 if "$web_ui"; then host+=(--web-ui); fi
 if [[ -n $profile ]]; then host+=(--profile "$profile"); fi
 if [[ -n $lan_config ]]; then host+=(--trusted-lan-config "$lan_config"); fi
+if [[ -n $pico_cdc_config ]]; then host+=(--trusted-lan-pico-cdc-config "$pico_cdc_config"); fi
 if [[ -n $recorder_config ]]; then host+=(--recorder-config "$recorder_config"); fi
 if [[ -n $wss_config ]]; then host+=(--wss-config "$wss_config"); fi
 host+=("$runner" "$port")
