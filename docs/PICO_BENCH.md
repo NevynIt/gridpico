@@ -2,6 +2,8 @@
 
 Use [hardware wiring](HARDWARE.md) for the bench topology, the [Pico target contract](../api/pico-target.md) for recovery and target limits, and the [Roadmap](../ROADMAP.md#current-product-status) for current acceptance.
 
+Jill authorizes repeated firmware flashes on the identified **DEV Pico only**, including occupied old-firmware sectors within the image’s erase range. Sector-by-sector approval and preservation of old flash contents are unnecessary. Keep a verified board-compatible firmware image for BOOTSEL recovery. Follow the [Pico flash verification procedure](../api/pico-target.md#recovery-and-release) and the [existing Pi and recorder maintenance protections](../platform/linux/PI_ROUTER.md#clear-development-connections-for-maintenance).
+
 ## Current bench build
 
 The current normal Matrix is `3ae97ba4b2f37b486812ab389066c6bc2bc551a0`: `Gridpico RP2040 Router`, USB `1209:0001`, `bcdDevice 0104`, upstream path `1-1`. UF2 SHA-256: `a3080f33f8ce21efca7edc7c33072d3c25d8ee3e1a8ea973c8d7931889691254`. Full-flash read SHA-256: `99ad85bc79a7b9143054213f38a090d29235eb4dad533ca1fb29fed9ff7c0fbb`. Startup, USB CDC, cooperative BOOTSEL/no-write recovery and typed CLI help passed. See the [installed Patchbay evidence](../api/pico-target.md#installed-patchbay-matrix) and [shared Pico/Pi CLI contract](../api/pico-target.md#first-shared-cli-on-pico-and-pi).
