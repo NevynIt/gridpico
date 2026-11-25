@@ -16,6 +16,7 @@ The repository includes the production MIDI router, Web APC and Diagnostics tool
 | [Agent coordination](AGENT_TEAM_COORDINATION.md) and [agent policy](AGENTS.md) | Human authority; Strategist records approved changes | Team boundaries, ownership and operating policy |
 | [Container and first-run setup](docs/SETUP.md) | Documentation | Development environment and startup guidance |
 | [At a glance](docs/AT_A_GLANCE.md) and [other documentation](docs/) | Documentation | User-facing overview, setup, validation and hardware references |
+| [Pico bench quick reference](docs/PICO_BENCH.md) | Documentation | Current Pi Diagnostics access and physical Patchbay quick-start |
 | [Diagrams](docs/diagrams/README.md) | Documentation, with Architect and Session Manager review | Visual architecture/team maps and editable Mermaid sources |
 | [Editorial policy](docs/EDITORIAL_POLICY.md) | Documentation | Source homes, acceptance notes and owner curation |
 | [Full documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25/gridpico-documentation.pdf) | Documentation | Dated offline snapshot from source commit `7f31f2e`; [build instructions](docs/PDF_BUILD.md) |
