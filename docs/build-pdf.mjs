@@ -54,8 +54,8 @@ function included(pathname) {
 function slug(text) {
   return text.toLowerCase()
     .trim()
-    .replace(/\s+/gu, "-")
-    .replace(/[^\p{L}\p{N}\p{M}_-]/gu, "");
+    .replace(/[^\p{L}\p{N}\p{M}_\-\s]/gu, "")
+    .replace(/\s+/gu, "-");
 }
 
 function inlineText(token) {
@@ -134,7 +134,7 @@ function resolveHref(href, file, docs, commit, trackedPaths, assetPaths, unbundl
   if (!rawPath) {
     const doc = docs.get(file);
     const local = doc.anchors.get(slug(fragment));
-    return local ? `#${local}` : href;
+    return local ? `#${local}` : registerUnresolvedFragment(file, href, file, commit, unbundledRefs);
   }
 
   const targetPath = safeLocalPath(file, rawPath);
@@ -150,13 +150,30 @@ function resolveHref(href, file, docs, commit, trackedPaths, assetPaths, unbundl
   }
   if (!fragment) return `#${target.id}`;
   const local = target.anchors.get(slug(fragment));
-  return local ? `#${local}` : githubUrl(commit, targetPath, fragment);
+  return local ? `#${local}` : registerUnresolvedFragment(file, href, targetPath, commit, unbundledRefs);
 }
 
 function registerUnbundled(file, href, refs) {
   const key = createHash("sha256").update(`${file}\0${href}`).digest("hex").slice(0, 16);
   const id = `unbundled-${key}`;
-  if (!refs.has(id)) refs.set(id, { id, href, sources: new Set() });
+  if (!refs.has(id)) refs.set(id, { id, href, kind: "local-path", sources: new Set() });
+  refs.get(id).sources.add(file);
+  return `#${id}`;
+}
+
+function registerUnresolvedFragment(file, href, targetPath, commit, refs) {
+  const key = createHash("sha256").update(`source-fragment\0${targetPath}\0${href}`).digest("hex").slice(0, 16);
+  const id = `unbundled-${key}`;
+  if (!refs.has(id)) {
+    refs.set(id, {
+      id,
+      href,
+      kind: "source-fragment",
+      sourceUrl: githubUrl(commit, targetPath),
+      targetPath,
+      sources: new Set(),
+    });
+  }
   refs.get(id).sources.add(file);
   return `#${id}`;
 }
@@ -168,9 +185,13 @@ function renderTokens(md, tokens, doc, docs, commit, blobCache, trackedPaths, as
         if (child.type === "link_open") {
           const href = child.attrGet("href");
           if (href) {
-            child.attrSet("href", resolveHref(href, doc.file, docs, commit, trackedPaths, assetPaths, unbundledRefs));
-            if (child.attrGet("href")?.startsWith("#unbundled-")) {
-              child.attrSet("title", "Local evidence or file path is not packaged in this PDF snapshot");
+            const resolvedHref = resolveHref(href, doc.file, docs, commit, trackedPaths, assetPaths, unbundledRefs);
+            child.attrSet("href", resolvedHref);
+            if (resolvedHref.startsWith("#unbundled-")) {
+              const ref = unbundledRefs.get(resolvedHref.slice(1));
+              child.attrSet("title", ref?.kind === "source-fragment"
+                ? "Heading fragment is not present in this PDF; see the pinned source document in the appendix"
+                : "Local evidence or file path is not packaged in this PDF snapshot");
             }
           }
         } else if (child.type === "image") {
@@ -226,14 +247,20 @@ function htmlDocument(commit, sourceDigest, docs, md, blobCache, trackedPaths, a
     bodies.push(`<section class="source-doc" id="visual-assets"><p class="doc-path">Tracked first-party images</p><h1>Embedded visual assets</h1><p>Images linked from documentation are embedded here for offline viewing.</p>${figures}</section>`);
   }
   if (unbundledRefs.size) {
-    toc.push(`<li class="toc-doc"><a href="#unbundled-local-paths">Local paths not packaged</a></li>`);
+    toc.push(`<li class="toc-doc"><a href="#pdf-link-appendix">PDF link appendix</a></li>`);
     const rows = [...unbundledRefs.values()]
       .sort((a, b) => a.href < b.href ? -1 : a.href > b.href ? 1 : 0)
-      .map((ref) => `<li id="${ref.id}"><code>${md.utils.escapeHtml(ref.href)}</code><br><small>Referenced by ${[...ref.sources].sort().map(md.utils.escapeHtml).join(", ")}. This file is not part of the tracked PDF snapshot.</small></li>`);
-    bodies.push(`<section class="source-doc" id="unbundled-local-paths"><p class="doc-path">PDF link appendix</p><h1>Local paths not packaged</h1><p>Links to untracked evidence or local files target this appendix. The original file is not included in the repository snapshot. Use durable evidence linked from the document or its pinned Git revision.</p><ul>${rows.join("\n")}</ul></section>`);
+      .map((ref) => {
+        const sources = [...ref.sources].sort().map(md.utils.escapeHtml).join(", ");
+        const detail = ref.kind === "source-fragment"
+          ? `No matching section anchor exists in this PDF snapshot. Open the <a href="${md.utils.escapeHtml(ref.sourceUrl)}">pinned source document</a> without the unresolved fragment.`
+          : "This local file or evidence path is not included in the tracked PDF snapshot.";
+        return `<li id="${ref.id}"><code>${md.utils.escapeHtml(ref.href)}</code><br><small>Referenced by ${sources}. ${detail}</small></li>`;
+      });
+    bodies.push(`<section class="source-doc" id="pdf-link-appendix"><p class="doc-path">PDF link appendix</p><h1>PDF link appendix</h1><p>Unresolved fragments point to their pinned source document without the missing anchor. Untracked local paths are listed for reference and are not packaged.</p><ul>${rows.join("\n")}</ul></section>`);
   }
   const docCount = docs.size;
-  const sourceNote = `Snapshot of ${docCount} tracked first-party Markdown/Mermaid sources at ${commit}. Source SHA-256: ${sourceDigest}. Local documentation links resolve within this PDF when the target and heading are included. Other tracked files link to the matching GitHub revision. Untracked local evidence paths are listed in an appendix.`;
+  const sourceNote = `Snapshot of ${docCount} tracked first-party Markdown/Mermaid sources at ${commit}. Source SHA-256: ${sourceDigest}. Local documentation links resolve within this PDF when the target and heading are included. A source link with an unresolved fragment points to the pinned source document in the appendix. Other tracked files link to the matching GitHub revision. Untracked local evidence paths are listed in an appendix.`;
   return `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"><title>Gridpico documentation snapshot</title>
 <style>
 @page { size: A4; margin: 16mm 15mm 18mm; }
@@ -430,7 +457,10 @@ async function main() {
   process.stdout.write(`Manifest: ${path.relative(repo, manifestPath)}\nManifest SHA-256: ${manifestHash}\n`);
   process.stdout.write(`Preflight: ${linkStats.internalLinks} internal links, ${linkStats.externalLinks} external links, ${linkStats.embeddedImages} images\n`);
   process.stdout.write(`PDF objects: ${internalPdfLinks} internal link annotations, ${externalPdfLinks} external link annotations, ${pdfFontObjects} fonts\n`);
-  if (unbundledRefs.size) process.stdout.write(`Unbundled local references: ${unbundledRefs.size} (listed in PDF appendix)\n`);
+  if (unbundledRefs.size) {
+    const unresolvedFragments = [...unbundledRefs.values()].filter((ref) => ref.kind === "source-fragment").length;
+    process.stdout.write(`PDF link appendix: ${unresolvedFragments} unresolved source fragments, ${unbundledRefs.size - unresolvedFragments} unbundled local paths\n`);
+  }
 }
 
 main().catch((error) => {
