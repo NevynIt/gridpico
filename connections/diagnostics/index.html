@@ -550,7 +550,7 @@
       get structured() { return Boolean(connection?.structured); },
       connect() { void connect(); },
       claimLedTest() {
-        if (serialProvider.value !== "loopback" || (connection &&
+        if (window.gridpicoLocal?.target?.origin !== location.origin || serialProvider.value !== "loopback" || (connection &&
             (!available(connection) || !connection.local || !connection.prompt || connection.ledTest))) {
           throw new Error("Select an available Loopback CLI to run the LED test.");
         }

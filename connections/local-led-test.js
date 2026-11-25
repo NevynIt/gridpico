@@ -233,6 +233,9 @@ A00000 350000 1AD000 074200 B9B000 3F3100 B35F00 4B1502
   }
 
   async function execute(run) {
+    if (midi.target?.origin !== location.origin) {
+      throw new Error("Select this router’s MIDI connection to run the LED test.");
+    }
     progress("Connecting to APC LED feedback…", "connecting");
     try {
       await until(openMidi(run, 3, "receive"), run.signal);

@@ -483,8 +483,19 @@
       offerNavigation(target.origin);
     }
     let pending;
+    let diagnosticsProbe;
     let failedBindings;
-    if (offerSwitch || preservePage) field.addEventListener("input", () => { fallback.hidden = true; });
+    if (offerSwitch || preservePage) {
+      field.addEventListener("input", () => {
+        fallback.hidden = true;
+        if (preservePage) {
+          diagnosticsProbe?.abort();
+          status.textContent = "";
+          status.removeAttribute("data-error");
+        }
+      });
+    }
+    if (preservePage) window.addEventListener("pagehide", () => diagnosticsProbe?.abort());
     if (offerSwitch) {
       window.addEventListener("pagehide", () => pending?.controller.abort());
       window.addEventListener("gridpico-target-bind-failed", event => {
@@ -500,9 +511,51 @@
         status.textContent = `Selected ${target.origin}.`;
       });
     }
+    function publishesDiagnosticsMidi(description) {
+      return ["sequence", "monitor", "log"].some(role => Object.hasOwn(description.roles, role));
+    }
+
+    async function checkDiagnosticsServer(origin) {
+      const unavailable = "This router does not publish Diagnostics MIDI roles to this page.";
+      const unverified = "Could not verify Diagnostics MIDI access from this page.";
+      status.removeAttribute("data-error");
+      if (origin === documentOrigin) {
+        status.textContent = trustedLan && capabilities && !publishesDiagnosticsMidi(capabilities) ?
+          unavailable : `Already using ${origin}.`;
+        return;
+      }
+
+      let result = unverified;
+      if (documentOrigin === switchSource && origin === switchDestination) {
+        const attempt = new AbortController();
+        diagnosticsProbe = attempt;
+        status.textContent = `Checking MIDI roles on ${origin}…`;
+        const signal = AbortSignal.any([attempt.signal, AbortSignal.timeout(5000)]);
+        try {
+          const description = await readCapabilities(origin, signal);
+          if (description && !Object.values(description.actions).some(Boolean) && !publishesDiagnosticsMidi(description)) {
+            result = unavailable;
+          }
+        } catch {
+          // A denied or malformed descriptor establishes no MIDI access.
+        } finally {
+          if (diagnosticsProbe === attempt) diagnosticsProbe = undefined;
+        }
+        if (attempt.signal.aborted) return;
+      }
+      status.textContent = result;
+      fallback.href = origin + tool;
+      fallback.textContent = `Open Diagnostics on ${new URL(origin).host} in a new tab`;
+      fallback.hidden = false;
+    }
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       if (pending) return;
+      if (preservePage) {
+        diagnosticsProbe?.abort();
+        fallback.hidden = true;
+      }
       let origin;
       try {
         origin = serverOrigin(field.value, offerSwitch || (preservePage && documentOrigin === switchSource));
@@ -537,14 +590,7 @@
           return;
         }
         if (preservePage) {
-          status.removeAttribute("data-error");
-          fallback.hidden = origin === documentOrigin;
-          if (fallback.hidden) status.textContent = `Already using ${origin}.`;
-          else {
-            status.textContent = "Open the other router in a new tab to keep this terminal connected.";
-            fallback.href = origin + tool;
-            fallback.textContent = `Open Diagnostics on ${new URL(origin).host}`;
-          }
+          await checkDiagnosticsServer(origin);
           return;
         }
         status.textContent = `Opening ${origin}…`;
