@@ -1,0 +1,14 @@
+{
+  "name": "gridpico-docs-pdf",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=18 <19"
+  },
+  "dependencies": {
+    "@sparticuz/chromium": "131.0.1",
+    "markdown-it": "14.1.0",
+    "puppeteer-core": "23.8.0"
+  }
+}
