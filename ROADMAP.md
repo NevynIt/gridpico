@@ -8,9 +8,9 @@
 
 ## Product horizon
 
-- **Now · Make the active rig usable.** Finish the physical editable 5×8 APC Patchbay and generic Keys passthrough. Keep the live Pico and Pi CLI paths usable, including shared command and subcommand help. Circuit is visible in the browser as an inspection surface.
+- **Now · Correct the live workflows.** Restore complete Pico serial in Diagnostics, make Routing authority explicit, connect Web APC and FM through compatible runtime MIDI allocation, and replace the Circuit placeholder. Continue physical 5×8 work with runtime inventory. [Active backlog](#active-backlog)
 - **Next · Qualify persistence and board configuration.** Finish quiet-point Save and recovery, onboard status and compatible RP2040 configuration. Keep later physical USB and Ableton acceptance independent of Patchbay progress.
-- **Later · Expand hardware and sequencing coverage.** Qualify seven downstream USB devices, direct browser USB and mounted Pico tools, and wider network and desktop targets. Scope one MIDI track and one 16-step pattern on the shared sequencer after the inspection UI. [Sequencer workflow](USE_CASES.md)
+- **Later · Expand hardware and sequencing coverage.** Qualify seven downstream USB devices, direct browser USB and mounted Pico tools, and wider network and desktop targets. Scope one MIDI track and one 16-step pattern on the shared sequencer after the hardware-style Circuit frontend. [Sequencer workflow](USE_CASES.md)
 
 ## Current product status
 
@@ -23,6 +23,23 @@
 | Save and onboard status | Corrected Save transactions passed host fixtures. Optional fixed GP16 status passed offline checks. [Pico persistence and status contracts](api/pico-target.md) | Target writes remain disabled pending bounded USB/PIO pause and resume. Physical power-cut recovery, persisted settings, visible LED behavior, cadence and board configuration remain open. |
 
 The curated documentation PDF and repository snapshot were published from `e689cdd`. [Download the documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25-curated/gridpico-documentation.pdf)
+
+## Active backlog
+
+Project Manager supplies assignments, blockers and acceptance evidence. At batch close, on a blocker or when no approved work is ready, Product Owner checks delivery status with Project Manager and recommends the next approved priority. Strategist resolves scope and priority trade-offs. The hard weekly allowance floor is 5%. PM observed 13% remaining at first-batch intake.
+
+| Outcome | Approved next step | PM assignment | Actual status and evidence needed |
+| --- | --- | --- | --- |
+| Pico Diagnostics | Show raw, unfiltered Pico serial with real help and per-command help. Keep USB CDC attached and preserve the transcript when MIDI Connect runs. | Connections implementation; HAL service check and bundle promotion prep; Testing direct Chrome reproduction and deployed acceptance | Queued; no live fix. Standalone `/cdc` is a raw byte stream. Current Diagnostics still has a command-specific UI and probe path. Require raw byte parity, help from the actual Pico and same-page MIDI Connect without reload, CDC disconnect or transcript loss. [CLI evidence](platform/linux/PI_ROUTER.md#cli-and-pico-diagnostics) |
+| Routing authority | Show which router owns the view and edits. Keep Pi and Pico distinct. Show an explicit unsupported state where Pico Routing has no supported path. | Architect scoping; implementation unassigned | Pico typed Routing remains open. Verify real Pi and Pico targets and committed edits where supported, plus the unsupported state on the live bundle. [Routing contract](api/routing.md) |
+| Browser MIDI allocation | Automatically allocate compatible ports by role without asking for port numbers. Connect Web APC and FM to the selected live router. | Architect scoping; UI Designer reviewing below-instrument connections; implementation unassigned | PM reproduced live manifest `a1eece7e…` in direct dev Chrome 158: APC connected 3/3 with zero sends, while FM loaded with MIDI disconnected, audio off and no socket. Pages and recorder status responded. Actual APC action, FM note receipt and Jill’s topology remain unverified. Verify separate APC send/feedback and FM receive, real notes and releases, and clear feedback when no compatible port is available. [Browser MIDI](api/browser-midi.md) |
+| Circuit controller | Replace the 16-position placeholder with the reviewed hardware-style controls, 32 pads and local inspection. Playback and Save require the shared engine. | Web APC, `web/circuit/index.html` only, using the Designer concept and Architect’s local gesture scope | Assigned in a separate phase from Diagnostics. The live Pi still serves the placeholder. Verify the reviewed controls and states in the deployed browser. [Operator workflows](USE_CASES.md) |
+| Recordings | Clarify the Recordings entry point and the start, stop and download states. | UI Designer usability review queued; implementation unassigned | Recorder and previous WAV are verified. Require the clearer flow on the live Pi with capture/download intact. [Recorder workflow](platform/linux/PI_ROUTER.md#record-and-download) |
+| Optional Web Synth | Make the separate Ameobea Web Synth FM candidate discoverable alongside the bundled offline FM instrument, using an approved deployment and accurate capability labels. | Unassigned | Private candidate evidence exists. Live discovery and receipt remain open. Verify the visible entry, target availability, routed MIDI and voice cleanup. [Candidate and release requirements](api/instrument-peers.md#optional-hosted-web-synth) |
+| Physical 5×8 and inventory | Expose identifiable ports and routes from runtime inventory and make the physical 5×8 editable with clear feedback. | Unassigned | Jill verified one physical route and the flashed bench verified volatile Move/revert. Require live edge cells, route edits, shared readback and complete Audition. [Physical Pico evidence](api/pico-target.md#installed-patchbay-matrix) |
+| Keys | Qualify the prototype passthrough and physical Shift then Sustain chooser, including held releases. | Unassigned | Host cutover and temporary USB census only. Actual Keys traffic, chord and Jill’s later Live/MPE checks remain open. |
+| Save and board controls | Qualify quiet-point Save, then verify onboard LED behavior and validated LED/pin/PIO settings on hardware. | Unassigned | Host Save and offline GP16 only. Target writes remain disabled pending bounded USB/PIO pause and resume. Require durable readback, interruption recovery and visible board evidence. |
+| Seven USB devices | Verify capacity separately from a simultaneous seven-device rig. Verify MiniFuse and attributable P-95 DIN MIDI when available. | Unassigned | Three devices and two hubs observed. An extra address did not identify MiniFuse. No seven-device qualification or P-95 receipt. [Pico topology](api/pico-target.md#observed-usb-topology-and-configured-capacity) |
 
 ## Approved physical Pico and CDC delivery
 
