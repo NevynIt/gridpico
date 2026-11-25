@@ -329,8 +329,12 @@ async function main() {
   const output = path.resolve(repo, args.output);
   mkdirSync(path.dirname(output), { recursive: true });
   const profile = mkdtempSync(path.join(os.tmpdir(), "gridpico-pdf-profile-"));
-  const env = { ...process.env };
+  const useBundledChromium = !process.env.GRIDPICO_CHROMIUM_PATH;
   const executablePath = process.env.GRIDPICO_CHROMIUM_PATH || await chromium.executablePath();
+  const env = { ...process.env };
+  const fontConfig = process.env.GRIDPICO_FONTCONFIG_FILE || process.env.FONTCONFIG_FILE;
+  if (fontConfig) env.FONTCONFIG_FILE = fontConfig;
+  else if (useBundledChromium) env.FONTCONFIG_FILE = path.join(path.dirname(executablePath), "fonts", "fonts.conf");
   const browser = await puppeteer.launch({
     executablePath,
     headless: "shell",
@@ -385,6 +389,17 @@ async function main() {
     await browser.close();
     rmSync(profile, { recursive: true, force: true });
   }
+  const renderedPdf = readFileSync(output);
+  const pdfText = renderedPdf.toString("latin1");
+  const linkObjects = [...pdfText.matchAll(/\d+\s+\d+\s+obj([\s\S]*?)endobj/g)]
+    .map((match) => match[1])
+    .filter((object) => /\/Subtype\s*\/Link\b/.test(object));
+  const internalPdfLinks = linkObjects.filter((object) => /\/Dest\b/.test(object)).length;
+  const externalPdfLinks = linkObjects.filter((object) => /\/S\s*\/URI\b/.test(object)).length;
+  const pdfFontObjects = (pdfText.match(/\/Type\s*\/Font\b/g) ?? []).length;
+  if (!internalPdfLinks || !externalPdfLinks || !pdfFontObjects) {
+    throw new Error(`PDF output check failed: link annotations internal=${internalPdfLinks}, external=${externalPdfLinks}, font objects=${pdfFontObjects}`);
+  }
   const commitTime = Number(git(["show", "-s", "--format=%ct", commit]).trim());
   const pdfDate = `D:${new Date(commitTime * 1000).toISOString().replace(/[-:T.Z]/g, "").slice(0, 14)}+00'00'`;
   let pdfBytes = readFileSync(output);
@@ -414,6 +429,7 @@ async function main() {
   process.stdout.write(`PDF: ${path.relative(repo, output)}\nSource commit: ${commit}\nSources: ${paths.length} tracked first-party Markdown/Mermaid files\nSource SHA-256: ${sourceDigest}\nPDF SHA-256: ${pdfHash}\n`);
   process.stdout.write(`Manifest: ${path.relative(repo, manifestPath)}\nManifest SHA-256: ${manifestHash}\n`);
   process.stdout.write(`Preflight: ${linkStats.internalLinks} internal links, ${linkStats.externalLinks} external links, ${linkStats.embeddedImages} images\n`);
+  process.stdout.write(`PDF objects: ${internalPdfLinks} internal link annotations, ${externalPdfLinks} external link annotations, ${pdfFontObjects} fonts\n`);
   if (unbundledRefs.size) process.stdout.write(`Unbundled local references: ${unbundledRefs.size} (listed in PDF appendix)\n`);
 }
 
