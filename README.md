@@ -2,7 +2,7 @@
 
 **A portable MIDI workstation for routing and transforming existing instruments, with sequencing planned for later. The production kernel and Pico firmware remain MIDI-only; optional instruments run as independent peers.**
 
-Gridpico connects existing instruments through interchangeable controllers and platform backends. Linux x86_64 and Raspberry Pi arm64 have verified paths. On the RP2040-Zero bench, installed firmware `3ae97ba` runs Patchbay and a USB CDC CLI. Startup, USB CDC and cooperative BOOTSEL recovery passed. Jill demonstrated the selected physical APC-to-MicroFreak route. Pi-hosted Diagnostics reaches the Pico CLI over the private LAN; deployed browser-to-Pico MIDI remains open. Windows and broader Linux ARM qualification remain open. See [current acceptance](ROADMAP.md#current-product-status), [installed Pico firmware evidence](api/pico-target.md#installed-patchbay-matrix) and [live Diagnostics CDC](platform/linux/PI_ROUTER.md#pico-console-from-diagnostics).
+Gridpico connects existing instruments through interchangeable controllers and platform backends. Linux x86_64 and Raspberry Pi arm64 have verified paths. On the RP2040-Zero bench, the installed Gridpico firmware runs Patchbay and a USB CDC CLI. Cooperative BOOTSEL returned the same board to ROM, and the installed image restarted without another flash write. The selected physical APC Key 25 mk2 to MicroFreak route was verified. Pi-hosted Diagnostics reaches the attached Pico CDC CLI over the private LAN for `help`, `inventory`, `status` and `TRACE`. This is separate from the Pi loopback CLI and carries no MIDI. See [installed firmware and recovery](api/pico-target.md#installed-patchbay-matrix), [physical route and open gates](ROADMAP.md#current-product-status), and the [Pico Diagnostics browser contract](api/browser-midi.md#shared-in-page-adapter). Windows and broader Linux ARM qualification remain open.
 
 The repository includes the production MIDI router, Web APC and Diagnostics tools, CLI, offline browser assets and separate instrument peers. See the [roadmap](ROADMAP.md) for verified scope and remaining gates.
 
@@ -19,7 +19,7 @@ The repository includes the production MIDI router, Web APC and Diagnostics tool
 | [Pico bench quick reference](docs/PICO_BENCH.md) | Documentation | Current Pi Diagnostics access and physical Patchbay quick-start |
 | [Diagrams](docs/diagrams/README.md) | Documentation, with Architect and Session Manager review | Visual architecture/team maps and editable Mermaid sources |
 | [Editorial policy](docs/EDITORIAL_POLICY.md) | Documentation | Source homes, acceptance notes and owner curation |
-| [Full documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25/gridpico-documentation.pdf) | Documentation | Dated offline snapshot from source commit `7f31f2e`; [build instructions](docs/PDF_BUILD.md) |
+| [Full documentation PDF](https://github.com/NevynIt/gridpico/releases/download/docs-2026-11-25-curated/gridpico-documentation.pdf) | Documentation | Dated offline snapshot from source commit `e689cdd`; [build instructions](docs/PDF_BUILD.md) |
 
 ## Documentation owners
 
@@ -92,6 +92,6 @@ Use a separate checkout and the same Docker daemon as rpico-bridge. The containe
 
 ## Scope and provenance
 
-APC is the preferred interface, not the identity of the kernel. Its Web APC controller exercises the production APC frontend; CLI and future piano controls use the same musical commands. The selected physical APC-to-MicroFreak route has been demonstrated. Broader routing and device qualification, including seven-device USB and P-95 DIN MIDI, remain open. Mounted `GRIDPICO` drive access is a target design whose acceptance remains open. See [current acceptance](ROADMAP.md#current-product-status) and the [Pico route contract](api/pico-target.md#standalone-firmware-route). Desktop deployments do not emulate a USB disk or CDC when they do not need them.
+APC is the preferred interface, not the identity of the kernel. Its Web APC controller exercises the production APC frontend; CLI and future piano controls use the same musical commands. Offline browser tools have been verified as staged files. Access from the Pico’s planned read-only `GRIDPICO` drive and direct browser Web Serial to the Pico still need hardware verification. Full physical Patchbay editing and Audition, wider instrument coverage, and deployed browser-to-Pico MIDI also remain open. The earlier temporary authenticated WSS smoke was separate from deployed access. See the [Pico drive design](ARCHITECTURE.md#rp2040-computer-connection), [current acceptance](ROADMAP.md#current-product-status), and the [earlier temporary WSS evidence](ROADMAP.md#approved-physical-pico-and-cdc-delivery). Desktop deployments do not emulate a USB disk or CDC when they do not need them.
 
 Earlier projects are design references and experiments only. No product code is imported. The development-tooling attribution is in [Sources](docs/SOURCES.md) and the corresponding [notice](third_party/notices/rpico-bridge-MIT.txt). The repository uses the [MIT license](LICENSE) selected when the human created it.
