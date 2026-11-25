@@ -1,6 +1,6 @@
 # Configurable router profiles and Routing
 
-**Owner** Architect. **Status** Desktop profile, local Routing and passive APC viewport independently verified. Physical device access and USB identity verification remain Stage 3 gates. [Roadmap and evidence](../ROADMAP.md#approved-next-delivery--routing-and-local-device-access) · [Local router baseline](local-router.md) · [Browser MIDI](browser-midi.md)
+**Owner** Architect. **Status** Desktop profile, local Routing and passive APC viewport independently verified. Physical device access and USB identity verification remain Stage 3 gates. [Desktop acceptance](#both-axis-acceptance-registration) · [Local router baseline](local-router.md) · [Browser MIDI](browser-midi.md)
 
 ## Profile and admission
 
@@ -63,7 +63,7 @@ Use this registration order. The sixth managed source is 11 and the ninth manage
 
 Prove useful concurrent traffic with more than six MIDI attachments and an independent serial reader. Exercise duplicate and wrong-direction rejection, profile-limit rejection, and another binding's continued progress under a slow peer. Verify Routing reads all pages with maximum-length names, discards a stale continuation after a port or route change, and shows a rejected edit without changing the projected route.
 
-Independent desktop tests verified 200 exact attacks and 200 zero-velocity releases at eight binary receivers during live detach. Orderly runner EOF separately staged and accepted 200 owed releases while the sinks were available. The same gate verified Routing paging, stale continuation rejection, and the Free, In use and pool-full Unavailable transitions. [Roadmap and evidence](../ROADMAP.md#2-expand-registered-ports-and-make-routing-visible)
+Independent desktop tests verified 200 exact attacks and 200 zero-velocity releases at eight binary receivers during live detach. Orderly runner EOF separately staged and accepted 200 owed releases while the sinks were available. The same gate verified Routing paging, stale continuation rejection, and the Free, In use and pool-full Unavailable transitions. [Routing CLI](#routing-through-the-local-cli)
 
 ## Routing through the local CLI
 

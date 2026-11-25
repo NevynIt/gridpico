@@ -268,7 +268,7 @@ The OS manages RTP-MIDI sessions. Select an RTP port in Web MIDI if the OS
 exposes it and the browser lists it. The Linux two-host RTP bench verified
 receipt, rebind and scoped release. Session repeatability, in-session Note Off
 loss recovery and browser playback over an OS-exposed RTP port remain open.
-[RTP bench results](../ROADMAP.md#4-verify-rtp-midi-and-productize-cross-host-websocket-midi)
+[RTP bench results](../api/linux-midi-adapter.md#linux-alsa-midi-adapter-scope)
 
 Web APC, Diagnostics and FM share the **MIDI server origin** field.
 **Open server** navigates to the same tool at the selected origin
@@ -425,7 +425,7 @@ development host verified mutual TLS against a Pi listener, exact managed
 and Raw MIDI receipt, the 40-pad restore, scoped release, and fresh
 binding without replay. Desktop Chromium client-certificate selection
 and browser MIDI receipt through the authenticated remote listener remain
-pending. [Two-host evidence](../ROADMAP.md#approved-tonight-delivery)
+pending. [Two-host evidence](https://github.com/NevynIt/gridpico/blob/f8b15cd0f43c519f3b27296d7c24677e49fbffe4/ROADMAP.md#approved-tonight-delivery)
 [Cross-host admission and routing contract](../api/websocket-midi.md)
 ## Separate Pico service
 
