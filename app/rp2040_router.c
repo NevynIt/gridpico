@@ -478,6 +478,9 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
     if (result != GRIDPICO_OK) return result;
     gridpico_patch_session_init(&router->session, &router->graph, gridpico_patch_graph_read_graph,
                               gridpico_patch_graph_set_route);
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+    gridpico_patch_session_bind_projection_scratch(&router->session, &router->projection_scratch);
+#endif
     gridpico_patch_session_bind_local_routes(&router->session, gridpico_patch_graph_set_local_route,
                                             gridpico_patch_graph_read_local_route);
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH

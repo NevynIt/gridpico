@@ -82,6 +82,9 @@ typedef struct {
 struct gridpico_pico_router {
     gridpico_patch_graph graph;
     gridpico_patch_session session;
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+    gridpico_local_routing_snapshot projection_scratch;
+#endif
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
     gridpico_pico_keys keys;
 #endif

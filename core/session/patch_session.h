@@ -22,6 +22,7 @@ typedef struct {
     gridpico_local_read_graph_fn read_local_graph;
     gridpico_local_read_availability_fn read_availability;
     void *availability_context;
+    gridpico_local_routing_snapshot *projection_scratch;
     gridpico_revision color_revision;
     /* Colors follow the graph's stable device registration slots. */
     gridpico_patch_color_preference colors[GRIDPICO_PATCH_MAX_DEVICES];
@@ -55,6 +56,12 @@ void gridpico_patch_session_bind_local_routing(gridpico_patch_session *session,
                                               gridpico_local_read_graph_fn read_graph,
                                               gridpico_local_read_availability_fn read_availability,
                                               void *availability_context);
+
+/* Borrow scratch for serialized projections. Outputs must be disjoint from it.
+ * Pass NULL to use the default stack fallback.
+ */
+void gridpico_patch_session_bind_projection_scratch(gridpico_patch_session *session,
+                                                   gridpico_local_routing_snapshot *scratch);
 
 /* Bind the editable layout once, after binding the local graph reader. */
 gridpico_result gridpico_patch_session_bind_apc_patch(gridpico_patch_session *session,

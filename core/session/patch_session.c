@@ -2,6 +2,12 @@
 
 #include <string.h>
 
+#if defined(__GNUC__)
+#define GRIDPICO_NOINLINE __attribute__((noinline))
+#else
+#define GRIDPICO_NOINLINE
+#endif
+
 void gridpico_patch_session_init(gridpico_patch_session *session, void *graph_context,
                                 gridpico_patch_read_graph_fn read_graph,
                                 gridpico_patch_set_route_fn set_graph_route)
@@ -29,6 +35,23 @@ void gridpico_patch_session_bind_local_routing(gridpico_patch_session *session,
     session->read_local_graph = read_graph;
     session->read_availability = read_availability;
     session->availability_context = availability_context;
+}
+
+void gridpico_patch_session_bind_projection_scratch(gridpico_patch_session *session,
+                                                   gridpico_local_routing_snapshot *scratch)
+{
+    session->projection_scratch = scratch;
+}
+
+static bool overlaps_projection_scratch(const gridpico_local_routing_snapshot *scratch,
+                                        const void *out, size_t out_size)
+{
+    const uintptr_t scratch_address = (uintptr_t)scratch;
+    const uintptr_t out_address = (uintptr_t)out;
+    if (out_address >= scratch_address) {
+        return out_address - scratch_address < sizeof(*scratch);
+    }
+    return scratch_address - out_address < out_size;
 }
 
 static gridpico_result read_graph(const gridpico_patch_session *session,
@@ -277,6 +300,39 @@ static gridpico_result publish_routing_revision(gridpico_patch_session *session,
     return GRIDPICO_OK;
 }
 
+static gridpico_result project_local_routing(gridpico_patch_session *session,
+                                             gridpico_local_routing_snapshot *snapshot,
+                                             gridpico_local_routing_snapshot *out)
+{
+    memset(snapshot, 0, sizeof(*snapshot));
+    gridpico_result result = read_local_graph(session, &snapshot->graph);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+    result = session->read_availability(session->availability_context, &snapshot->graph.registry,
+                                        snapshot->availability);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+
+    for (size_t i = 0; i < snapshot->graph.registry.inventory.device_count; ++i) {
+        snapshot->colors[i] = color_at(session, i);
+    }
+    sort_enabled_routes(&snapshot->graph);
+    result = publish_routing_revision(session, snapshot);
+    if (result == GRIDPICO_OK) {
+        *out = *snapshot;
+    }
+    return result;
+}
+
+static GRIDPICO_NOINLINE gridpico_result read_local_routing_on_stack(
+    gridpico_patch_session *session, gridpico_local_routing_snapshot *out)
+{
+    gridpico_local_routing_snapshot snapshot;
+    return project_local_routing(session, &snapshot, out);
+}
+
 gridpico_result gridpico_patch_session_read_local_routing(void *context,
                                                          gridpico_local_routing_snapshot *out)
 {
@@ -287,27 +343,13 @@ gridpico_result gridpico_patch_session_read_local_routing(void *context,
     if (session->read_availability == NULL) {
         return GRIDPICO_UNAVAILABLE;
     }
-
-    gridpico_local_routing_snapshot snapshot = {0};
-    gridpico_result result = read_local_graph(session, &snapshot.graph);
-    if (result != GRIDPICO_OK) {
-        return result;
+    if (session->projection_scratch == NULL) {
+        return read_local_routing_on_stack(session, out);
     }
-    result = session->read_availability(session->availability_context, &snapshot.graph.registry,
-                                        snapshot.availability);
-    if (result != GRIDPICO_OK) {
-        return result;
+    if (overlaps_projection_scratch(session->projection_scratch, out, sizeof(*out))) {
+        return GRIDPICO_INVALID;
     }
-
-    for (size_t i = 0; i < snapshot.graph.registry.inventory.device_count; ++i) {
-        snapshot.colors[i] = color_at(session, i);
-    }
-    sort_enabled_routes(&snapshot.graph);
-    result = publish_routing_revision(session, &snapshot);
-    if (result == GRIDPICO_OK) {
-        *out = snapshot;
-    }
-    return result;
+    return project_local_routing(session, session->projection_scratch, out);
 }
 
 static size_t project_axis(const gridpico_port_id *ports, size_t count,
@@ -612,6 +654,43 @@ static void read_apc_cells(const gridpico_local_graph_state *graph, gridpico_por
     }
 }
 
+static gridpico_result project_apc_patch(const gridpico_patch_session *session,
+                                         gridpico_local_graph_state *graph,
+                                         gridpico_apc_patch_snapshot *out)
+{
+    const gridpico_result result = read_local_graph(session, graph);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+
+    memset(out, 0, sizeof(*out));
+    out->layout_revision = session->apc_layout_revision;
+    out->graph_revision = graph->revision;
+    out->layout = session->apc_layout;
+    out->attack_sequence = session->apc_attack_sequence;
+    for (size_t i = 0; i < graph->registry.inventory.port_count; ++i) {
+        if (apc_port_eligible(&graph->registry, i, session->apc_audition_source)) {
+            const gridpico_patch_port *port = &graph->registry.inventory.ports[i];
+            out->ports[out->port_count++] = (gridpico_apc_patch_port){
+                .id = port->id,
+                .direction = port->direction,
+                .connected = port->state == GRIDPICO_PATCH_CONNECTED,
+                .last_attack_sequence = session->apc_attacks[i].sequence,
+                .last_attack_us = session->apc_attacks[i].time_us,
+            };
+        }
+    }
+    read_apc_cells(graph, session->apc_audition_source, out);
+    return GRIDPICO_OK;
+}
+
+static GRIDPICO_NOINLINE gridpico_result read_apc_patch_on_stack(
+    const gridpico_patch_session *session, gridpico_apc_patch_snapshot *out)
+{
+    gridpico_local_graph_state graph;
+    return project_apc_patch(session, &graph, out);
+}
+
 gridpico_result gridpico_patch_session_read_apc_patch(void *context, gridpico_apc_patch_snapshot *out)
 {
     const gridpico_patch_session *session = context;
@@ -621,35 +700,13 @@ gridpico_result gridpico_patch_session_read_apc_patch(void *context, gridpico_ap
     if (session->apc_layout_revision == 0) {
         return GRIDPICO_UNAVAILABLE;
     }
-
-    gridpico_local_graph_state graph;
-    const gridpico_result result = read_local_graph(session, &graph);
-    if (result != GRIDPICO_OK) {
-        return result;
+    if (session->projection_scratch == NULL) {
+        return read_apc_patch_on_stack(session, out);
     }
-
-    gridpico_apc_patch_snapshot snapshot = {
-        .layout_revision = session->apc_layout_revision,
-        .graph_revision = graph.revision,
-        .layout = session->apc_layout,
-        .attack_sequence = session->apc_attack_sequence,
-    };
-    for (size_t i = 0; i < graph.registry.inventory.port_count; ++i) {
-        if (apc_port_eligible(&graph.registry, i, session->apc_audition_source)) {
-            const gridpico_patch_port *port = &graph.registry.inventory.ports[i];
-            snapshot.ports[snapshot.port_count++] = (gridpico_apc_patch_port){
-                .id = port->id,
-                .direction = port->direction,
-                .connected = port->state == GRIDPICO_PATCH_CONNECTED,
-                .last_attack_sequence = session->apc_attacks[i].sequence,
-                .last_attack_us = session->apc_attacks[i].time_us,
-            };
-        }
+    if (overlaps_projection_scratch(session->projection_scratch, out, sizeof(*out))) {
+        return GRIDPICO_INVALID;
     }
-    read_apc_cells(&graph, session->apc_audition_source, &snapshot);
-
-    *out = snapshot;
-    return GRIDPICO_OK;
+    return project_apc_patch(session, &session->projection_scratch->graph, out);
 }
 
 static size_t apc_axis_length(gridpico_patch_direction axis)
