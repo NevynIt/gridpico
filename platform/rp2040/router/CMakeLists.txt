@@ -106,6 +106,9 @@ if(GRIDPICO_RP2040_PATCHBAY_BENCH)
     if(NOT GRIDPICO_RP2040_KEYS_BENCH AND NOT GRIDPICO_RP2040_FLASH_STARTUP_FAULT)
         # CDC records require integer and string formatting only.
         target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_MATRIX_CLI PICO_PRINTF_SUPPORT_FLOAT=0)
+        if(NOT GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
+            target_link_options(gridpico_rp2040_router PRIVATE "LINKER:--wrap=dcd_event_handler")
+        endif()
         target_sources(gridpico_rp2040_router PRIVATE cdc_cli.c "${root}/frontends/cli/cli_frontend.c"
             "${root}/app/rp2040_auto_routes.c")
         if(CMAKE_C_COMPILER_ID STREQUAL "GNU")

@@ -98,6 +98,7 @@ struct gridpico_pico_router {
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
     gridpico_revision physical_feedback_generation;
     uint64_t host_output_ready_epoch;
+    bool native_output_ready;
     gridpico_patch_manual_routes manual_routes;
     struct {
         gridpico_port_id input, output;
@@ -145,6 +146,10 @@ gridpico_result gridpico_pico_router_register_device(gridpico_pico_router *route
                                                     uint8_t inputs, uint8_t outputs);
 /* An independent physical LED owner supplies a nonzero target epoch; zero stops feedback. */
 void gridpico_pico_router_set_physical_feedback(gridpico_pico_router *router, gridpico_revision generation);
+/* Freeze native MIDI OUT for this configuration. Old release debt stays owned.
+ * Other current input and output bindings remain active.
+ */
+void gridpico_pico_router_retire_native_output(gridpico_pico_router *router);
 /* The caller has fenced the input, checked revision space, and released its Panel role. */
 gridpico_result gridpico_pico_router_renew_managed_input(gridpico_pico_router *router, gridpico_pico_peer peer);
 #endif

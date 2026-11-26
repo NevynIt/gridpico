@@ -315,6 +315,7 @@ static gridpico_revision feedback_generation(const gridpico_pico_router *router,
 {
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
     if (peer == GRIDPICO_PICO_APC) return router->physical_feedback_generation;
+    if (peer == GRIDPICO_PICO_WEB && !router->native_output_ready) return 0;
 #endif
     return router->attached[peer] ? router->generation[peer] : 0;
 }
@@ -707,9 +708,13 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
 
 static void update_port(gridpico_pico_router *router, gridpico_port_id port, gridpico_pico_peer peer)
 {
+    bool connected = router->attached[peer];
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (port == WEB_EXPORT) connected &= router->native_output_ready;
+#endif
     const gridpico_patch_port_update update = {
         .connection = {port, router->generation[peer]},
-        .state = router->attached[peer] ? GRIDPICO_PATCH_CONNECTED : GRIDPICO_PATCH_DISCONNECTED,
+        .state = connected ? GRIDPICO_PATCH_CONNECTED : GRIDPICO_PATCH_DISCONNECTED,
     };
     gridpico_patch_graph_update_port(&router->graph, &update);
 }
@@ -988,7 +993,7 @@ void gridpico_pico_router_finish_mode(gridpico_pico_router *router, bool native_
 #endif
 
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
-static void retain_host_releases(gridpico_pico_queue *queue)
+static void retain_output_releases(gridpico_pico_queue *queue)
 {
     /* This ring belongs to one append-only logical sink. Its release entries
      * include the head even while that packet is on the wire.
@@ -1002,6 +1007,20 @@ static void retain_host_releases(gridpico_pico_queue *queue)
         }
     }
     queue->count = kept;
+}
+
+void gridpico_pico_router_retire_native_output(gridpico_pico_router *router)
+{
+    if (!router->native_output_ready) return;
+    router->native_output_ready = false;
+    retain_output_releases(&router->notes[note_queue_index(GRIDPICO_PICO_WEB)]);
+    update_port(router, WEB_EXPORT, GRIDPICO_PICO_WEB);
+#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+    if (router->attached[GRIDPICO_PICO_WEB]) {
+        gridpico_apc_physical_detach(&router->panels[GRIDPICO_PICO_WEB].frontend);
+        reset_panel(router, GRIDPICO_PICO_WEB);
+    }
+#endif
 }
 #endif
 
@@ -1025,7 +1044,7 @@ void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_pee
         gridpico_pico_queue *queue = &router->notes[note_queue_index(peer)];
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
         if (peer >= GRIDPICO_PICO_DISCOVERED) {
-            if (!attached) retain_host_releases(queue);
+            if (!attached) retain_output_releases(queue);
             const size_t slot = (size_t)(peer - GRIDPICO_PICO_DISCOVERED);
             const bool was_recovering = router->discovered[slot].recovering_output;
             const bool recovering = attached && queue->count != 0;
@@ -1037,9 +1056,15 @@ void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_pee
                 if (attached) ++router->discovered[slot].input_generation;
                 (void)update_discovered_input(router, slot, attached);
             }
+        } else if (attached) {
+            /* A fresh native configuration is not a verified return of the
+             * computer that owed an old release.
+             */
+            router->native_output_ready = queue->count == 0 &&
+                gridpico_patch_graph_destination_idle(&router->graph, WEB_EXPORT);
+            if (router->native_output_ready) update_port(router, WEB_EXPORT, peer);
         } else {
-            queue->head = queue->count = 0;
-            update_port(router, WEB_EXPORT, peer);
+            gridpico_pico_router_retire_native_output(router);
         }
 #else
         queue->head = queue->count = 0;

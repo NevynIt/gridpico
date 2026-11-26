@@ -14,6 +14,8 @@
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
 #include "flash_startup.h"
 #include "hardware/structs/watchdog.h"
+#endif
+#if defined(GRIDPICO_RP2040_FLASH_ROUTER) || defined(GRIDPICO_PICO_GENERIC_MIDI)
 #include "device/dcd.h"
 #endif
 #if defined(GRIDPICO_RP2040_FLASH_ROUTER) || defined(GRIDPICO_RP2040_PATCHBAY_BENCH)
@@ -197,7 +199,20 @@ static bool circuit_ambiguous;
 #ifndef GRIDPICO_PICO_GENERIC_MIDI
 static uint32_t apc_led_generation;
 #endif
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+typedef enum { NATIVE_OUT_IDLE, NATIVE_OUT_NOTE, NATIVE_OUT_PANEL } native_out_kind;
+static volatile uint32_t native_bus_epoch, native_posted_epoch;
+static uint32_t native_mounted_epoch, native_configuration;
+static uint32_t native_active_epoch, native_active_configuration;
+static struct {
+    uint64_t deadline;
+    gridpico_pico_packet packet;
+    uint32_t generation;
+    native_out_kind kind;
+} native_out;
+#else
 static uint32_t native_led_generation;
+#endif
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
 static uint32_t native_note_generation;
 static uint64_t native_note_deadline;
@@ -452,15 +467,55 @@ static bool write_cdc(const char *message, uint32_t length)
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
 enum { FLASH_START_DEADLINE_US = 4000000 };
 static volatile bool native_bus_activity;
+#endif
 
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+static bool native_bus_loss(uint8_t root, uint32_t event)
+{
+    return root == DEVICE_ROOT && (event == DCD_EVENT_BUS_RESET || event == DCD_EVENT_UNPLUGGED);
+}
+
+void __real_dcd_event_handler(const dcd_event_t *event, bool in_isr);
+
+void __wrap_dcd_event_handler(const dcd_event_t *event, bool in_isr)
+{
+    if (native_bus_loss(event->rhport, event->event_id) && native_bus_epoch != UINT32_MAX) {
+        ++native_bus_epoch;
+    }
+    __real_dcd_event_handler(event, in_isr);
+}
+
+void tud_mount_cb(void)
+{
+    if (native_configuration != UINT32_MAX) ++native_configuration;
+    native_mounted_epoch = native_bus_epoch;
+}
+
+static bool native_epoch_current(void)
+{
+    return native_active_epoch != 0 && native_active_epoch == native_bus_epoch &&
+           native_active_epoch == native_mounted_epoch &&
+           native_active_configuration == native_configuration && tud_mounted();
+}
+#endif
+
+#if defined(GRIDPICO_RP2040_FLASH_ROUTER) || defined(GRIDPICO_PICO_GENERIC_MIDI)
 void tud_event_hook_cb(uint8_t root, uint32_t event, bool in_isr)
 {
     (void)in_isr;
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    /* TinyUSB only invokes this hook after the event queue accepts the event. */
+    if (native_bus_loss(root, event)) native_posted_epoch = native_bus_epoch;
+#endif
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
     if (root == DEVICE_ROOT && (event == DCD_EVENT_BUS_RESET || event == DCD_EVENT_SETUP_RECEIVED)) {
         native_bus_activity = true;
     }
+#endif
 }
+#endif
 
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
 static _Noreturn void enter_rom(void)
 {
     gridpico_flash_start_clear(watchdog_hw->scratch);
@@ -555,7 +610,9 @@ void tud_umount_cb(void)
     gridpico_bootsel_set_dtr(&command, false);
     banner_pending = false;
     native_led_refresh_at = 0;
-#ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    native_mounted_epoch = 0;
+#elif defined(GRIDPICO_RP2040_PATCHBAY_BENCH)
     native_led_generation = 0;
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
     native_note_generation = 0;
@@ -1895,6 +1952,26 @@ bool __real_midid_xfer_cb(uint8_t root, uint8_t endpoint, xfer_result_t result, 
 bool __wrap_midid_xfer_cb(uint8_t root, uint8_t endpoint, xfer_result_t result, uint32_t transferred)
 {
     const bool handled = __real_midid_xfer_cb(root, endpoint, result, transferred);
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (root != DEVICE_ROOT || endpoint != GRIDPICO_NATIVE_MIDI_IN_EP ||
+        native_out.kind == NATIVE_OUT_IDLE || !native_epoch_current() ||
+        native_out.generation != router.generation[GRIDPICO_PICO_WEB]) return handled;
+
+    const native_out_kind kind = native_out.kind;
+    native_out.kind = NATIVE_OUT_IDLE;
+    if (!handled || result != XFER_RESULT_SUCCESS || transferred != GRIDPICO_PICO_PACKET_BYTES) {
+        gridpico_pico_router_retire_native_output(&router);
+    } else if (kind == NATIVE_OUT_NOTE) {
+        const gridpico_pico_packet *head = gridpico_pico_router_note(&router, GRIDPICO_PICO_WEB);
+        if (head != NULL && memcmp(head->bytes, native_out.packet.bytes, sizeof(native_out.packet.bytes)) == 0) {
+            gridpico_pico_router_note_sent(&router, GRIDPICO_PICO_WEB);
+        } else {
+            gridpico_pico_router_retire_native_output(&router);
+        }
+    } else {
+        gridpico_pico_router_led_complete(&router, GRIDPICO_PICO_WEB, true);
+    }
+#else
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
     if (root == DEVICE_ROOT && endpoint == GRIDPICO_NATIVE_MIDI_IN_EP && native_note_generation != 0) {
         if (native_note_generation == router.generation[GRIDPICO_PICO_WEB]) {
@@ -1910,6 +1987,7 @@ bool __wrap_midid_xfer_cb(uint8_t root, uint8_t endpoint, xfer_result_t result, 
         }
         native_led_generation = 0;
     }
+#endif
     return handled;
 }
 #endif
@@ -2154,6 +2232,95 @@ static void service_host(void)
 
 #endif
 
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+static void service_native_epoch(void)
+{
+    if (native_epoch_current()) return;
+    if (native_active_epoch != 0) {
+        native_active_epoch = 0;
+        native_out.kind = NATIVE_OUT_IDLE;
+        native_led_refresh_at = 0;
+        gridpico_pico_router_attach(&router, GRIDPICO_PICO_WEB, false);
+    }
+
+    /* The loss event must have made it into TinyUSB, and the foreground
+     * must have processed it and a new SET_CONFIGURATION before opening.
+     * An old mount callback cannot survive a later queued reset plus drain.
+     */
+    const uint32_t irq = save_and_disable_interrupts();
+    const uint32_t epoch = native_bus_epoch;
+    const bool configured = epoch != 0 && epoch != UINT32_MAX &&
+        epoch == native_posted_epoch && epoch == native_mounted_epoch &&
+        native_configuration != UINT32_MAX && !tud_task_event_ready() && tud_midi_mounted();
+    if (configured) {
+        native_active_epoch = epoch;
+        native_active_configuration = native_configuration;
+    }
+    restore_interrupts(irq);
+    if (configured) gridpico_pico_router_attach(&router, GRIDPICO_PICO_WEB, true);
+}
+
+static bool submit_native_packet(const gridpico_pico_packet *packet, native_out_kind kind)
+{
+    native_out.packet = *packet;
+    /* No MIDI class FIFO writes or refresh bypasses on this endpoint. The
+     * same-core deadline and four-byte direct submission own one flight.
+     */
+    const uint32_t irq = save_and_disable_interrupts();
+    const bool accepted = native_epoch_current() && !tud_suspended() &&
+        usbd_edpt_claim(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP) &&
+        usbd_edpt_xfer(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP, native_out.packet.bytes,
+                      GRIDPICO_PICO_PACKET_BYTES, false);
+    if (accepted) {
+        native_out.generation = router.generation[GRIDPICO_PICO_WEB];
+        native_out.kind = kind;
+    }
+    restore_interrupts(irq);
+    if (accepted) native_out.deadline = time_us_64() + TX_TIMEOUT_US;
+    return accepted;
+}
+
+static void service_native_midi(void)
+{
+    service_native_epoch();
+    if (!native_epoch_current() || !router.attached[GRIDPICO_PICO_WEB]) return;
+    gridpico_pico_packet packet;
+    for (unsigned i = 0; i < RX_BATCH && tud_midi_packet_read(packet.bytes); ++i) {
+        if (!native_epoch_current()) return;
+        if (packet.bytes[0] >> 4 == 0 || router.native_output_ready) receive(GRIDPICO_PICO_WEB, &packet);
+    }
+    if (!router.native_output_ready) return;
+
+    const uint64_t now = time_us_64();
+    if (native_out.kind != NATIVE_OUT_IDLE) {
+        if (now >= native_out.deadline) {
+            native_out.kind = NATIVE_OUT_IDLE;
+            gridpico_pico_router_retire_native_output(&router);
+        }
+        return;
+    }
+    const gridpico_pico_packet *note = gridpico_pico_router_note(&router, GRIDPICO_PICO_WEB);
+    if (note != NULL) {
+        if (submit_native_packet(note, NATIVE_OUT_NOTE)) {
+            add_trace('G', GRIDPICO_PICO_WEB, note->bytes, sizeof(note->bytes));
+        }
+        return;
+    }
+    const gridpico_pico_packet *led = gridpico_pico_router_led(&router, GRIDPICO_PICO_WEB);
+    if (led != NULL) {
+        if (submit_native_packet(led, NATIVE_OUT_PANEL)) gridpico_pico_router_led_sent(&router, GRIDPICO_PICO_WEB);
+        return;
+    }
+    if (native_led_refresh_at == 0) {
+        native_led_refresh_at = now + NATIVE_LED_REFRESH_US;
+    } else if (now >= native_led_refresh_at) {
+        native_led_refresh_at = now + NATIVE_LED_REFRESH_US;
+        if (!tud_suspended() && usbd_edpt_ready(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP)) {
+            gridpico_pico_router_offer_led_page(&router, GRIDPICO_PICO_WEB);
+        }
+    }
+}
+#else
 static void service_native_midi(void)
 {
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
@@ -2216,6 +2383,7 @@ static void service_native_midi(void)
         }
     }
 }
+#endif
 
 static bool start_host(void)
 {
