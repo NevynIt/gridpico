@@ -21,6 +21,22 @@ For example, enter `route 11 18 managed on` in Diagnostics. The route is Pending
 
 In Diagnostics, `help` lists the commands available on the connected router. [Shared CLI reference](../../frontends/cli/README.md)
 
+## Transpose or remap an active route
+
+The shipped desktop profile enables live transforms with `note-transform on`. Use Diagnostics or the loopback host's same-origin `/serial` connection. Attach an input and an output and enable their public Managed socket route. For the desktop profile, `/midi/1` is Keybed and `/midi/12` is Instruments A / A1 when recording is disabled.
+
+```text
+route 1 12 managed on
+routing
+transform 1 12 7 4 if REV
+```
+
+Replace `REV` with the current revision from `ROUTING`. The example shifts notes up seven semitones and sends them on MIDI channel 4. Semitones range from −127 to 127. Notes whose shifted pitch falls outside the MIDI range are filtered. Use channel `1`–`16` to remap or `0` to preserve the input channel. A successful `TRANSFORM` reply includes the committed revision. Use `transform 1 12 0 0 if REV` with the current revision to restore identity.
+
+A change releases any affected held notes on that branch at their former pitch and channel. Other branches keep their current notes and settings. New branches start at identity. Settings last for the life of an enabled branch in the running router.
+
+To reproduce the loopback check with the stock runner, build and install the dependencies as above, then run `node scripts/transform-smoke.cjs build/web-ui/gridpico_local_router`. It starts the ordinary Web UI host on a free loopback port and verifies exact Note On and Note Off bytes on two editable branches and an unchanged control branch.
+
 ## File format
 
 Use a whitespace-separated file. Blank lines and lines starting with `#` are ignored. Names take the rest of their line and may contain spaces. Keep names to 31 UTF-8 bytes. Each device and port ID is a positive 16-bit integer. The order of device rows and port rows sets their inventory order.
@@ -28,10 +44,13 @@ Use a whitespace-separated file. Blank lines and lines starting with `#` are ign
 ```text
 limits PEERS MANAGED RAW FANOUT OCCURRENCES CREDITS
 surface passive|legacy
+note-transform on
 device ID NAME
 port ID DEVICE in|out managed|raw|panel QUEUE ROLE socket|unavailable NAME
 ```
 
 Use one `limits` row and one `surface` row. The desktop build backs up to 8 devices, 18 ports, 12 managed routes, one Raw route, four managed destinations per source, 50 held occurrences and 200 release credits. Set `PEERS` to a positive limit within the number of socket ports. Each queue has 1–128 frames. Managed outputs need room for the largest owed release batch, and the LED output needs at least 40 frames for a complete page.
+
+`note-transform on` is optional and may appear once. Without it the profile omits the transform command. The row enables the command and leaves every new branch at identity.
 
 Use `aux` for additional managed inputs or outputs. Dedicated roles are `keybed`, `panel`, `led`, `sequence`, `monitor` and `log`. Each can appear once with the direction and capability shown in the example. Only the configured Sequence input and LED output can use the Raw lease. An `unavailable` port stays registered for routing and has no socket attachment path. Use the direct command for a custom role or port layout. The launcher with `--web-ui` expects the six starter roles to be claimable on ports 1–6 and a peer limit of at least six.

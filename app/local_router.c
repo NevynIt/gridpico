@@ -392,6 +392,7 @@ int main(int argc, char **argv)
         fputs("Recorder requires a profile with a usable managed socket route 1 to 12\n", stderr);
         return EXIT_FAILURE;
     }
+    local_runtime_enable_desktop_note_transform(&runtime);
     return local_router_run(&runtime, NULL, ui_descriptor);
 }
 #endif

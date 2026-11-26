@@ -59,6 +59,8 @@ typedef struct {
     gridpico_port_id sequence_port;
     bool configured;
     bool routing_enabled;
+    bool note_transform_enabled;
+    bool recording_enabled;
     local_binding bindings[GRIDPICO_PATCH_MAX_PORTS];
     local_binding serial;
     local_output output[LOCAL_MIDI_STAGE_FRAMES + GRIDPICO_PATCH_MAX_PORTS];
@@ -83,6 +85,8 @@ gridpico_result local_runtime_init(local_runtime *runtime);
 gridpico_result local_runtime_init_profile(local_runtime *runtime, const local_router_profile *profile);
 gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime);
 gridpico_result local_runtime_enable_recorder_route(local_runtime *runtime);
+/* Desktop assembly checks the validated profile before serial ingress. */
+void local_runtime_enable_desktop_note_transform(local_runtime *runtime);
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms);
 gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result result);
 gridpico_result local_runtime_bind(local_runtime *runtime, gridpico_connection connection,

@@ -45,6 +45,8 @@ target_link_libraries(gridpico_patch_runner PRIVATE gridpico_patch_runtime)
 add_library(gridpico_local_runtime STATIC
     app/local_profile.c
     app/local_runtime.c
+    core/processors/managed_note.c
+    core/processors/transpose.c
     core/midi/patch_graph.c
     core/session/patch_session.c
     frontends/apc/apc_patch.c

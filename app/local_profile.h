@@ -27,6 +27,7 @@ typedef struct {
     gridpico_local_profile limits;
     local_profile_port ports[GRIDPICO_PATCH_MAX_PORTS];
     bool passive_surface;
+    bool note_transform;
 } local_router_profile;
 
 bool local_profile_load(const char *path, local_router_profile *profile);

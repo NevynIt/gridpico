@@ -252,10 +252,10 @@ static bool remove_contributor(gridpico_patch_release_credit *credit, gridpico_p
 }
 
 static gridpico_result release_note(gridpico_patch_graph *graph, gridpico_patch_release_credit *credit,
-                                    size_t destination, uint8_t velocity)
+                                    uint32_t generation, uint8_t velocity)
 {
     gridpico_note_delivery release = credit->delivery;
-    release.destination.generation = graph->ports[destination].generation;
+    release.destination.generation = generation;
     release.note.kind = GRIDPICO_NOTE_OFF;
     release.note.velocity = velocity;
     if (graph->deliver(graph->delivery_context, &release) != GRIDPICO_OK) {
@@ -277,7 +277,7 @@ static gridpico_result reconcile_releases(gridpico_patch_graph *graph, gridpico_
         }
         const size_t port = port_index(&graph->inventory, credit->delivery.destination.endpoint);
         if (graph->inventory.ports[port].state == GRIDPICO_PATCH_CONNECTED &&
-            release_note(graph, credit, port, 0) != GRIDPICO_OK) {
+            release_note(graph, credit, graph->ports[port].generation, 0) != GRIDPICO_OK) {
             result = GRIDPICO_UNAVAILABLE;
         }
     }
@@ -302,6 +302,19 @@ static void retire_branch(gridpico_patch_graph *graph, size_t index)
             break;
         }
     }
+}
+
+static gridpico_result retire_managed_route(gridpico_patch_graph *graph, size_t branch,
+                                            const gridpico_local_route *route)
+{
+    const unsigned previous_active = active_branches(graph);
+    retire_branch(graph, branch);
+    reconcile_releases(graph, route->destination, route->source);
+    if (has_owed_release(graph, route->destination, route->source)) {
+        publish_change(graph, previous_active, false);
+        return GRIDPICO_UNAVAILABLE;
+    }
+    return GRIDPICO_OK;
 }
 
 static gridpico_result retire_input(gridpico_patch_graph *graph, size_t input)
@@ -346,10 +359,15 @@ static bool valid_note(gridpico_note note)
             (note.kind == GRIDPICO_NOTE_ON && note.velocity != 0));
 }
 
-static bool already_selected(const gridpico_patch_note_contribution *selected, size_t count, size_t credit)
+typedef struct {
+    gridpico_patch_note_contribution contribution;
+    gridpico_note note;
+} selected_attack;
+
+static bool already_selected(const selected_attack *selected, size_t count, size_t credit)
 {
     for (size_t i = 0; i < count; ++i) {
-        if (selected[i].credit == credit) {
+        if (selected[i].contribution.credit == credit) {
             return true;
         }
     }
@@ -357,7 +375,7 @@ static bool already_selected(const gridpico_patch_note_contribution *selected, s
 }
 
 static size_t reserve_credit(const gridpico_patch_graph *graph, gridpico_connection destination,
-                             gridpico_note note, const gridpico_patch_note_contribution *selected,
+                             gridpico_note note, const selected_attack *selected,
                              size_t selected_count)
 {
     size_t free_credit = NO_CREDIT;
@@ -384,23 +402,31 @@ static gridpico_result submit_press(gridpico_patch_graph *graph, size_t source,
         return quiesce_input(graph, source);
     }
 
-    gridpico_patch_note_contribution selected[GRIDPICO_LOCAL_MAX_FANOUT];
+    selected_attack selected[GRIDPICO_LOCAL_MAX_FANOUT];
     size_t selected_count = 0;
     for (size_t i = 0; i < graph->branch_limit; ++i) {
         const gridpico_patch_graph_branch *branch = &graph->branches[i];
-        if ((active & (1u << i)) != 0 && branch->source == source && branch->mode == GRIDPICO_LOCAL_MANAGED) {
-            if (selected_count == GRIDPICO_LOCAL_MAX_FANOUT) {
-                return quiesce_input(graph, source);
-            }
-            const size_t output = branch->destination;
-            const gridpico_connection destination = {graph->inventory.ports[output].id,
-                                                     graph->ports[output].generation};
-            const size_t credit = reserve_credit(graph, destination, input->note, selected, selected_count);
-            if (credit == NO_CREDIT) {
-                return quiesce_input(graph, source);
-            }
-            selected[selected_count++] = (gridpico_patch_note_contribution){(uint8_t)i, (uint8_t)credit};
+        if ((active & (1u << i)) == 0 || branch->source != source || branch->mode != GRIDPICO_LOCAL_MANAGED) {
+            continue;
         }
+        gridpico_note note = input->note;
+        if (graph->transform_note != NULL && !graph->transform_note(&branch->transform, &input->note, &note)) {
+            continue;
+        }
+        if (selected_count == GRIDPICO_LOCAL_MAX_FANOUT) {
+            return quiesce_input(graph, source);
+        }
+        const size_t output = branch->destination;
+        const gridpico_connection destination = {graph->inventory.ports[output].id,
+                                                 graph->ports[output].generation};
+        const size_t credit = reserve_credit(graph, destination, note, selected, selected_count);
+        if (credit == NO_CREDIT) {
+            return quiesce_input(graph, source);
+        }
+        selected[selected_count++] = (selected_attack){
+            .contribution = {(uint8_t)i, (uint8_t)credit},
+            .note = note,
+        };
     }
 
     gridpico_patch_occurrence *occurrence = &graph->occurrences[graph->occurrence_count++];
@@ -412,14 +438,14 @@ static gridpico_result submit_press(gridpico_patch_graph *graph, size_t source,
 
     gridpico_result result = GRIDPICO_OK;
     for (size_t i = 0; i < selected_count; ++i) {
-        const gridpico_patch_note_contribution member = selected[i];
+        const gridpico_patch_note_contribution member = selected[i].contribution;
         gridpico_patch_release_credit *credit = &graph->credits[member.credit];
         if (credit->contributors == 0) {
             const size_t output = graph->branches[member.branch].destination;
             const gridpico_note_delivery delivery = {
                 .source = input->source,
                 .destination = {graph->inventory.ports[output].id, graph->ports[output].generation},
-                .note = input->note,
+                .note = selected[i].note,
             };
             if (graph->deliver(graph->delivery_context, &delivery) != GRIDPICO_OK) {
                 result = GRIDPICO_UNAVAILABLE;
@@ -453,7 +479,8 @@ static gridpico_result submit_release(gridpico_patch_graph *graph, const gridpic
             const gridpico_patch_note_contribution member = occurrence.contributions[j];
             gridpico_patch_release_credit *credit = &graph->credits[member.credit];
             if (remove_contributor(credit, input->source.endpoint) &&
-                release_note(graph, credit, graph->branches[member.branch].destination, input->note.velocity) != GRIDPICO_OK) {
+                release_note(graph, credit, credit->delivery.destination.generation,
+                             input->note.velocity) != GRIDPICO_OK) {
                 result = GRIDPICO_UNAVAILABLE;
             }
         }
@@ -795,7 +822,9 @@ static gridpico_result enable_branch(gridpico_patch_graph *graph, size_t source,
             return GRIDPICO_CAPACITY;
         }
     }
-    const gridpico_patch_graph_branch branch = {source, destination, mode, true};
+    const gridpico_patch_graph_branch branch = {
+        .source = source, .destination = destination, .mode = mode, .enabled = true,
+    };
     if (mode == GRIDPICO_LOCAL_RAW && !branch_active(graph, &branch)) {
         return GRIDPICO_UNAVAILABLE;
     }
@@ -823,12 +852,9 @@ static gridpico_result set_route(gridpico_patch_graph *graph, const gridpico_loc
     }
 
     if (route->mode == GRIDPICO_LOCAL_MANAGED) {
-        const unsigned previous_active = active_branches(graph);
-        retire_branch(graph, existing);
-        reconcile_releases(graph, route->destination, route->source);
-        if (has_owed_release(graph, route->destination, route->source)) {
-            publish_change(graph, previous_active, false);
-            return GRIDPICO_UNAVAILABLE;
+        const gridpico_result result = retire_managed_route(graph, existing, route);
+        if (result != GRIDPICO_OK) {
+            return result;
         }
     }
     graph->branches[existing].enabled = false;
@@ -855,6 +881,72 @@ gridpico_result gridpico_patch_graph_set_local_route(void *context,
         return GRIDPICO_INVALID;
     }
     return set_route(graph, &request->route, request->enabled);
+}
+
+void gridpico_patch_graph_bind_note_transform(
+    gridpico_patch_graph *graph, gridpico_managed_note_transform_fn transform)
+{
+    if (graph != NULL && graph->deliver_raw != NULL) {
+        graph->transform_note = transform;
+    }
+}
+
+static gridpico_result managed_transform_branch(const gridpico_patch_graph *graph,
+                                                const gridpico_local_route *route, size_t *index)
+{
+    size_t source, destination;
+    if (graph == NULL || graph->deliver_raw == NULL || route == NULL ||
+        route->mode != GRIDPICO_LOCAL_MANAGED || !route_ports(graph, route, &source, &destination)) {
+        return GRIDPICO_INVALID;
+    }
+    *index = branch_index(graph, source, destination, GRIDPICO_LOCAL_MANAGED);
+    return *index == NO_BRANCH ? GRIDPICO_UNAVAILABLE : GRIDPICO_OK;
+}
+
+gridpico_result gridpico_patch_graph_read_managed_note_transform(
+    const gridpico_patch_graph *graph, const gridpico_local_route *route,
+    gridpico_managed_note_transform *out)
+{
+    if (out == NULL) {
+        return GRIDPICO_INVALID;
+    }
+    size_t index;
+    const gridpico_result result = managed_transform_branch(graph, route, &index);
+    if (result == GRIDPICO_OK) {
+        *out = graph->branches[index].transform;
+    }
+    return result;
+}
+
+gridpico_result gridpico_patch_graph_set_managed_note_transform(
+    gridpico_patch_graph *graph, const gridpico_local_route *route,
+    const gridpico_managed_note_transform *transform)
+{
+    if (transform == NULL || transform->transpose_semitones < -127 || transform->output_channel > 16) {
+        return GRIDPICO_INVALID;
+    }
+    size_t index;
+    const gridpico_result branch = managed_transform_branch(graph, route, &index);
+    if (branch != GRIDPICO_OK) {
+        return branch;
+    }
+    gridpico_managed_note_transform *current = &graph->branches[index].transform;
+    if (current->transpose_semitones == transform->transpose_semitones &&
+        current->output_channel == transform->output_channel) {
+        return GRIDPICO_OK;
+    }
+    if (graph->transform_note == NULL) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    if (graph->revision == UINT64_MAX) {
+        return GRIDPICO_CAPACITY;
+    }
+    const gridpico_result cleanup = retire_managed_route(graph, index, route);
+    if (cleanup == GRIDPICO_OK) {
+        *current = *transform;
+        ++graph->revision;
+    }
+    return cleanup;
 }
 
 gridpico_result gridpico_patch_graph_read_local_route(void *context, const gridpico_local_route *route,

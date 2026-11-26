@@ -1,4 +1,5 @@
 #include "app/local_runtime.h"
+#include "core/processors/managed_note.h"
 
 #include <string.h>
 
@@ -371,6 +372,65 @@ static gridpico_result read_routing(void *context, gridpico_local_routing_snapsh
     return gridpico_patch_session_read_local_routing(&runtime->session, out);
 }
 
+static bool transformable_port(const local_runtime *runtime, gridpico_port_id id,
+                               gridpico_patch_direction direction)
+{
+    const size_t index = port_index(runtime, id);
+    return managed_port(runtime, index, direction) && runtime->profile->ports[index].socket &&
+        !runtime->bindings[index].adapter_owned && (!runtime->recording_enabled || id != RECORDER_PORT);
+}
+
+static gridpico_result apply_note_transform(
+    void *context, const gridpico_managed_note_transform_request *request,
+    gridpico_managed_note_transform_status *out)
+{
+    local_runtime *runtime = context;
+    if (request == NULL || out == NULL || request->source == 0 ||
+        request->destination == 0 || request->expected_revision == 0 ||
+        request->transform.transpose_semitones < -127 ||
+        request->transform.output_channel > 16) {
+        return GRIDPICO_INVALID;
+    }
+    if (!transformable_port(runtime, request->source, GRIDPICO_PATCH_INPUT) ||
+        !transformable_port(runtime, request->destination, GRIDPICO_PATCH_OUTPUT)) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    const gridpico_local_route route = {request->source, request->destination, GRIDPICO_LOCAL_MANAGED};
+
+    gridpico_local_routing_snapshot snapshot;
+    const gridpico_result read = read_routing(runtime, &snapshot);
+    if (read != GRIDPICO_OK) return read;
+    if (snapshot.revision != request->expected_revision) return GRIDPICO_UNAVAILABLE;
+
+    gridpico_local_route_status branch;
+    const gridpico_result lookup = gridpico_patch_graph_read_local_route(&runtime->graph,
+                                                                        &route, &branch);
+    if (lookup != GRIDPICO_OK) return lookup;
+    if (branch.state != GRIDPICO_PATCH_ROUTE_ACTIVE) return GRIDPICO_UNAVAILABLE;
+
+    gridpico_managed_note_transform current;
+    const gridpico_result settings = gridpico_patch_graph_read_managed_note_transform(
+        &runtime->graph, &route, &current);
+    if (settings != GRIDPICO_OK) return settings;
+
+    gridpico_patch_session *session = &runtime->session;
+    if (current.transpose_semitones != request->transform.transpose_semitones ||
+        current.output_channel != request->transform.output_channel) {
+        if (snapshot.revision == UINT64_MAX) return GRIDPICO_CAPACITY;
+        const gridpico_result result = gridpico_patch_graph_set_managed_note_transform(
+            &runtime->graph, &route, &request->transform);
+        if (result != GRIDPICO_OK) return result;
+
+        /* This serialized edit advances the Graph revision without changing the
+         * availability, descriptors or colors in the guarded snapshot. */
+        session->routing_graph_revision = runtime->graph.revision;
+        session->routing_revision = snapshot.revision + 1;
+        current = request->transform;
+    }
+    *out = (gridpico_managed_note_transform_status){current, session->routing_revision};
+    return GRIDPICO_OK;
+}
+
 static void enable_routing(local_runtime *runtime)
 {
     gridpico_patch_session_bind_local_routing(&runtime->session, gridpico_patch_graph_read_local_state,
@@ -410,6 +470,14 @@ gridpico_result local_runtime_init(local_runtime *runtime)
     return local_runtime_init_profile(runtime, NULL);
 }
 
+void local_runtime_enable_desktop_note_transform(local_runtime *runtime)
+{
+    if (runtime->routing_enabled && runtime->profile->note_transform) {
+        gridpico_patch_graph_bind_note_transform(&runtime->graph, gridpico_transform_managed_note);
+        runtime->note_transform_enabled = true;
+    }
+}
+
 gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime)
 {
     gridpico_local_route_request request = {
@@ -440,7 +508,9 @@ gridpico_result local_runtime_enable_recorder_route(local_runtime *runtime)
         .route = {APC_KEYBED_PORT, RECORDER_PORT, GRIDPICO_LOCAL_MANAGED},
         .enabled = true,
     };
-    return set_local_route(runtime, &request);
+    const gridpico_result result = set_local_route(runtime, &request);
+    if (result == GRIDPICO_OK) runtime->recording_enabled = true;
+    return result;
 }
 
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms)
@@ -646,6 +716,9 @@ gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t gener
         } else {
             runtime->cli.set_local_route = set_local_route;
             runtime->cli.read_local_route = read_local_route;
+        }
+        if (runtime->note_transform_enabled) {
+            gridpico_cli_bind_note_transform(&runtime->cli, runtime, apply_note_transform);
         }
         runtime->serial = (local_binding){.generation = generation, .attached = true};
         gridpico_cli_process(&runtime->cli);

@@ -62,6 +62,7 @@ typedef struct {
         CLI_COMMAND_COLOR,
         CLI_COMMAND_ROUTE,
         CLI_COMMAND_ROUTING,
+        CLI_COMMAND_TRANSFORM,
         CLI_COMMAND_TRACE,
         CLI_COMMAND_HUBTRACE,
         CLI_COMMAND_BOOTSEL
@@ -86,6 +87,8 @@ static const cli_help_entry help_route_guarded = {
     CLI_COMMAND_ROUTE, "route", "route <src> <dst> managed|raw [on|off]; route <src> <dst> managed on|off if <revision> -- read or set a route with revision guard, then read back committed state"};
 static const cli_help_entry help_routing = {
     CLI_COMMAND_ROUTING, "routing", "routing | routing <revision> <offset> -- read a bounded Routing snapshot page"};
+static const cli_help_entry help_transform = {
+    CLI_COMMAND_TRANSFORM, "transform", "transform <src> <dst> <semitones> <channel> if <revision> -- guarded live transform on the selected managed branch"};
 static const cli_help_entry help_trace = {
     CLI_COMMAND_TRACE, "trace", "trace -- request platform TRACE diagnostics"};
 static const cli_help_entry help_hubtrace = {
@@ -101,7 +104,7 @@ static const cli_help_entry help_color_set = {
 
 static const cli_help_entry *const command_table[] = {
     &help_self, &help_inventory, &help_status, &help_logs, &help_color,
-    &help_route, &help_routing, &help_trace, &help_hubtrace, &help_bootsel
+    &help_route, &help_routing, &help_transform, &help_trace, &help_hubtrace, &help_bootsel
 };
 
 static const cli_help_entry *command_for_line(const char *line)
@@ -149,6 +152,8 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
         : frontend->read_local_routing != NULL;
     if (routing_available && count < capacity)
         entries[count++] = &help_routing;
+    if (frontend->apply_note_transform != NULL && count < capacity)
+        entries[count++] = &help_transform;
     if (frontend->start_platform != NULL &&
         (frontend->platform_capabilities & GRIDPICO_CLI_PLATFORM_TRACE) != 0 &&
         count < capacity) entries[count++] = &help_trace;
@@ -163,7 +168,7 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
 static gridpico_result execute_help(gridpico_cli_frontend *frontend, const char *topic,
                                     gridpico_cli_write_fn write, void *context)
 {
-    const cli_help_entry *entries[10];
+    const cli_help_entry *entries[11];
     const size_t count = help_entries(frontend, entries, sizeof entries / sizeof entries[0]);
     if (topic != NULL) {
         if (strcmp(topic, "TRACE") == 0) topic = "trace";
@@ -186,7 +191,7 @@ static gridpico_result execute_help(gridpico_cli_frontend *frontend, const char 
             if (selected == NULL) {
                 static const char *const known[] = {
                     "help", "inventory", "status", "logs", "color", "route",
-                    "routing", "trace", "hubtrace", "BOOTSEL"
+                    "routing", "transform", "trace", "hubtrace", "BOOTSEL"
                 };
                 for (size_t i = 0; i < sizeof known / sizeof known[0]; ++i) {
                     if (strcmp(known[i], topic) == 0) return GRIDPICO_UNAVAILABLE;
@@ -1213,9 +1218,111 @@ static void terminal_application_command(EmbeddedCli *cli, char *args, void *con
     (void)gridpico_cli_execute_line(frontend, line, terminal_response, cli);
 }
 
+static bool parse_transform_semitones(const char *text, int8_t *out)
+{
+    if (text == NULL || out == NULL || *text == '\0') return false;
+    bool negative = false;
+    if (*text == '-') {
+        negative = true;
+        ++text;
+        if (*text == '\0') return false;
+    }
+    uint16_t magnitude = 0;
+    for (; *text != '\0'; ++text) {
+        if (*text < '0' || *text > '9') return false;
+        const uint16_t digit = (uint16_t)(*text - '0');
+        if (magnitude > (127u - digit) / 10u) return false;
+        magnitude = (uint16_t)(magnitude * 10u + digit);
+    }
+    *out = (int8_t)(negative ? -(int)magnitude : (int)magnitude);
+    return true;
+}
+
+static bool parse_note_transform_command(
+    const char *line, gridpico_managed_note_transform_request *request)
+{
+    if (line == NULL || request == NULL) return false;
+    const size_t length = strlen(line);
+    if (length == 0 || length >= GRIDPICO_CLI_LINE_BYTES) return false;
+    char buffer[GRIDPICO_CLI_LINE_BYTES];
+    memcpy(buffer, line, length + 1);
+    char *tokens[7];
+    size_t count = 0;
+    char *cursor = buffer;
+    while (*cursor != '\0') {
+        if (*cursor == ' ' || count == sizeof tokens / sizeof tokens[0]) return false;
+        tokens[count++] = cursor;
+        char *space = strchr(cursor, ' ');
+        if (space == NULL) break;
+        *space = '\0';
+        cursor = space + 1;
+        if (*cursor == '\0' || *cursor == ' ') return false;
+    }
+    if (count != 7 || strcmp(tokens[0], "transform") != 0 ||
+        strcmp(tokens[5], "if") != 0) return false;
+
+    uint64_t source;
+    uint64_t destination;
+    uint64_t channel;
+    uint64_t revision;
+    int8_t semitones;
+    if (!parse_unsigned_decimal(tokens[1], strlen(tokens[1]), &source) ||
+        source == 0 || source > UINT16_MAX ||
+        !parse_unsigned_decimal(tokens[2], strlen(tokens[2]), &destination) ||
+        destination == 0 || destination > UINT16_MAX ||
+        !parse_transform_semitones(tokens[3], &semitones) ||
+        !parse_unsigned_decimal(tokens[4], strlen(tokens[4]), &channel) ||
+        channel > 16 ||
+        !parse_unsigned_decimal(tokens[6], strlen(tokens[6]), &revision) ||
+        revision == 0) return false;
+
+    request->source = (gridpico_port_id)source;
+    request->destination = (gridpico_port_id)destination;
+    request->transform.transpose_semitones = semitones;
+    request->transform.output_channel = (uint8_t)channel;
+    request->expected_revision = (gridpico_revision)revision;
+    return true;
+}
+
+static gridpico_result write_note_transform_status(
+    gridpico_cli_write_fn write, void *context,
+    const gridpico_managed_note_transform_request *request,
+    const gridpico_managed_note_transform_status *status)
+{
+    if (request == NULL || status == NULL || status->revision == 0 ||
+        status->transform.transpose_semitones < -127 ||
+        status->transform.output_channel > 16) return GRIDPICO_INVALID;
+    char record[GRIDPICO_CLI_RECORD_BYTES];
+    const int size = snprintf(record, sizeof record, "TRANSFORM %u %u %d %u %llu",
+                              (unsigned)request->source,
+                              (unsigned)request->destination,
+                              (int)status->transform.transpose_semitones,
+                              (unsigned)status->transform.output_channel,
+                              (unsigned long long)status->revision);
+    if (size < 0 || (size_t)size >= sizeof record) return GRIDPICO_CAPACITY;
+    return write_record(write, context, record, (size_t)size)
+               ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
+}
+
+static gridpico_result execute_note_transform(gridpico_cli_frontend *frontend,
+                                              const char *line,
+                                              gridpico_cli_write_fn write,
+                                              void *context)
+{
+    gridpico_managed_note_transform_request request = {0};
+    if (!parse_note_transform_command(line, &request)) return GRIDPICO_INVALID;
+    if (frontend->apply_note_transform == NULL) return GRIDPICO_UNAVAILABLE;
+    gridpico_managed_note_transform_status status = {0};
+    const gridpico_result result = frontend->apply_note_transform(
+        frontend->note_transform_context, &request, &status);
+    return result == GRIDPICO_OK
+               ? write_note_transform_status(write, context, &request, &status)
+               : result;
+}
+
 static bool register_help_bindings(gridpico_cli_frontend *frontend)
 {
-    const cli_help_entry *entries[10];
+    const cli_help_entry *entries[11];
     const size_t count = help_entries(frontend, entries, sizeof entries / sizeof entries[0]);
     for (size_t i = 0; i < count; ++i) {
         if (strcmp(entries[i]->name, "help") == 0) continue;
@@ -1307,6 +1414,11 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
             case CLI_COMMAND_ROUTING:
                 result = strcmp(line, "routing") == 0 || strncmp(line, "routing ", 8) == 0
                              ? execute_routing(frontend, line, write, write_context)
+                             : GRIDPICO_INVALID;
+                break;
+            case CLI_COMMAND_TRANSFORM:
+                result = strncmp(line, "transform ", sizeof("transform ") - 1) == 0
+                             ? execute_note_transform(frontend, line, write, write_context)
                              : GRIDPICO_INVALID;
                 break;
             case CLI_COMMAND_TRACE:
@@ -1482,4 +1594,13 @@ void gridpico_cli_process(gridpico_cli_frontend *frontend)
         }
         embeddedCliProcess(frontend->terminal);
     }
+}
+
+void gridpico_cli_bind_note_transform(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_apply_managed_note_transform_fn apply)
+{
+    if (frontend == NULL) return;
+    frontend->note_transform_context = context;
+    frontend->apply_note_transform = apply;
 }

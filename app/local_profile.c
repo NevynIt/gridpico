@@ -183,6 +183,12 @@ static bool read_row(local_router_profile *profile, char *rest, bool *surface_se
     if (strcmp(kind, "limits") == 0) {
         return profile->limits.midi_peer_limit == 0 && read_limits(&profile->limits, rest);
     }
+    if (strcmp(kind, "note-transform") == 0) {
+        if (profile->note_transform || strcmp(word(&rest), "on") != 0 ||
+            *word(&rest) != '\0') return false;
+        profile->note_transform = true;
+        return true;
+    }
     if (strcmp(kind, "surface") != 0 || *surface_seen) return false;
     const char *mode = word(&rest);
     if ((strcmp(mode, "passive") != 0 && strcmp(mode, "legacy") != 0) ||
