@@ -220,26 +220,59 @@ static gridpico_local_route_request audition_route(gridpico_port_id destination,
     return (gridpico_local_route_request){{AUDITION_KEYS, destination, GRIDPICO_LOCAL_MANAGED}, enabled};
 }
 
-static void stop_audition(gridpico_pico_router *router)
+static void cancel_audition(gridpico_pico_router *router)
 {
     gridpico_pico_audition *audition = &router->audition;
     if (audition->destination == 0 || audition->stopping) return;
     audition->stopping = true;
+    audition->end_pending = false;
     (void)set_audition_port(router, false);
     const gridpico_local_route_request request = audition_route(audition->destination, false);
-    if (gridpico_patch_session_set_local_route(&router->session, &request) == GRIDPICO_OK) {
+    if (gridpico_patch_graph_set_local_route(&router->graph, &request) == GRIDPICO_OK) {
         audition->destination = 0;
     }
 }
 
-static gridpico_result audition_request(void *context, gridpico_port_id destination, bool start)
+static bool audition_target_current(gridpico_pico_router *router)
+{
+    const gridpico_pico_audition *audition = &router->audition;
+    const gridpico_pico_peer sink = output_peer(router, audition->destination);
+    if (sink == GRIDPICO_PICO_PEERS || !router->attached[sink] ||
+        router->generation[sink] != audition->destination_generation ||
+        !router->attached[audition->owner] || router->generation[audition->owner] != audition->owner_generation) {
+        return false;
+    }
+    const gridpico_local_route_request request = audition_route(audition->destination, true);
+    gridpico_local_route_status status;
+    return gridpico_patch_session_read_local_route(&router->session, &request.route, &status) == GRIDPICO_OK &&
+           status.state == GRIDPICO_PATCH_ROUTE_ACTIVE;
+}
+
+static gridpico_result emit_audition_note(gridpico_pico_router *router, gridpico_note note)
+{
+    const gridpico_ingress_note input = {
+        .source = {AUDITION_KEYS, router->audition.source_generation},
+        .note = note,
+    };
+    return gridpico_patch_graph_submit_note(&router->graph, &input);
+}
+
+static gridpico_result audition_request(void *context, gridpico_port_id destination,
+                                       gridpico_apc_physical_audition_action action)
 {
     gridpico_pico_patch_panel *panel = context;
     gridpico_pico_router *router = panel->router;
     gridpico_pico_audition *audition = &router->audition;
     const uint32_t generation = router->generation[panel->peer];
-    if (!start) {
-        if (audition->owner == panel->peer && audition->owner_generation == generation) stop_audition(router);
+    if (action != GRIDPICO_APC_AUDITION_START) {
+        if (audition->destination != destination || audition->owner != panel->peer ||
+            audition->owner_generation != generation) return GRIDPICO_OK;
+        if (action == GRIDPICO_APC_AUDITION_END && audition->end_pending &&
+            audition_target_current(router)) {
+            audition->end_pending = false;
+            (void)emit_audition_note(router, audition->authored_end);
+        }
+        cancel_audition(router);
         return GRIDPICO_OK;
     }
     const gridpico_pico_peer sink = output_peer(router, destination);
@@ -248,16 +281,14 @@ static gridpico_result audition_request(void *context, gridpico_port_id destinat
         !router->attached[panel->peer] || !router->attached[sink]) return GRIDPICO_UNAVAILABLE;
     *audition = (gridpico_pico_audition){
         .destination = destination, .owner = panel->peer, .owner_generation = generation,
+        .destination_generation = router->generation[sink],
         .source_generation = audition->source_generation + 1, .due_us = router->now_us,
     };
     const gridpico_local_route_request request = audition_route(destination, true);
     gridpico_result result = set_audition_port(router, true);
-    if (result == GRIDPICO_OK) result = gridpico_patch_session_set_local_route(&router->session, &request);
-    gridpico_local_route_status status;
-    if (result == GRIDPICO_OK &&
-        (gridpico_patch_session_read_local_route(&router->session, &request.route, &status) != GRIDPICO_OK ||
-         status.state != GRIDPICO_PATCH_ROUTE_ACTIVE)) result = GRIDPICO_UNAVAILABLE;
-    if (result != GRIDPICO_OK) stop_audition(router);
+    if (result == GRIDPICO_OK) result = gridpico_patch_graph_set_local_route(&router->graph, &request);
+    if (result == GRIDPICO_OK && !audition_target_current(router)) result = GRIDPICO_UNAVAILABLE;
+    if (result != GRIDPICO_OK) cancel_audition(router);
     return result;
 }
 
@@ -265,35 +296,29 @@ static void advance_audition(gridpico_pico_router *router)
 {
     gridpico_pico_audition *audition = &router->audition;
     if (audition->destination == 0 || audition->stopping || router->now_us < audition->due_us) return;
-    if (!router->attached[audition->owner] ||
-        router->generation[audition->owner] != audition->owner_generation ||
-        !router->attached[output_peer(router, audition->destination)]) {
-        stop_audition(router);
+    if (!audition_target_current(router)) {
+        cancel_audition(router);
         return;
     }
-    const gridpico_ingress_note note = {
-        .source = {AUDITION_KEYS, audition->source_generation},
-        .note = {audition->sounding ? GRIDPICO_NOTE_OFF : GRIDPICO_NOTE_ON,
-                 0, audition_keys[audition->step], audition->sounding ? 0 : 96},
-    };
-    if (!audition->sounding) {
-        const gridpico_local_route_request request = audition_route(audition->destination, true);
-        gridpico_local_route_status status;
-        if (gridpico_patch_session_read_local_route(&router->session, &request.route, &status) != GRIDPICO_OK ||
-            status.state != GRIDPICO_PATCH_ROUTE_ACTIVE) {
-            stop_audition(router);
+
+    const bool ending_step = audition->end_pending;
+    const gridpico_note note = ending_step ? audition->authored_end :
+        (gridpico_note){GRIDPICO_NOTE_ON, 0, audition_keys[audition->step], 96};
+    audition->end_pending = false;
+    if (emit_audition_note(router, note) != GRIDPICO_OK) {
+        cancel_audition(router);
+        return;
+    }
+    if (ending_step) {
+        if (++audition->step == sizeof(audition_keys)) {
+            cancel_audition(router);
             return;
         }
-    }
-    if (gridpico_patch_graph_submit_note(&router->graph, &note) != GRIDPICO_OK) {
-        stop_audition(router);
-        return;
-    }
-    audition->sounding = !audition->sounding;
-    if (!audition->sounding && ++audition->step == sizeof(audition_keys)) {
-        stop_audition(router);
+        audition->due_us = router->now_us + 50000u;
     } else {
-        audition->due_us = router->now_us + (audition->sounding ? 150000u : 50000u);
+        audition->authored_end = (gridpico_note){GRIDPICO_NOTE_OFF, 0, note.key, 0};
+        audition->end_pending = true;
+        audition->due_us = router->now_us + 150000u;
     }
 }
 
@@ -583,6 +608,20 @@ gridpico_result gridpico_pico_router_set_managed_route(
 #endif
 
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
+static gridpico_result commit_managed_route(gridpico_patch_graph *graph,
+                                             const gridpico_local_route_request *request)
+{
+    gridpico_pico_router *router = graph->delivery_context;
+    const gridpico_revision previous = graph->revision;
+    const gridpico_result result = gridpico_patch_graph_set_local_route(graph, request);
+    if (result == GRIDPICO_OK && graph->revision != previous &&
+        request->route.mode == GRIDPICO_LOCAL_MANAGED && request->route.source != AUDITION_KEYS &&
+        request->route.destination == router->audition.destination) {
+        cancel_audition(router);
+    }
+    return result;
+}
+
 static gridpico_result set_route_with_audition_reserve(void *context, const gridpico_local_route_request *request)
 {
     gridpico_patch_graph *graph = context;
@@ -590,7 +629,7 @@ static gridpico_result set_route_with_audition_reserve(void *context, const grid
         request->route.source != AUDITION_KEYS) {
         gridpico_patch_managed_enable_decision decision;
         if (gridpico_patch_graph_check_managed_enable(graph, &request->route, &decision) != GRIDPICO_OK ||
-            decision != GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED) return gridpico_patch_graph_set_local_route(graph, request);
+            decision != GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED) return commit_managed_route(graph, request);
         unsigned public_branches = 0;
         for (size_t i = 0; i < graph->branch_limit; ++i) {
             const gridpico_patch_graph_branch *branch = &graph->branches[i];
@@ -598,13 +637,13 @@ static gridpico_result set_route_with_audition_reserve(void *context, const grid
             const gridpico_port_id source = graph->inventory.ports[branch->source].id;
             const gridpico_port_id destination = graph->inventory.ports[branch->destination].id;
             if (source == request->route.source && destination == request->route.destination) {
-                return gridpico_patch_graph_set_local_route(graph, request);
+                return commit_managed_route(graph, request);
             }
             if (source != AUDITION_KEYS) ++public_branches;
         }
         if (public_branches + 1u >= graph->local_profile.managed_branch_limit) return GRIDPICO_CAPACITY;
     }
-    return gridpico_patch_graph_set_local_route(graph, request);
+    return commit_managed_route(graph, request);
 }
 #endif
 
@@ -808,7 +847,7 @@ static void begin_mode_change(gridpico_pico_router *router, gridpico_apc_chooser
     router->keys.next_mode = mode;
     discard_pending_attacks(&router->notes[0]);
     discard_pending_attacks(&router->notes[1]);
-    stop_audition(router);
+    cancel_audition(router);
     set_managed_inputs(router);
     retire_keys_holds(router, router->keys.mode == GRIDPICO_APC_CHOOSER_KEYS && router->attached[GRIDPICO_PICO_WEB]);
 }
@@ -978,6 +1017,11 @@ void gridpico_pico_router_finish_mode(gridpico_pico_router *router, bool native_
 #endif
 
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
+void gridpico_pico_router_cancel_audition_owner(gridpico_pico_router *router, gridpico_pico_peer owner)
+{
+    if (router->audition.owner == owner) cancel_audition(router);
+}
+
 void gridpico_pico_router_retire_native_output(gridpico_pico_router *router)
 {
     if (!router->native_output_ready) return;
@@ -986,6 +1030,9 @@ void gridpico_pico_router_retire_native_output(gridpico_pico_router *router)
     queue->head = queue->count = 0;
     update_port(router, WEB_EXPORT, GRIDPICO_PICO_WEB);
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+    if (router->audition.owner == GRIDPICO_PICO_WEB || router->audition.destination == WEB_EXPORT) {
+        cancel_audition(router);
+    }
     if (router->attached[GRIDPICO_PICO_WEB]) {
         gridpico_apc_physical_detach(&router->panels[GRIDPICO_PICO_WEB].frontend);
         reset_panel(router, GRIDPICO_PICO_WEB);
@@ -1078,7 +1125,7 @@ void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_pee
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
     if (!attached && router->audition.destination != 0 &&
         (router->audition.owner == peer || output_peer(router, router->audition.destination) == peer)) {
-        stop_audition(router);
+        cancel_audition(router);
     }
     refresh_panels(router);
 #else

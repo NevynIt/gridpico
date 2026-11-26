@@ -229,13 +229,18 @@ static bool selected(const gridpico_apc_physical *frontend, gridpico_patch_direc
     return frontend->axis == axis && (slot == frontend->slot || slot == frontend->move_to);
 }
 
-static gridpico_result stop_audition(gridpico_apc_physical *frontend)
+static gridpico_result stop_audition(gridpico_apc_physical *frontend,
+                                    gridpico_apc_physical_audition_action action)
 {
     if (frontend->audition_destination == 0) {
         return GRIDPICO_OK;
     }
+    if (frontend->audition_cancel_pending) {
+        action = GRIDPICO_APC_AUDITION_CANCEL;
+    }
     const gridpico_result result =
-        frontend->audition(frontend->panel_context, frontend->audition_destination, false);
+        frontend->audition(frontend->panel_context, frontend->audition_destination, action);
+    frontend->audition_cancel_pending = result != GRIDPICO_OK;
     if (result == GRIDPICO_OK) {
         frontend->audition_destination = 0;
     }
@@ -250,7 +255,7 @@ static gridpico_result publish_page(gridpico_apc_physical *frontend,
     if (frontend->audition_destination != 0) {
         const gridpico_apc_patch_port *port = find_port(snapshot, frontend->audition_destination);
         if (port == NULL || !port->connected) {
-            stop = stop_audition(frontend);
+            stop = stop_audition(frontend, GRIDPICO_APC_AUDITION_CANCEL);
         }
     }
 
@@ -302,7 +307,7 @@ void gridpico_apc_physical_init(gridpico_apc_physical *frontend, void *session_c
                                gridpico_apc_patch_set_cell_fn set_cell,
                                gridpico_apc_patch_assign_fn assign,
                                gridpico_apc_patch_move_fn move, void *panel_context,
-                               gridpico_apc_patch_audition_fn audition,
+                               gridpico_apc_physical_audition_fn audition,
                                gridpico_apc_physical_feedback_fn feedback,
                                gridpico_apc_patch_snapshot *scratch)
 {
@@ -317,8 +322,9 @@ void gridpico_apc_physical_init(gridpico_apc_physical *frontend, void *session_c
 
 gridpico_result gridpico_apc_physical_detach(gridpico_apc_physical *frontend)
 {
-    const gridpico_result result = stop_audition(frontend);
+    const gridpico_result result = stop_audition(frontend, GRIDPICO_APC_AUDITION_CANCEL);
     frontend->audition_destination = 0;
+    frontend->audition_cancel_pending = false;
     memset(frontend->held, 0, sizeof(frontend->held));
     memset(frontend->activity, 0, sizeof(frontend->activity));
     frontend->arranging = false;
@@ -440,7 +446,7 @@ static gridpico_result choose_slot(gridpico_apc_physical *frontend,
         break;
     case GRIDPICO_APC_ARRANGE_AUDITION:
         if (axis == GRIDPICO_PATCH_OUTPUT) {
-            const gridpico_result stopped = stop_audition(frontend);
+            const gridpico_result stopped = stop_audition(frontend, GRIDPICO_APC_AUDITION_CANCEL);
             if (stopped != GRIDPICO_OK) {
                 return stopped;
             }
@@ -467,7 +473,8 @@ static gridpico_result start_audition(gridpico_apc_physical *frontend,
         frontend->preview_error = true;
         return GRIDPICO_UNAVAILABLE;
     }
-    const gridpico_result result = frontend->audition(frontend->panel_context, port->id, true);
+    const gridpico_result result =
+        frontend->audition(frontend->panel_context, port->id, GRIDPICO_APC_AUDITION_START);
     frontend->preview_error = result != GRIDPICO_OK;
     if (result == GRIDPICO_OK) {
         frontend->audition_destination = port->id;
@@ -512,7 +519,7 @@ static gridpico_result arrange_press(gridpico_apc_physical *frontend,
             frontend->slot != APC_NO_SLOT) {
             action = start_audition(frontend, snapshot);
         } else {
-            action = stop_audition(frontend);
+            action = stop_audition(frontend, GRIDPICO_APC_AUDITION_CANCEL);
             clear_preview(frontend);
             frontend->action = next;
         }
@@ -585,8 +592,10 @@ gridpico_result gridpico_apc_physical_receive(
         return GRIDPICO_OK;
     }
     if (event == GRIDPICO_APC_PAD_RELEASED) {
+        const bool held = frontend->held[note];
         frontend->held[note] = false;
-        return note == APC_AUDITION_PAD ? stop_audition(frontend) : GRIDPICO_OK;
+        return note == APC_AUDITION_PAD && held
+            ? stop_audition(frontend, GRIDPICO_APC_AUDITION_END) : GRIDPICO_OK;
     }
     if (frontend->held[note]) {
         return GRIDPICO_OK;
@@ -594,7 +603,7 @@ gridpico_result gridpico_apc_physical_receive(
     frontend->held[note] = true;
 
     if (note == APC_STOP_ALL) {
-        const gridpico_result stopped = stop_audition(frontend);
+        const gridpico_result stopped = stop_audition(frontend, GRIDPICO_APC_AUDITION_END);
         frontend->arranging = !frontend->arranging;
         frontend->route_page_ready = false;
         frontend->action = GRIDPICO_APC_ARRANGE_NONE;

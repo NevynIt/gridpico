@@ -20,6 +20,18 @@ typedef gridpico_result (*gridpico_apc_physical_feedback_fn)(
     const gridpico_apc_physical_page_version *version);
 
 typedef enum {
+    GRIDPICO_APC_AUDITION_START,
+    GRIDPICO_APC_AUDITION_END,
+    GRIDPICO_APC_AUDITION_CANCEL
+} gridpico_apc_physical_audition_action;
+
+/* END is one explicit held-pad release or Stop. CANCEL retires the same
+ * destination without requesting an authored ending, including on retry.
+ */
+typedef gridpico_result (*gridpico_apc_physical_audition_fn)(
+    void *context, gridpico_port_id destination, gridpico_apc_physical_audition_action action);
+
+typedef enum {
     GRIDPICO_APC_ARRANGE_NONE,
     GRIDPICO_APC_ARRANGE_ASSIGN,
     GRIDPICO_APC_ARRANGE_MOVE,
@@ -41,7 +53,7 @@ typedef struct {
     gridpico_apc_patch_assign_fn assign;
     gridpico_apc_patch_move_fn move;
     void *panel_context;
-    gridpico_apc_patch_audition_fn audition;
+    gridpico_apc_physical_audition_fn audition;
     gridpico_apc_physical_feedback_fn feedback;
     gridpico_apc_patch_snapshot *scratch;
 
@@ -60,6 +72,7 @@ typedef struct {
     uint64_t learn_after;
     bool learn_ambiguous;
     gridpico_port_id audition_destination;
+    bool audition_cancel_pending;
     gridpico_revision visible_layout;
     gridpico_revision visible_graph;
     bool route_page_ready;
@@ -77,7 +90,7 @@ void gridpico_apc_physical_init(gridpico_apc_physical *frontend, void *session_c
                                gridpico_apc_patch_set_cell_fn set_cell,
                                gridpico_apc_patch_assign_fn assign,
                                gridpico_apc_patch_move_fn move, void *panel_context,
-                               gridpico_apc_patch_audition_fn audition,
+                               gridpico_apc_physical_audition_fn audition,
                                gridpico_apc_physical_feedback_fn feedback,
                                gridpico_apc_patch_snapshot *scratch);
 gridpico_result gridpico_apc_physical_receive(

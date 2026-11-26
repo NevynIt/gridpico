@@ -82,9 +82,11 @@ typedef struct {
     gridpico_pico_peer owner;
     uint32_t owner_generation;
     uint32_t source_generation;
+    uint32_t destination_generation;
     uint64_t due_us;
+    gridpico_note authored_end;
     uint8_t step;
-    bool sounding;
+    bool end_pending;
     bool stopping;
 } gridpico_pico_audition;
 #endif
@@ -147,6 +149,7 @@ void gridpico_pico_router_set_physical_feedback(gridpico_pico_router *router, gr
 /* Freeze native MIDI OUT for this configuration. Old release debt stays owned.
  * Other current input and output bindings remain active.
  */
+void gridpico_pico_router_cancel_audition_owner(gridpico_pico_router *router, gridpico_pico_peer owner);
 void gridpico_pico_router_retire_native_output(gridpico_pico_router *router);
 /* The caller has fenced the input, checked revision space, and released its Panel role. */
 gridpico_result gridpico_pico_router_renew_managed_input(gridpico_pico_router *router, gridpico_pico_peer peer);

@@ -1595,7 +1595,14 @@ static void retire_host_interface(uint8_t index, bool fault)
     itf->faulted |= fault;
     if (binding != NULL) {
         for (unsigned cable = 0; cable < cable_span(&binding->identity); ++cable) {
-            gridpico_pico_router_attach(&router, (gridpico_pico_peer)(binding->first_peer + cable), false);
+            const gridpico_pico_peer peer = (gridpico_pico_peer)(binding->first_peer + cable);
+            const size_t slot = peer - GRIDPICO_PICO_DISCOVERED;
+            if (physical_roles.panel_generation != 0 &&
+                router.discovered[slot].input == physical_roles.panel &&
+                router.discovered[slot].input_generation == physical_roles.panel_generation) {
+                gridpico_pico_router_cancel_audition_owner(&router, GRIDPICO_PICO_APC);
+            }
+            gridpico_pico_router_attach(&router, peer, false);
         }
     }
 }
@@ -2523,6 +2530,9 @@ int main(void)
     bool host_ready = false;
     for (;;) {
         tud_task_ext(0, false);
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+        if (native_active_epoch != 0 && !native_epoch_current()) service_native_epoch();
+#endif
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
         gridpico_pico_router_tick(&router, time_us_64());
 #endif
