@@ -21,8 +21,10 @@ enum {
     APC_NO_SLOT = UINT8_MAX,
     APC_ASSIGN_PAD = 0x20,
     APC_AUDITION_PAD = 0x23,
+    APC_UNASSIGNED_PAD = 0x06,
     APC_CONFIRM_PAD = 0x07,
-    APC_CANDIDATE_FIRST = 0x08
+    APC_CANDIDATE_FIRST = 0x08,
+    APC_CANDIDATE_COUNT = APC_ASSIGN_PAD - APC_CANDIDATE_FIRST
 };
 
 static uint8_t pad_note(size_t row, size_t column)
@@ -105,7 +107,9 @@ static void observe_learn(gridpico_apc_physical *frontend,
     }
     for (size_t i = 0; i < snapshot->port_count; ++i) {
         const gridpico_apc_patch_port *port = &snapshot->ports[i];
-        if (port->direction != GRIDPICO_PATCH_INPUT || !port->connected ||
+        /* A valid attack remains evidence if its source detaches before
+         * refresh. Connectivity is checked separately at confirmation. */
+        if (port->direction != GRIDPICO_PATCH_INPUT ||
             port->last_attack_sequence <= frontend->learn_after) {
             continue;
         }
@@ -151,6 +155,9 @@ static bool can_confirm(const gridpico_apc_physical *frontend,
     if (frontend->action == GRIDPICO_APC_ARRANGE_MOVE) {
         return frontend->move_to != APC_NO_SLOT;
     }
+    if (frontend->action == GRIDPICO_APC_ARRANGE_ASSIGN && frontend->unassigned_selected) {
+        return true;
+    }
     if (frontend->action != GRIDPICO_APC_ARRANGE_ASSIGN &&
         frontend->action != GRIDPICO_APC_ARRANGE_LEARN) {
         return false;
@@ -161,9 +168,17 @@ static bool can_confirm(const gridpico_apc_physical *frontend,
          (port->connected && !frontend->learn_ambiguous));
 }
 
+static bool highlighted_candidate(const gridpico_apc_physical *frontend,
+                                  const gridpico_apc_patch_port *port)
+{
+    return port->id == frontend->candidate &&
+           (frontend->action != GRIDPICO_APC_ARRANGE_LEARN ||
+            (port->connected && !frontend->learn_ambiguous));
+}
+
 static gridpico_apc_surface_message arrange_led(const gridpico_apc_physical *frontend,
                                                const gridpico_apc_patch_snapshot *snapshot,
-                                               uint8_t note)
+                                               size_t candidate_offset, uint8_t note)
 {
     uint8_t color = 0;
     if (note >= APC_ASSIGN_PAD && note <= APC_AUDITION_PAD) {
@@ -172,16 +187,36 @@ static gridpico_apc_surface_message arrange_led(const gridpico_apc_physical *fro
     } else if (note == APC_CONFIRM_PAD) {
         color = frontend->preview_error || frontend->learn_ambiguous ? APC_PREVIEW_ERROR
             : can_confirm(frontend, snapshot) ? GRIDPICO_PATCH_LED_ACTIVE : APC_DIM_OFF;
+    } else if (note == APC_UNASSIGNED_PAD && frontend->action == GRIDPICO_APC_ARRANGE_ASSIGN &&
+               frontend->slot != APC_NO_SLOT) {
+        color = frontend->unassigned_selected ? APC_PREVIEW_COLOR : APC_DIM_OFF;
     } else if (frontend->slot != APC_NO_SLOT && note >= APC_CANDIDATE_FIRST &&
-               (size_t)(note - APC_CANDIDATE_FIRST) < snapshot->port_count &&
+               note < APC_ASSIGN_PAD &&
                (frontend->action == GRIDPICO_APC_ARRANGE_ASSIGN ||
                 frontend->action == GRIDPICO_APC_ARRANGE_LEARN)) {
-        const gridpico_apc_patch_port *port = &snapshot->ports[note - APC_CANDIDATE_FIRST];
-        if (can_assign(frontend, snapshot, port)) {
-            color = port->id == frontend->candidate ? APC_PREVIEW_COLOR : APC_DIM_OFF;
+        const size_t index = candidate_offset + (size_t)(note - APC_CANDIDATE_FIRST);
+        if (index < snapshot->port_count) {
+            const gridpico_apc_patch_port *port = &snapshot->ports[index];
+            if (can_assign(frontend, snapshot, port)) {
+                color = highlighted_candidate(frontend, port) ? APC_PREVIEW_COLOR : APC_DIM_OFF;
+            }
         }
     }
     return gridpico_apc_encode_rgb_pad(note, color);
+}
+
+static size_t candidate_window(const gridpico_apc_physical *frontend,
+                               const gridpico_apc_patch_snapshot *snapshot)
+{
+    if (frontend->candidate != 0) {
+        for (size_t i = 0; i < snapshot->port_count; ++i) {
+            const gridpico_apc_patch_port *port = &snapshot->ports[i];
+            if (highlighted_candidate(frontend, port) && can_assign(frontend, snapshot, port)) {
+                return i - i % APC_CANDIDATE_COUNT;
+            }
+        }
+    }
+    return 0;
 }
 
 static bool selected(const gridpico_apc_physical *frontend, gridpico_patch_direction axis,
@@ -220,11 +255,13 @@ static gridpico_result publish_page(gridpico_apc_physical *frontend,
     }
 
     gridpico_apc_surface_message messages[GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES];
+    const size_t candidate_offset = frontend->arranging ? candidate_window(frontend, snapshot) : 0;
     size_t count = 0;
     for (size_t row = 0; row < GRIDPICO_PATCH_SOURCE_ROWS; ++row) {
         for (size_t column = 0; column < GRIDPICO_PATCH_DESTINATION_COLUMNS; ++column) {
             const uint8_t note = pad_note(row, column);
-            messages[count++] = frontend->arranging ? arrange_led(frontend, snapshot, note)
+            messages[count++] = frontend->arranging
+                ? arrange_led(frontend, snapshot, candidate_offset, note)
                 : route_led(note, snapshot->cells[row][column], now_ms);
         }
     }
@@ -253,6 +290,7 @@ static void clear_preview(gridpico_apc_physical *frontend)
     frontend->slot = APC_NO_SLOT;
     frontend->move_to = APC_NO_SLOT;
     frontend->candidate = 0;
+    frontend->unassigned_selected = false;
     frontend->preview_revision = 0;
     frontend->preview_error = false;
     frontend->learn_after = 0;
@@ -332,33 +370,32 @@ static bool slot_button(uint8_t note, gridpico_patch_direction *axis, uint8_t *s
 static void browse(gridpico_apc_physical *frontend, const gridpico_apc_patch_snapshot *snapshot,
                    bool forward)
 {
-    gridpico_port_id first = 0;
-    gridpico_port_id previous = 0;
-    bool current_found = false;
+    gridpico_port_id choices[GRIDPICO_PATCH_MAX_PORTS + 1] = {0};
+    size_t count = 1;
+    size_t current = frontend->unassigned_selected ? 0 : SIZE_MAX;
     for (size_t i = 0; i < snapshot->port_count; ++i) {
         const gridpico_apc_patch_port *port = &snapshot->ports[i];
-        if (!can_assign(frontend, snapshot, port)) {
-            continue;
-        }
-        if (first == 0) {
-            first = port->id;
-        }
-        if (forward && current_found) {
-            frontend->candidate = port->id;
-            break;
-        }
-        if (port->id == frontend->candidate) {
-            current_found = true;
-            if (!forward && previous != 0) {
-                frontend->candidate = previous;
-                break;
+        if (can_assign(frontend, snapshot, port)) {
+            if (port->id == frontend->candidate) {
+                current = count;
             }
+            choices[count++] = port->id;
         }
-        previous = port->id;
     }
-    if (!current_found) {
-        frontend->candidate = first;
+    if (current == SIZE_MAX) {
+        /* An empty slot can preview the first port, but cannot clear itself
+         * until the operator explicitly browses to Unassigned. */
+        if (forward && count == 1) {
+            return;
+        }
+        current = forward ? 1 : 0;
+    } else if (forward && current + 1 < count) {
+        ++current;
+    } else if (!forward && current > 0) {
+        --current;
     }
+    frontend->candidate = choices[current];
+    frontend->unassigned_selected = current == 0;
     frontend->preview_error = false;
 }
 
@@ -374,6 +411,7 @@ static gridpico_result choose_slot(gridpico_apc_physical *frontend,
             frontend->slot = slot;
             frontend->preview_revision = snapshot->layout_revision;
             frontend->candidate = port;
+            frontend->preview_error = false;
             if (port == 0) {
                 browse(frontend, snapshot, true);
             }

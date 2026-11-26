@@ -14,6 +14,10 @@ typedef struct {
 } gridpico_patch_attack;
 
 typedef struct {
+    uint8_t off[(GRIDPICO_PATCH_MAX_PORTS * GRIDPICO_PATCH_MAX_PORTS + 7u) / 8u];
+} gridpico_patch_manual_routes;
+
+typedef struct {
     void *graph_context;
     gridpico_patch_read_graph_fn read_graph;
     gridpico_patch_set_route_fn set_graph_route;
@@ -23,6 +27,7 @@ typedef struct {
     gridpico_local_read_availability_fn read_availability;
     void *availability_context;
     gridpico_local_routing_snapshot *projection_scratch;
+    gridpico_patch_manual_routes *manual_routes;
     gridpico_revision color_revision;
     /* Colors follow the graph's stable device registration slots. */
     gridpico_patch_color_preference colors[GRIDPICO_PATCH_MAX_DEVICES];
@@ -63,6 +68,14 @@ void gridpico_patch_session_bind_local_routing(gridpico_patch_session *session,
 void gridpico_patch_session_bind_projection_scratch(gridpico_patch_session *session,
                                                    gridpico_local_routing_snapshot *scratch);
 
+/* Borrow zero-initialized lifetime storage once for the automatic profile.
+ * Policy reads use stable slots from the same append-only Graph registry.
+ */
+void gridpico_patch_session_bind_manual_routes(gridpico_patch_session *session,
+                                              gridpico_patch_manual_routes *storage);
+bool gridpico_patch_session_manual_route_is_off(const gridpico_patch_session *session,
+                                                size_t source_slot, size_t destination_slot);
+
 /* Bind the editable layout once, after binding the local graph reader. */
 gridpico_result gridpico_patch_session_bind_apc_patch(gridpico_patch_session *session,
                                                     const gridpico_apc_patch_layout *layout,
@@ -82,6 +95,24 @@ gridpico_result gridpico_patch_session_assign_apc_patch(void *context, gridpico_
 gridpico_result gridpico_patch_session_move_apc_patch(void *context, gridpico_revision layout_revision,
                                                     gridpico_patch_direction axis, uint8_t from,
                                                     uint8_t to);
+typedef gridpico_result (*gridpico_patch_set_apc_led_reserved_fn)(
+    void *graph_context, gridpico_port_id output, bool reserved);
+/* The serialized caller verifies the role guard and transport readiness.
+ * The callback commits Graph eligibility without entering Session or publishing
+ * a view. On a successful mark, Session clears the matching column before return.
+ */
+gridpico_result gridpico_patch_session_set_apc_led_reserved(
+    gridpico_patch_session *session, gridpico_patch_set_apc_led_reserved_fn set_reserved,
+    gridpico_port_id output, bool reserved, bool transport_ready);
+typedef gridpico_result (*gridpico_patch_set_apc_panel_reserved_fn)(
+    void *graph_context, gridpico_port_id input, bool reserved);
+/* The serialized caller verifies the selected input's identity, generation and
+ * ingress fence before setting transport_ready. The callback commits Graph
+ * eligibility without publishing a view. A successful mark clears its row.
+ */
+gridpico_result gridpico_patch_session_set_apc_panel_reserved(
+    gridpico_patch_session *session, gridpico_patch_set_apc_panel_reserved_fn set_reserved,
+    gridpico_port_id input, bool reserved, bool transport_ready);
 gridpico_result gridpico_patch_session_set_apc_patch_cell(void *context,
                                                         gridpico_revision layout_revision,
                                                         gridpico_revision graph_revision,

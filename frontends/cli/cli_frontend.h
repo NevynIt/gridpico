@@ -48,9 +48,18 @@ typedef struct {
     gridpico_local_read_route_fn routing_read_route;
     gridpico_local_set_route_fn routing_set_route;
     gridpico_local_routing_snapshot *routing_scratch;
-    /* Optional managed note transform provider. */
+    /* Optional target-scoped explicit APC role provider. */
+    void *apc_roles_context;
+    gridpico_apc_read_roles_fn read_apc_roles;
+    gridpico_apc_apply_role_fn apply_apc_role;
+    /* Optional isolated dev-run managed transform provider. */
     void *note_transform_context;
     gridpico_apply_managed_note_transform_fn apply_note_transform;
+    /* Optional independent Auto summary and paged explain providers. */
+    void *auto_route_summary_context;
+    gridpico_read_auto_route_summary_fn read_auto_route_summary;
+    void *auto_route_explain_context;
+    gridpico_read_auto_route_explain_fn read_auto_route_explain;
     unsigned platform_capabilities;
     gridpico_cli_start_platform_fn start_platform;
     void *platform_context;
@@ -100,6 +109,26 @@ void gridpico_cli_bind_routing(gridpico_cli_frontend *frontend, void *context,
                               gridpico_local_set_route_fn set_route,
                               gridpico_local_routing_snapshot *scratch);
 
+/* Bind optional explicit APC Panel/LED role control before input processing. */
+void gridpico_cli_bind_apc_roles(gridpico_cli_frontend *frontend, void *context,
+                                gridpico_apc_read_roles_fn read_roles,
+                                gridpico_apc_apply_role_fn apply_role);
+
+/* Bind the optional serialized transform provider before command processing. */
+void gridpico_cli_bind_note_transform(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_apply_managed_note_transform_fn apply);
+
+/* Bind an optional completed Auto summary reader before input processing. */
+void gridpico_cli_bind_auto_route_summary(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_read_auto_route_summary_fn read_summary);
+
+/* Bind an optional completed Auto explain page reader before input processing. */
+void gridpico_cli_bind_auto_route_explain(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_read_auto_route_explain_fn read_explain);
+
 /* Execute a complete UTF-8 command line. Diagnostics and serial terminal
  * command callbacks use this same handler. Synchronous commands emit CRLF
  * records and a final OK/ERR. A successful TRACE/HUBTRACE start is
@@ -115,10 +144,5 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
  */
 void gridpico_cli_receive(gridpico_cli_frontend *frontend, const char *bytes, size_t size);
 void gridpico_cli_process(gridpico_cli_frontend *frontend);
-
-/* Bind the optional serialized transform provider before command processing. */
-void gridpico_cli_bind_note_transform(
-    gridpico_cli_frontend *frontend, void *context,
-    gridpico_apply_managed_note_transform_fn apply);
 
 #endif

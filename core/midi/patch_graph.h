@@ -11,6 +11,8 @@ enum {
 typedef struct {
     uint32_t generation;
     bool quiesced;
+    bool apc_led_reserved;
+    bool apc_panel_reserved;
 } gridpico_patch_port_runtime;
 
 typedef struct {
@@ -96,6 +98,12 @@ gridpico_result gridpico_patch_graph_read_graph(void *context, gridpico_patch_gr
 gridpico_result gridpico_patch_graph_read_local_state(void *context, gridpico_local_graph_state *out);
 /* Checks note obligations for a registered output across connection generations. */
 bool gridpico_patch_graph_destination_idle(const gridpico_patch_graph *graph, gridpico_port_id destination);
+/* Caller checks output ownership and transport retirement before changing the role. */
+gridpico_result gridpico_patch_graph_set_apc_led_reserved(
+    gridpico_patch_graph *graph, gridpico_port_id output, bool reserved);
+/* Caller fences this input lane before the role change and owns its generations. */
+gridpico_result gridpico_patch_graph_set_apc_panel_reserved(
+    gridpico_patch_graph *graph, gridpico_port_id input, bool reserved);
 /* Bind the optional local processor before ingress. The caller guards edits in
  * the same serialized turn as the selected target and route validation. */
 void gridpico_patch_graph_bind_note_transform(
@@ -109,6 +117,19 @@ gridpico_result gridpico_patch_graph_set_managed_note_transform(
 gridpico_result gridpico_patch_graph_submit_note(void *context, const gridpico_ingress_note *input);
 gridpico_result gridpico_patch_graph_set_local_route(void *context,
                                                     const gridpico_local_route_request *request);
+typedef enum {
+    GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED,
+    GRIDPICO_PATCH_MANAGED_ENABLE_CYCLE,
+    GRIDPICO_PATCH_MANAGED_ENABLE_BRANCH_LIMIT,
+    GRIDPICO_PATCH_MANAGED_ENABLE_FANOUT_LIMIT,
+    GRIDPICO_PATCH_MANAGED_ENABLE_REVISION_EXHAUSTED,
+} gridpico_patch_managed_enable_decision;
+
+/* Read-only Graph admission for a valid managed pair in the same serialized turn.
+ * The caller checks attachment, ownership and policy reserves. */
+gridpico_result gridpico_patch_graph_check_managed_enable(
+    const gridpico_patch_graph *graph, const gridpico_local_route *route,
+    gridpico_patch_managed_enable_decision *out);
 gridpico_result gridpico_patch_graph_read_local_route(void *context, const gridpico_local_route *route,
                                                      gridpico_local_route_status *out);
 gridpico_result gridpico_patch_graph_submit_raw(void *context, const gridpico_local_raw_ingress *input);

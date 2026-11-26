@@ -2,6 +2,9 @@
 
 #include <string.h>
 
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+enum { WEB_KEYS = 2, WEB_EXPORT = 3, AUDITION_KEYS = 5, OCCURRENCES = 26, RELEASE_CREDITS = 78 };
+#else
 enum {
     APC_KEYS = 1,
     WEB_KEYS,
@@ -14,17 +17,41 @@ enum {
     MIDI_B_OUT,
 #endif
     OCCURRENCES = 26,
+#ifdef GRIDPICO_RP2040_MATRIX_CLI
+    RELEASE_CREDITS = 78,
+#else
     RELEASE_CREDITS = 51,
+#endif
 #else
     OCCURRENCES = 25,
     RELEASE_CREDITS = 50,
 #endif
 };
+#endif
 
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
 enum { AUDITION_DEVICE = 4 };
 #endif
 
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+static const gridpico_local_registry registry = {
+    .inventory = {
+        .device_count = 2,
+        .port_count = 3,
+        .devices = {
+            {2, "Computer", GRIDPICO_PATCH_DISCONNECTED},
+            {AUDITION_DEVICE, "Audition", GRIDPICO_PATCH_DISCONNECTED},
+        },
+        .ports = {
+            {WEB_KEYS, 2, "Computer MIDI In", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+            {WEB_EXPORT, 2, "Computer MIDI Out", GRIDPICO_PATCH_OUTPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+            {AUDITION_KEYS, AUDITION_DEVICE, "Audition", GRIDPICO_PATCH_INPUT, GRIDPICO_PATCH_DISCONNECTED, true},
+        },
+    },
+    .port_capabilities = {GRIDPICO_LOCAL_PORT_MANAGED, GRIDPICO_LOCAL_PORT_MANAGED, GRIDPICO_LOCAL_PORT_MANAGED},
+    .native_virtual_cable = {WEB_KEYS, WEB_EXPORT},
+};
+#else
 static const gridpico_local_route routes[] = {
     {APC_KEYS, SYNTH_NOTES, GRIDPICO_LOCAL_MANAGED},
     {APC_KEYS, WEB_EXPORT, GRIDPICO_LOCAL_MANAGED},
@@ -85,9 +112,11 @@ static const gridpico_local_registry registry = {
 #endif
 };
 
+#endif
+
 static size_t note_queue_index(gridpico_pico_peer peer)
 {
-    return peer == GRIDPICO_PICO_WEB ? 0u : 1u;
+    return (size_t)(peer - GRIDPICO_PICO_WEB);
 }
 
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
@@ -97,16 +126,36 @@ static bool is_native_output(gridpico_port_id destination)
 }
 #endif
 
+static gridpico_pico_peer output_peer(const gridpico_pico_router *router, gridpico_port_id destination)
+{
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    for (unsigned peer = GRIDPICO_PICO_DISCOVERED; destination != 0 && peer < GRIDPICO_PICO_PEERS; ++peer) {
+        if (router->discovered[peer - GRIDPICO_PICO_DISCOVERED].output == destination) {
+            return (gridpico_pico_peer)peer;
+        }
+    }
+#else
+    (void)router;
+#endif
+#ifdef GRIDPICO_RP2040_KEYS_BENCH
+    if (is_native_output(destination)) return GRIDPICO_PICO_WEB;
+#else
+    if (destination == WEB_EXPORT) return GRIDPICO_PICO_WEB;
+#endif
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    return GRIDPICO_PICO_PEERS;
+#else
+    return destination == SYNTH_NOTES ? GRIDPICO_PICO_SYNTH : GRIDPICO_PICO_PEERS;
+#endif
+}
+
 static gridpico_result deliver_note(void *context, const gridpico_note_delivery *delivery)
 {
     gridpico_pico_router *router = context;
     const gridpico_connection destination = delivery->destination;
-#ifdef GRIDPICO_RP2040_KEYS_BENCH
-    const gridpico_pico_peer peer = is_native_output(destination.endpoint) ? GRIDPICO_PICO_WEB : GRIDPICO_PICO_SYNTH;
-#else
-    const gridpico_pico_peer peer = destination.endpoint == WEB_EXPORT ? GRIDPICO_PICO_WEB : GRIDPICO_PICO_SYNTH;
-#endif
-    if (!router->attached[peer] || router->generation[peer] != destination.generation) {
+    const gridpico_pico_peer peer = output_peer(router, destination.endpoint);
+    if (peer == GRIDPICO_PICO_PEERS || !router->attached[peer] ||
+        router->generation[peer] != destination.generation) {
         return GRIDPICO_UNAVAILABLE;
     }
     gridpico_pico_queue *queue = &router->notes[note_queue_index(peer)];
@@ -147,6 +196,10 @@ static gridpico_result set_route(void *context, bool enabled)
 
 gridpico_route_snapshot gridpico_pico_router_pad_status(gridpico_pico_router *router)
 {
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    (void)router;
+    return (gridpico_route_snapshot){0};
+#else
     gridpico_local_route_status status = {0};
     gridpico_patch_session_read_local_route(&router->session, &routes[0], &status);
     return (gridpico_route_snapshot){
@@ -157,19 +210,11 @@ gridpico_route_snapshot gridpico_pico_router_pad_status(gridpico_pico_router *ro
         .destination = SYNTH_NOTES,
         .enabled = status.state != GRIDPICO_PATCH_ROUTE_OFF,
     };
+#endif
 }
 
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
 static const uint8_t audition_keys[] = {48, 55, 60, 67, 72};
-
-static gridpico_pico_peer output_peer(gridpico_port_id destination)
-{
-#ifdef GRIDPICO_RP2040_KEYS_BENCH
-    return is_native_output(destination) ? GRIDPICO_PICO_WEB : GRIDPICO_PICO_SYNTH;
-#else
-    return destination == WEB_EXPORT ? GRIDPICO_PICO_WEB : GRIDPICO_PICO_SYNTH;
-#endif
-}
 
 static gridpico_result set_audition_port(gridpico_pico_router *router, bool connected)
 {
@@ -211,13 +256,10 @@ static gridpico_result audition_request(void *context, gridpico_port_id destinat
         if (audition->owner == panel->peer && audition->owner_generation == generation) stop_audition(router);
         return GRIDPICO_OK;
     }
-#ifdef GRIDPICO_RP2040_KEYS_BENCH
-    if (!is_native_output(destination) && destination != SYNTH_NOTES) return GRIDPICO_INVALID;
-#else
-    if (destination != WEB_EXPORT && destination != SYNTH_NOTES) return GRIDPICO_INVALID;
-#endif
+    const gridpico_pico_peer sink = output_peer(router, destination);
+    if (sink == GRIDPICO_PICO_PEERS) return GRIDPICO_INVALID;
     if (audition->destination != 0 || audition->source_generation == UINT32_MAX ||
-        !router->attached[panel->peer] || !router->attached[output_peer(destination)]) return GRIDPICO_UNAVAILABLE;
+        !router->attached[panel->peer] || !router->attached[sink]) return GRIDPICO_UNAVAILABLE;
     *audition = (gridpico_pico_audition){
         .destination = destination, .owner = panel->peer, .owner_generation = generation,
         .source_generation = audition->source_generation + 1, .due_us = router->now_us,
@@ -239,7 +281,7 @@ static void advance_audition(gridpico_pico_router *router)
     if (audition->destination == 0 || router->now_us < audition->due_us) return;
     if (audition->stopping || !router->attached[audition->owner] ||
         router->generation[audition->owner] != audition->owner_generation ||
-        !router->attached[output_peer(audition->destination)]) {
+        !router->attached[output_peer(router, audition->destination)]) {
         stop_audition(router);
         return;
     }
@@ -269,12 +311,35 @@ static void advance_audition(gridpico_pico_router *router)
     }
 }
 
+static gridpico_revision feedback_generation(const gridpico_pico_router *router, gridpico_pico_peer peer)
+{
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (peer == GRIDPICO_PICO_APC) return router->physical_feedback_generation;
+#endif
+    return router->attached[peer] ? router->generation[peer] : 0;
+}
+
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+void gridpico_pico_router_set_physical_feedback(gridpico_pico_router *router, gridpico_revision generation)
+{
+    if (router->physical_feedback_generation == generation) return;
+    router->physical_feedback_generation = generation;
+    gridpico_pico_patch_panel *panel = &router->panels[GRIDPICO_PICO_APC];
+    panel->latest_valid = false;
+    panel->pending = false;
+    panel->awaiting_completion = false;
+    panel->cursor = GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES;
+    panel->frontend.route_page_ready = false;
+    if (generation != 0) gridpico_apc_physical_refresh(&panel->frontend, router->now_us / 1000);
+}
+#endif
+
 static void start_led_page(gridpico_pico_patch_panel *panel)
 {
     if (panel->pending && !panel->awaiting_completion && panel->cursor == GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES) {
         memcpy(panel->sending, panel->latest, sizeof(panel->sending));
         panel->sending_version = panel->latest_version;
-        panel->sending_generation = panel->router->generation[panel->peer];
+        panel->sending_generation = feedback_generation(panel->router, panel->peer);
         panel->cursor = 0;
         panel->pending = false;
     }
@@ -297,7 +362,7 @@ static gridpico_result publish_led_page(void *context, const gridpico_apc_surfac
 {
     gridpico_pico_patch_panel *panel = context;
     if (count != GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES) return GRIDPICO_INVALID;
-    if (!panel->router->attached[panel->peer]) return GRIDPICO_UNAVAILABLE;
+    if (feedback_generation(panel->router, panel->peer) == 0) return GRIDPICO_UNAVAILABLE;
 
     bool changed = !panel->latest_valid || panel->latest_version.route_page != version->route_page ||
                    panel->latest_version.layout_revision != version->layout_revision ||
@@ -337,7 +402,7 @@ static void refresh_panels(gridpico_pico_router *router)
     if (router->keys.mode != GRIDPICO_APC_CHOOSER_PATCHBAY || router->keys.next_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST) return;
 #endif
     for (gridpico_pico_peer peer = GRIDPICO_PICO_APC; peer <= GRIDPICO_PICO_WEB; ++peer) {
-        if (router->attached[peer]) {
+        if (feedback_generation(router, peer) != 0) {
             gridpico_apc_physical_refresh(&router->panels[peer].frontend, router->now_us / 1000);
         }
     }
@@ -369,6 +434,87 @@ static void publish_led(void *context, const gridpico_apc_surface_message *messa
 static void reset_panel(gridpico_pico_router *router, gridpico_pico_peer peer)
 {
     gridpico_apc_frontend_init(&router->panels[peer], router, read_route, set_route, router, publish_led);
+}
+#endif
+
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+gridpico_result gridpico_pico_router_register_device(gridpico_pico_router *router,
+                                                    gridpico_pico_peer first_peer, const char *name,
+                                                    uint8_t inputs, uint8_t outputs)
+{
+    const uint8_t cables = inputs | outputs;
+    const unsigned span = cables > 1 ? 2u : 1u;
+    if (router == NULL || name == NULL || name[0] == '\0' || cables == 0 || cables > 3 ||
+        first_peer < GRIDPICO_PICO_DISCOVERED || first_peer > GRIDPICO_PICO_PEERS - span) {
+        return GRIDPICO_INVALID;
+    }
+    const size_t first_slot = (size_t)(first_peer - GRIDPICO_PICO_DISCOVERED);
+    for (size_t i = 0; i < span; ++i) {
+        if (router->discovered[first_slot + i].input != 0 || router->discovered[first_slot + i].output != 0) {
+            return GRIDPICO_CAPACITY;
+        }
+    }
+    size_t length = 0;
+    while (length < GRIDPICO_PATCH_NAME_BYTES && name[length] != '\0') ++length;
+    if (length == GRIDPICO_PATCH_NAME_BYTES) return GRIDPICO_INVALID;
+
+    gridpico_local_graph_state *state = &router->projection_scratch.graph;
+    gridpico_result result = gridpico_patch_graph_read_local_state(&router->graph, state);
+    if (result != GRIDPICO_OK) return result;
+    const gridpico_patch_inventory *inventory = &state->registry.inventory;
+    gridpico_patch_device device = {.state = GRIDPICO_PATCH_DISCONNECTED};
+    for (gridpico_device_id id = 1; device.id == 0; ++id) {
+        size_t i = 0;
+        while (i < inventory->device_count && inventory->devices[i].id != id) ++i;
+        if (i == inventory->device_count) device.id = id;
+    }
+    memcpy(device.name, name, length);
+
+    gridpico_patch_port ports[2 * GRIDPICO_PICO_USB_CABLES] = {0};
+    uint8_t cable_for_port[2 * GRIDPICO_PICO_USB_CABLES];
+    size_t count = 0;
+    gridpico_port_id next_id = 1;
+    for (uint8_t cable = 0; cable < span; ++cable) {
+        for (unsigned output = 0; output < 2; ++output) {
+            const uint8_t mask = output ? outputs : inputs;
+            if ((mask & (1u << cable)) == 0) continue;
+            gridpico_patch_port *port = &ports[count];
+            for (; port->id == 0; ++next_id) {
+                size_t i = 0;
+                while (i < inventory->port_count && inventory->ports[i].id != next_id) ++i;
+                if (i == inventory->port_count) port->id = next_id;
+            }
+            port->device = device.id;
+            port->direction = output ? GRIDPICO_PATCH_OUTPUT : GRIDPICO_PATCH_INPUT;
+            port->state = GRIDPICO_PATCH_DISCONNECTED;
+            port->patch_eligible = true;
+            const size_t prefix = length < GRIDPICO_PATCH_NAME_BYTES - 7u ? length : GRIDPICO_PATCH_NAME_BYTES - 7u;
+            memcpy(port->name, name, prefix);
+            const char *suffix = output ? " Out" : " In";
+            const size_t suffix_length = output ? 4u : 3u;
+            memcpy(port->name + prefix, suffix, suffix_length);
+            if (span > 1) {
+                port->name[prefix + suffix_length] = ' ';
+                port->name[prefix + suffix_length + 1u] = (char)('1' + cable);
+            }
+            cable_for_port[count++] = cable;
+        }
+    }
+    const size_t first_port = inventory->port_count;
+    result = gridpico_patch_graph_append_managed_device(&router->graph, &device, ports, count);
+    if (result != GRIDPICO_OK) return result;
+    for (size_t i = 0; i < count; ++i) {
+        const size_t slot = first_slot + cable_for_port[i];
+        if (ports[i].direction == GRIDPICO_PATCH_INPUT) {
+            result = gridpico_patch_session_add_apc_attack_source(&router->session, first_port + i, ports[i].id);
+            if (result != GRIDPICO_OK) return result;
+            router->discovered[slot].input = ports[i].id;
+            router->discovered[slot].input_generation = 1;
+        } else {
+            router->discovered[slot].output = ports[i].id;
+        }
+    }
+    return GRIDPICO_OK;
 }
 #endif
 
@@ -414,8 +560,7 @@ gridpico_result gridpico_pico_router_read_routing(void *context, gridpico_local_
 
     kept = 0;
     for (size_t i = 0; i < inventory->port_count; ++i) {
-        if (inventory->ports[i].id == AUDITION_KEYS ||
-            graph->registry.port_capabilities[i] != GRIDPICO_LOCAL_PORT_MANAGED) continue;
+        if (inventory->ports[i].id == AUDITION_KEYS) continue;
         inventory->ports[kept] = inventory->ports[i];
         graph->registry.port_capabilities[kept] = graph->registry.port_capabilities[i];
         out->availability[kept] = out->availability[i];
@@ -450,6 +595,32 @@ gridpico_result gridpico_pico_router_set_managed_route(
 }
 #endif
 
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+static gridpico_result set_route_with_audition_reserve(void *context, const gridpico_local_route_request *request)
+{
+    gridpico_patch_graph *graph = context;
+    if (request->enabled && request->route.mode == GRIDPICO_LOCAL_MANAGED &&
+        request->route.source != AUDITION_KEYS) {
+        gridpico_patch_managed_enable_decision decision;
+        if (gridpico_patch_graph_check_managed_enable(graph, &request->route, &decision) != GRIDPICO_OK ||
+            decision != GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED) return gridpico_patch_graph_set_local_route(graph, request);
+        unsigned public_branches = 0;
+        for (size_t i = 0; i < graph->branch_limit; ++i) {
+            const gridpico_patch_graph_branch *branch = &graph->branches[i];
+            if (!branch->enabled || branch->mode != GRIDPICO_LOCAL_MANAGED) continue;
+            const gridpico_port_id source = graph->inventory.ports[branch->source].id;
+            const gridpico_port_id destination = graph->inventory.ports[branch->destination].id;
+            if (source == request->route.source && destination == request->route.destination) {
+                return gridpico_patch_graph_set_local_route(graph, request);
+            }
+            if (source != AUDITION_KEYS) ++public_branches;
+        }
+        if (public_branches + 1u >= graph->local_profile.managed_branch_limit) return GRIDPICO_CAPACITY;
+    }
+    return gridpico_patch_graph_set_local_route(graph, request);
+}
+#endif
+
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
 gridpico_result gridpico_pico_router_init_snapshot(gridpico_pico_router *router,
                                                   const gridpico_apc_session_snapshot *snapshot)
@@ -460,6 +631,10 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
     static const gridpico_local_profile profile = {
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
         .midi_peer_limit = 7, .managed_branch_limit = 6, .managed_fanout_limit = 3,
+#elif defined(GRIDPICO_PICO_GENERIC_MIDI)
+        .midi_peer_limit = 3, .managed_branch_limit = 7, .managed_fanout_limit = 3,
+        .dynamic_device_limit = 2 + GRIDPICO_PICO_USB_DEVICES,
+        .dynamic_port_limit = 3 + 2 * GRIDPICO_PICO_USB_CABLE_GROUPS,
 #elif defined(GRIDPICO_RP2040_PATCHBAY_BENCH)
         .midi_peer_limit = 5, .managed_branch_limit = 4, .managed_fanout_limit = 2,
 #else
@@ -481,11 +656,21 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
 #ifdef GRIDPICO_RP2040_MATRIX_CLI
     gridpico_patch_session_bind_projection_scratch(&router->session, &router->projection_scratch);
 #endif
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    gridpico_patch_session_bind_manual_routes(&router->session, &router->manual_routes);
+    gridpico_patch_session_bind_local_routes(&router->session, set_route_with_audition_reserve,
+                                            gridpico_patch_graph_read_local_route);
+#else
     gridpico_patch_session_bind_local_routes(&router->session, gridpico_patch_graph_set_local_route,
                                             gridpico_patch_graph_read_local_route);
+#endif
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    const gridpico_apc_patch_layout layout = {0};
+#else
     const gridpico_apc_patch_layout layout = {.rows = {APC_KEYS, WEB_KEYS},
                                             .columns = {SYNTH_NOTES, WEB_EXPORT}};
+#endif
     router->audition.source_generation = 1;
     gridpico_patch_session_bind_local_routing(&router->session, gridpico_patch_graph_read_local_state,
 #ifdef GRIDPICO_RP2040_MATRIX_CLI
@@ -503,11 +688,13 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
     if (snapshot != NULL) return gridpico_patch_session_restore_apc_snapshot(&router->session, snapshot);
 #endif
+#ifndef GRIDPICO_PICO_GENERIC_MIDI
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {
         const gridpico_local_route_request request = {.route = routes[i], .enabled = true};
         const gridpico_result enabled = gridpico_patch_session_set_local_route(&router->session, &request);
         if (enabled != GRIDPICO_OK) return enabled;
     }
+#endif
     return GRIDPICO_OK;
 }
 
@@ -526,6 +713,29 @@ static void update_port(gridpico_pico_router *router, gridpico_port_id port, gri
     };
     gridpico_patch_graph_update_port(&router->graph, &update);
 }
+
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+static gridpico_result update_discovered_input(gridpico_pico_router *router, size_t slot, bool connected)
+{
+    const gridpico_patch_port_update update = {
+        .connection = {router->discovered[slot].input, router->discovered[slot].input_generation},
+        .state = connected ? GRIDPICO_PATCH_CONNECTED : GRIDPICO_PATCH_DISCONNECTED,
+    };
+    return gridpico_patch_graph_update_port(&router->graph, &update);
+}
+
+gridpico_result gridpico_pico_router_renew_managed_input(gridpico_pico_router *router, gridpico_pico_peer peer)
+{
+    if (peer < GRIDPICO_PICO_DISCOVERED || peer >= GRIDPICO_PICO_PEERS) return GRIDPICO_INVALID;
+    const size_t slot = peer - GRIDPICO_PICO_DISCOVERED;
+    if (!router->attached[peer] || router->discovered[slot].input == 0) return GRIDPICO_UNAVAILABLE;
+    if (router->discovered[slot].input_generation == UINT32_MAX) return GRIDPICO_CAPACITY;
+    gridpico_result result = update_discovered_input(router, slot, false);
+    if (result != GRIDPICO_OK) return result;
+    ++router->discovered[slot].input_generation;
+    return update_discovered_input(router, slot, true);
+}
+#endif
 
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
 enum { APC_KEY_STREAM, APC_PANEL_STREAM, A_STREAM, B_STREAM, WEB_PANEL_STREAM, KEYS_RELEASE_RESERVE = 80 };
@@ -779,6 +989,14 @@ void gridpico_pico_router_finish_mode(gridpico_pico_router *router, bool native_
 
 void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_peer peer, bool attached)
 {
+    if (peer >= GRIDPICO_PICO_PEERS) return;
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (peer >= GRIDPICO_PICO_DISCOVERED) {
+        const size_t slot = peer - GRIDPICO_PICO_DISCOVERED;
+        if ((router->discovered[slot].input == 0 && router->discovered[slot].output == 0) ||
+            (attached && router->discovered[slot].input_generation == UINT32_MAX)) return;
+    }
+#endif
     if (router->attached[peer] == attached) return;
     if (attached) {
         if (router->generation[peer] == UINT32_MAX) return;
@@ -788,12 +1006,27 @@ void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_pee
     if (peer != GRIDPICO_PICO_APC) {
         gridpico_pico_queue *queue = &router->notes[note_queue_index(peer)];
         queue->head = queue->count = 0;
-        update_port(router, peer == GRIDPICO_PICO_WEB ? WEB_EXPORT : SYNTH_NOTES, peer);
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+        if (peer >= GRIDPICO_PICO_DISCOVERED) {
+            const size_t slot = (size_t)(peer - GRIDPICO_PICO_DISCOVERED);
+            if (router->discovered[slot].output != 0) update_port(router, router->discovered[slot].output, peer);
+            if (router->discovered[slot].input != 0) {
+                if (attached) ++router->discovered[slot].input_generation;
+                (void)update_discovered_input(router, slot, attached);
+            }
+        } else {
+            update_port(router, WEB_EXPORT, peer);
+        }
+#else
+        {
+            update_port(router, peer == GRIDPICO_PICO_WEB ? WEB_EXPORT : SYNTH_NOTES, peer);
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
-        if (peer == GRIDPICO_PICO_WEB) update_port(router, MIDI_B_OUT, GRIDPICO_PICO_WEB);
+            if (peer == GRIDPICO_PICO_WEB) update_port(router, MIDI_B_OUT, GRIDPICO_PICO_WEB);
+#endif
+        }
 #endif
     }
-    if (peer != GRIDPICO_PICO_SYNTH) {
+    if (peer == GRIDPICO_PICO_APC || peer == GRIDPICO_PICO_WEB) {
 #ifndef GRIDPICO_RP2040_PATCHBAY_BENCH
         reset_panel(router, peer);
 #endif
@@ -822,6 +1055,8 @@ void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_pee
             }
             clear_peer_holds(router, peer);
         }
+#elif defined(GRIDPICO_PICO_GENERIC_MIDI)
+        if (peer == GRIDPICO_PICO_WEB) update_port(router, WEB_KEYS, peer);
 #else
         update_port(router, peer == GRIDPICO_PICO_APC ? APC_KEYS : WEB_KEYS, peer);
 #endif
@@ -832,7 +1067,7 @@ void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_pee
     }
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
     if (!attached && router->audition.destination != 0 &&
-        (router->audition.owner == peer || output_peer(router->audition.destination) == peer)) {
+        (router->audition.owner == peer || output_peer(router, router->audition.destination) == peer)) {
         stop_audition(router);
     }
     refresh_panels(router);
@@ -844,12 +1079,20 @@ void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_pee
 gridpico_result gridpico_pico_router_receive(
     gridpico_pico_router *router, gridpico_pico_peer peer, const gridpico_pico_packet *packet)
 {
-    if (peer == GRIDPICO_PICO_SYNTH || !router->attached[peer]) return GRIDPICO_UNAVAILABLE;
+    if (peer >= GRIDPICO_PICO_PEERS || !router->attached[peer]) return GRIDPICO_UNAVAILABLE;
+#ifndef GRIDPICO_PICO_GENERIC_MIDI
+    if (peer == GRIDPICO_PICO_SYNTH) return GRIDPICO_UNAVAILABLE;
+#endif
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
     gridpico_result dispatched;
     if (!dispatch_keys(router, peer, packet, &dispatched)) return dispatched;
 #endif
     const uint8_t cable = packet->bytes[0] >> 4;
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    const gridpico_port_id source = peer >= GRIDPICO_PICO_DISCOVERED ?
+        router->discovered[peer - GRIDPICO_PICO_DISCOVERED].input : peer == GRIDPICO_PICO_WEB ? WEB_KEYS : 0;
+    if ((peer >= GRIDPICO_PICO_DISCOVERED && cable != 0) || (cable == 0 && source == 0)) return GRIDPICO_INVALID;
+#endif
     const uint8_t code = packet->bytes[0] & 0xfu;
     const uint8_t status = packet->bytes[1];
     if ((code != 8 && code != 9) || code != status >> 4 ||
@@ -863,7 +1106,7 @@ gridpico_result gridpico_pico_router_receive(
         const gridpico_result result = gridpico_apc_physical_receive(&router->panels[peer].frontend,
                                                                    &message, router->now_us / 1000);
         const gridpico_pico_peer other = peer == GRIDPICO_PICO_APC ? GRIDPICO_PICO_WEB : GRIDPICO_PICO_APC;
-        if (router->attached[other]) {
+        if (feedback_generation(router, other) != 0) {
             gridpico_apc_physical_refresh(&router->panels[other].frontend, router->now_us / 1000);
         }
         return result;
@@ -875,6 +1118,9 @@ gridpico_result gridpico_pico_router_receive(
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
         .source = {managed_inputs[peer == GRIDPICO_PICO_APC ? 0u : cable == 0 ? 1u : 2u],
                    router->keys.source_generation[peer == GRIDPICO_PICO_APC ? 0u : cable == 0 ? 1u : 2u]},
+#elif defined(GRIDPICO_PICO_GENERIC_MIDI)
+        .source = {source, peer >= GRIDPICO_PICO_DISCOVERED ?
+            router->discovered[peer - GRIDPICO_PICO_DISCOVERED].input_generation : router->generation[peer]},
 #else
         .source = {peer == GRIDPICO_PICO_APC ? APC_KEYS : WEB_KEYS, router->generation[peer]},
 #endif
@@ -943,7 +1189,8 @@ const gridpico_pico_packet *gridpico_pico_router_led(
     if (router->keys.mode != GRIDPICO_APC_CHOOSER_PATCHBAY || router->keys.next_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST ||
         (peer == GRIDPICO_PICO_APC && router->keys.chooser.open)) return NULL;
 #endif
-    if (peer == GRIDPICO_PICO_SYNTH) return NULL;
+    if (peer != GRIDPICO_PICO_APC && peer != GRIDPICO_PICO_WEB) return NULL;
+    if (feedback_generation(router, peer) == 0) return NULL;
     const gridpico_pico_patch_panel *panel = &router->panels[peer];
     return panel->cursor < GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES ? &panel->sending[panel->cursor] : NULL;
 #else
@@ -965,7 +1212,8 @@ void gridpico_pico_router_led_sent(gridpico_pico_router *router, gridpico_pico_p
 void gridpico_pico_router_led_complete(gridpico_pico_router *router, gridpico_pico_peer peer, bool delivered)
 {
     gridpico_pico_patch_panel *panel = &router->panels[peer];
-    if (!router->attached[peer] || panel->sending_generation != router->generation[peer]) return;
+    const gridpico_revision generation = feedback_generation(router, peer);
+    if (generation == 0 || panel->sending_generation != generation) return;
     if (!delivered) {
         panel->cursor = GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES;
         panel->pending = panel->latest_valid;

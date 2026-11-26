@@ -6,7 +6,10 @@
 #include "ws2812.pio.h"
 
 enum { PIXEL_PIN = 16, PIXEL_BITS_PER_SEC = 800000, PIXEL_FRAME_AND_RESET_US = 400 };
-_Static_assert(PIXEL_PIN == PICO_DEFAULT_WS2812_PIN, "This fixture requires the RP2040-Zero onboard pixel");
+#if !defined(WAVESHARE_RP2040_ZERO) || !defined(PICO_DEFAULT_WS2812_PIN)
+#error "Onboard status requires the Waveshare RP2040-Zero WS2812 board capability"
+#endif
+_Static_assert(PIXEL_PIN == PICO_DEFAULT_WS2812_PIN, "The RP2040-Zero onboard pixel must be on GP16");
 
 static int pixel_sm = -1;
 static uint32_t pixel_clock;

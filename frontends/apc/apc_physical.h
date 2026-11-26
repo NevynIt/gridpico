@@ -55,6 +55,7 @@ typedef struct {
     uint8_t move_to;
     gridpico_revision preview_revision;
     gridpico_port_id candidate;
+    bool unassigned_selected;
     bool preview_error;
     uint64_t learn_after;
     bool learn_ambiguous;

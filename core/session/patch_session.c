@@ -43,6 +43,23 @@ void gridpico_patch_session_bind_projection_scratch(gridpico_patch_session *sess
     session->projection_scratch = scratch;
 }
 
+void gridpico_patch_session_bind_manual_routes(gridpico_patch_session *session,
+                                              gridpico_patch_manual_routes *storage)
+{
+    session->manual_routes = storage;
+}
+
+bool gridpico_patch_session_manual_route_is_off(const gridpico_patch_session *session,
+                                                size_t source_slot, size_t destination_slot)
+{
+    if (session == NULL || session->manual_routes == NULL ||
+        source_slot >= GRIDPICO_PATCH_MAX_PORTS || destination_slot >= GRIDPICO_PATCH_MAX_PORTS) {
+        return false;
+    }
+    const size_t bit = source_slot * GRIDPICO_PATCH_MAX_PORTS + destination_slot;
+    return (session->manual_routes->off[bit / 8u] & (1u << (bit % 8u))) != 0;
+}
+
 static bool overlaps_projection_scratch(const gridpico_local_routing_snapshot *scratch,
                                         const void *out, size_t out_size)
 {
@@ -181,6 +198,58 @@ static bool valid_local_route(const gridpico_local_route *route)
            (route->mode == GRIDPICO_LOCAL_MANAGED || route->mode == GRIDPICO_LOCAL_RAW);
 }
 
+static gridpico_result read_local_graph(const gridpico_patch_session *session,
+                                       gridpico_local_graph_state *state);
+
+static gridpico_result set_manual_route(const gridpico_patch_session *session,
+                                       const gridpico_local_route_request *request,
+                                       const gridpico_patch_inventory *inventory)
+{
+    size_t source = inventory->port_count, destination = inventory->port_count;
+    for (size_t i = 0; i < inventory->port_count; ++i) {
+        if (inventory->ports[i].id == request->route.source) {
+            source = i;
+        }
+        if (inventory->ports[i].id == request->route.destination) {
+            destination = i;
+        }
+    }
+    if (source == inventory->port_count || destination == inventory->port_count) {
+        return GRIDPICO_INVALID;
+    }
+
+    const gridpico_result result = session->set_local_graph_route(session->graph_context, request);
+    if (result == GRIDPICO_OK) {
+        const size_t bit = source * GRIDPICO_PATCH_MAX_PORTS + destination;
+        const uint8_t mask = (uint8_t)(1u << (bit % 8u));
+        uint8_t *off = &session->manual_routes->off[bit / 8u];
+        if (request->enabled) {
+            *off &= (uint8_t)~mask;
+        } else {
+            *off |= mask;
+        }
+    }
+    return result;
+}
+
+static gridpico_result read_and_set_manual_route(const gridpico_patch_session *session,
+                                                const gridpico_local_route_request *request,
+                                                gridpico_local_graph_state *state)
+{
+    const gridpico_result result = read_local_graph(session, state);
+    if (result != GRIDPICO_OK) {
+        return result;
+    }
+    return set_manual_route(session, request, &state->registry.inventory);
+}
+
+static GRIDPICO_NOINLINE gridpico_result set_manual_route_on_stack(
+    const gridpico_patch_session *session, const gridpico_local_route_request *request)
+{
+    gridpico_local_graph_state state;
+    return read_and_set_manual_route(session, request, &state);
+}
+
 gridpico_result gridpico_patch_session_set_local_route(void *context,
                                                      const gridpico_local_route_request *request)
 {
@@ -192,6 +261,13 @@ gridpico_result gridpico_patch_session_set_local_route(void *context,
         return GRIDPICO_UNAVAILABLE;
     }
 
+    if (session->manual_routes != NULL && request->route.mode == GRIDPICO_LOCAL_MANAGED &&
+        request->route.source != session->apc_audition_source) {
+        if (session->projection_scratch != NULL) {
+            return read_and_set_manual_route(session, request, &session->projection_scratch->graph);
+        }
+        return set_manual_route_on_stack(session, request);
+    }
     return session->set_local_graph_route(session->graph_context, request);
 }
 
@@ -601,7 +677,7 @@ gridpico_result gridpico_patch_session_restore_apc_snapshot(gridpico_patch_sessi
         const gridpico_apc_session_route route = snapshot->routes[i];
         const gridpico_local_route_request request = {{route.source, route.destination, GRIDPICO_LOCAL_MANAGED},
                                                      true};
-        result = gridpico_patch_session_set_local_route(session, &request);
+        result = session->set_local_graph_route(session->graph_context, &request);
         if (result != GRIDPICO_OK) {
             return result;
         }
@@ -789,6 +865,51 @@ gridpico_result gridpico_patch_session_move_apc_patch(void *context, gridpico_re
     return GRIDPICO_OK;
 }
 
+static gridpico_result set_apc_port_reserved(
+    gridpico_patch_session *session,
+    gridpico_result (*set_reserved)(void *graph_context, gridpico_port_id port, bool reserved),
+    gridpico_patch_direction axis, gridpico_port_id port, bool reserved, bool transport_ready)
+{
+    if (session == NULL || set_reserved == NULL || port == 0) {
+        return GRIDPICO_INVALID;
+    }
+    if (!transport_ready || session->apc_layout_revision == 0) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+
+    const size_t count = apc_axis_length(axis);
+    gridpico_port_id *slots = axis == GRIDPICO_PATCH_INPUT ? session->apc_layout.rows
+                                                         : session->apc_layout.columns;
+    const size_t slot = find_slot(slots, count, port);
+    const bool clear_slot = reserved && slot < count;
+    if (clear_slot && session->apc_layout_revision == UINT64_MAX) {
+        return GRIDPICO_CAPACITY;
+    }
+
+    const gridpico_result result = set_reserved(session->graph_context, port, reserved);
+    if (result == GRIDPICO_OK && clear_slot) {
+        slots[slot] = 0;
+        ++session->apc_layout_revision;
+    }
+    return result;
+}
+
+gridpico_result gridpico_patch_session_set_apc_led_reserved(
+    gridpico_patch_session *session, gridpico_patch_set_apc_led_reserved_fn set_reserved,
+    gridpico_port_id output, bool reserved, bool transport_ready)
+{
+    return set_apc_port_reserved(session, set_reserved, GRIDPICO_PATCH_OUTPUT, output,
+                                 reserved, transport_ready);
+}
+
+gridpico_result gridpico_patch_session_set_apc_panel_reserved(
+    gridpico_patch_session *session, gridpico_patch_set_apc_panel_reserved_fn set_reserved,
+    gridpico_port_id input, bool reserved, bool transport_ready)
+{
+    return set_apc_port_reserved(session, set_reserved, GRIDPICO_PATCH_INPUT, input,
+                                 reserved, transport_ready);
+}
+
 gridpico_result gridpico_patch_session_set_apc_patch_cell(void *context,
                                                         gridpico_revision layout_revision,
                                                         gridpico_revision graph_revision,
@@ -823,6 +944,9 @@ gridpico_result gridpico_patch_session_set_apc_patch_cell(void *context,
 
     const gridpico_local_route_request request = {{source->id, destination->id, GRIDPICO_LOCAL_MANAGED},
                                                  enabled};
+    if (session->manual_routes != NULL && session->set_local_graph_route != NULL) {
+        return set_manual_route(session, &request, &graph.registry.inventory);
+    }
     return gridpico_patch_session_set_local_route(context, &request);
 }
 

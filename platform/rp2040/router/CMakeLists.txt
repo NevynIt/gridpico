@@ -56,12 +56,10 @@ option(GRIDPICO_RP2040_KEYS_BENCH "Enable the three-pair Patchbay and Keys fixtu
 option(GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH "Enable local channel-4 MicroFreak Program Change" OFF)
 option(GRIDPICO_RP2040_FLASH_ROUTER "Persist the selected router in flash and run from SRAM" OFF)
 option(GRIDPICO_RP2040_FLASH_STARTUP_FAULT "Build a flash-only watchdog starvation fixture" OFF)
-option(GRIDPICO_RP2040_ONBOARD_STATUS_BENCH "Enable the RP2040-Zero onboard status pixel in a SRAM fixture" OFF)
-if(GRIDPICO_RP2040_ONBOARD_STATUS_BENCH)
-    if(GRIDPICO_RP2040_FLASH_ROUTER OR NOT PICO_BOARD STREQUAL "waveshare_rp2040_zero")
-        message(FATAL_ERROR "The onboard status fixture requires the RP2040-Zero no_flash router.")
-    endif()
-    target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_ONBOARD_STATUS_BENCH)
+if(PICO_BOARD STREQUAL "waveshare_rp2040_zero" AND GRIDPICO_RP2040_FLASH_ROUTER
+   AND NOT GRIDPICO_RP2040_FLASH_STARTUP_FAULT AND NOT GRIDPICO_RP2040_KEYS_BENCH
+   AND NOT GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
+    target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_ONBOARD_STATUS)
     target_sources(gridpico_rp2040_router PRIVATE onboard_status.c)
     pico_generate_pio_header(gridpico_rp2040_router
         "${PICO_SDK_PATH}/src/rp2_common/pico_status_led/ws2812.pio")
@@ -108,7 +106,8 @@ if(GRIDPICO_RP2040_PATCHBAY_BENCH)
     if(NOT GRIDPICO_RP2040_KEYS_BENCH AND NOT GRIDPICO_RP2040_FLASH_STARTUP_FAULT)
         # CDC records require integer and string formatting only.
         target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_MATRIX_CLI PICO_PRINTF_SUPPORT_FLOAT=0)
-        target_sources(gridpico_rp2040_router PRIVATE cdc_cli.c "${root}/frontends/cli/cli_frontend.c")
+        target_sources(gridpico_rp2040_router PRIVATE cdc_cli.c "${root}/frontends/cli/cli_frontend.c"
+            "${root}/app/rp2040_auto_routes.c")
         if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
             # Keep reply formatting frames separate from Session reads on the 4 KiB core-0 stack.
             set_source_files_properties("${root}/frontends/cli/cli_frontend.c"

@@ -1,4 +1,5 @@
 #include "app/rp2040_router.h"
+#include "app/rp2040_auto_routes.h"
 #include "bootsel_line.h"
 
 #include "hardware/clocks.h"
@@ -8,6 +9,7 @@
 #include "pio_usb.h"
 #include "tusb.h"
 #include "device/usbd_pvt.h"
+#include <string.h>
 
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
 #include "flash_startup.h"
@@ -17,7 +19,7 @@
 #if defined(GRIDPICO_RP2040_FLASH_ROUTER) || defined(GRIDPICO_RP2040_PATCHBAY_BENCH)
 #include "hardware/sync.h"
 #endif
-#ifdef GRIDPICO_RP2040_BENCH_TRACE
+#if defined(GRIDPICO_RP2040_BENCH_TRACE) || defined(GRIDPICO_RP2040_MATRIX_CLI)
 #include <stdio.h>
 #endif
 #ifdef GRIDPICO_RP2040_PIO_DIAGNOSTICS
@@ -29,7 +31,7 @@
 #ifdef GRIDPICO_RP2040_HUB_TRACE
 #include "hub_trace.h"
 #endif
-#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS
 #include "onboard_status.h"
 #endif
 #ifdef GRIDPICO_RP2040_MATRIX_CLI
@@ -47,6 +49,7 @@
 #error "The default router build is no_flash"
 #endif
 
+#ifndef GRIDPICO_PICO_GENERIC_MIDI
 _Static_assert(GRIDPICO_APC_VID >= 0 && GRIDPICO_APC_VID <= UINT16_MAX &&
                GRIDPICO_APC_PID >= 0 && GRIDPICO_APC_PID <= UINT16_MAX &&
                GRIDPICO_SYNTH_VID >= 0 && GRIDPICO_SYNTH_VID <= UINT16_MAX &&
@@ -55,6 +58,7 @@ _Static_assert(GRIDPICO_APC_VID >= 0 && GRIDPICO_APC_VID <= UINT16_MAX &&
 _Static_assert(GRIDPICO_APC_INTERFACE >= 0 && GRIDPICO_APC_INTERFACE <= UINT8_MAX &&
                GRIDPICO_SYNTH_INTERFACE >= 0 && GRIDPICO_SYNTH_INTERFACE <= UINT8_MAX,
                "PIO MIDI interfaces must fit in a byte");
+#endif
 
 #ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH
 _Static_assert(GRIDPICO_SYNTH_VID == 0x1c75 && GRIDPICO_SYNTH_PID == 0x0601 &&
@@ -74,6 +78,12 @@ enum {
     RX_BATCH = 8,
 };
 
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS
+_Static_assert(PIO_USB_TX_DEFAULT == 0 && PIO_USB_RX_DEFAULT == 0 &&
+               PICO_DEFAULT_WS2812_PIN != HOST_DP && PICO_DEFAULT_WS2812_PIN != HOST_DP + 1,
+               "USB PIO0 and onboard status PIO1 require separate hardware");
+#endif
+
 typedef struct {
     bool present;
     bool faulted;
@@ -86,6 +96,11 @@ typedef struct {
     uint8_t tx_cables;
     uint64_t deadline;
     gridpico_pico_packet in_flight;
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    uint32_t out_generation;
+    gridpico_pico_peer out_owner;
+    uint8_t next_cable;
+#endif
 } host_interface;
 
 static gridpico_pico_router router;
@@ -101,17 +116,87 @@ static gridpico_local_routing_snapshot routing_scratch;
 static uint64_t native_led_refresh_at;
 static host_interface interfaces[CFG_TUH_MIDI];
 static uint8_t host_endpoints_out[CFG_TUH_MIDI];
+#ifndef GRIDPICO_PICO_GENERIC_MIDI
 static uint8_t apc_interface = NO_INTERFACE;
 static uint8_t synth_interface = NO_INTERFACE;
 static bool apc_ambiguous;
 static bool synth_ambiguous;
+#else
+typedef struct {
+    uint16_t vid, pid, revision;
+    uint8_t interface, input_endpoint, output_endpoint, inputs, outputs;
+    char serial[32];
+} midi_identity;
+
+typedef struct {
+    midi_identity identity;
+    char name[GRIDPICO_PATCH_NAME_BYTES];
+    uint32_t lifetime;
+    uint8_t input_endpoint, input_cables, output_cables;
+    bool supported;
+    bool examined;
+    bool verified;
+    bool capacity_reported;
+} midi_observation;
+
+typedef struct {
+    uint8_t depth;
+    uint8_t ports[CFG_TUH_HUB];
+} midi_path;
+
+typedef enum { PROBE_LANG, PROBE_NAME, PROBE_SERIAL, PROBE_DONE } probe_phase;
+
+static midi_observation observations[CFG_TUH_MIDI];
+static bool devices_ready[CFG_TUH_DEVICE_MAX + 1];
+static uint8_t device_streams[CFG_TUH_DEVICE_MAX + 1];
+static uint32_t next_midi_lifetime;
+static bool discovery_dirty;
+typedef struct {
+    midi_identity identity;
+    uint32_t lifetime;
+    gridpico_pico_peer first_peer;
+    uint8_t index;
+    bool ambiguous;
+} discovered_device;
+static discovered_device discovered[GRIDPICO_PICO_USB_DEVICES];
+static struct {
+    uint32_t lifetime;
+    uint64_t deadline;
+    midi_identity identity;
+    midi_path path;
+    char name[GRIDPICO_PATCH_NAME_BYTES];
+    uint16_t string_data[32];
+    uint16_t language;
+    uint8_t index, address;
+    bool has_name, has_serial, pending, expired;
+    probe_phase phase;
+} discovery = {.index = NO_INTERFACE};
+typedef struct {
+    gridpico_revision revision, graph_revision;
+    gridpico_port_id panel, led;
+    gridpico_port_id suggested_panel, suggested_led;
+    uint32_t released_led_generation[GRIDPICO_PICO_USB_CABLE_GROUPS];
+    uint32_t panel_generation, led_generation;
+    uint32_t led_flight_lifetime;
+    gridpico_revision flight_feedback_generation;
+    uint8_t led_flight_interface;
+    bool retiring, panel_explicit, led_explicit;
+} apc_roles;
+static apc_roles physical_roles = {.revision = 1};
+static gridpico_pico_auto_routes automatic_routes;
+static gridpico_result read_apc_roles(void *context, gridpico_apc_roles_status *out);
+static gridpico_result apply_apc_role(void *context, const gridpico_apc_role_request *request,
+                                     gridpico_apc_roles_status *out);
+#endif
 #if defined(GRIDPICO_RP2040_PATCHBAY_BENCH) && !defined(GRIDPICO_RP2040_MATRIX_CLI)
 enum { CIRCUIT_TRACE_PEER = GRIDPICO_PICO_PEERS };
 static uint8_t circuit_interface = NO_INTERFACE;
 static bool circuit_ambiguous;
 #endif
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
+#ifndef GRIDPICO_PICO_GENERIC_MIDI
 static uint32_t apc_led_generation;
+#endif
 static uint32_t native_led_generation;
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
 static uint32_t native_note_generation;
@@ -154,7 +239,11 @@ static volatile uint16_t remove_events;
 #endif
 
 #ifdef GRIDPICO_RP2040_BENCH_TRACE
+#if defined(GRIDPICO_RP2040_FLASH_ROUTER) && defined(GRIDPICO_RP2040_MATRIX_CLI)
+enum { TRACE_ROWS = 64 };
+#else
 enum { TRACE_ROWS = 32 };
+#endif
 typedef struct {
     char kind;
     uint8_t index;
@@ -235,7 +324,11 @@ enum { EXTRA_SNAPSHOT_ROWS = 0 };
 static void start_trace(void)
 {
     const gridpico_route_snapshot pad = gridpico_pico_router_pad_status(&router);
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    const uint8_t state[] = {pad.enabled, pad.active, NO_INTERFACE, NO_INTERFACE};
+#else
     const uint8_t state[] = {pad.enabled, pad.active, apc_interface, synth_interface};
+#endif
     const unsigned history_limit = TRACE_ROWS - EXTRA_SNAPSHOT_ROWS - 1;
     const unsigned history = trace_count < history_limit ? trace_count : history_limit;
     for (unsigned i = 0; i < history; ++i) {
@@ -324,6 +417,12 @@ static void bind_matrix_cli(void)
                              gridpico_pico_router_read_managed_route, gridpico_pico_router_set_managed_route,
                              &routing_scratch);
     gridpico_cli_bind_platform(&cli, capabilities, start_cli_platform, NULL);
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    gridpico_cli_bind_apc_roles(&cli, &physical_roles, read_apc_roles, apply_apc_role);
+    gridpico_pico_auto_routes_init(&automatic_routes, &router, &routing_scratch);
+    gridpico_cli_bind_auto_route_summary(&cli, &automatic_routes, gridpico_pico_auto_routes_read);
+    gridpico_cli_bind_auto_route_explain(&cli, &automatic_routes, gridpico_pico_auto_routes_explain);
+#endif
 }
 
 static uint32_t send_cdc(const char *message, uint32_t length)
@@ -406,7 +505,7 @@ static _Noreturn void request_bootsel(void)
 {
     static const char reply[] = "OK BOOTSEL\n";
     const uint64_t deadline = time_us_64() + BOOTSEL_DRAIN_US;
-#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS
     gridpico_onboard_show(GRIDPICO_ONBOARD_BOOTSEL);
 #endif
 #ifdef GRIDPICO_RP2040_MATRIX_CLI
@@ -540,6 +639,7 @@ static void service_cdc(void)
     pump_cdc_trace();
 }
 
+#ifndef GRIDPICO_PICO_GENERIC_MIDI
 static uint8_t select_interface(uint16_t vid, uint16_t pid, uint8_t number, uint8_t cables, bool *ambiguous)
 {
     if (vid == 0 || pid == 0 || number == NO_INTERFACE) return NO_INTERFACE;
@@ -583,6 +683,840 @@ static void reconcile_host(void)
 #endif
 }
 
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS
+static bool reserved_startup_interface(const host_interface *itf)
+{
+    return (itf->vid == GRIDPICO_APC_VID && itf->pid == GRIDPICO_APC_PID &&
+            itf->number == GRIDPICO_APC_INTERFACE && itf->rx_cables == 2 && itf->tx_cables == 2) ||
+           (itf->vid == GRIDPICO_SYNTH_VID && itf->pid == GRIDPICO_SYNTH_PID &&
+            itf->number == GRIDPICO_SYNTH_INTERFACE && itf->rx_cables == 1 && itf->tx_cables == 1);
+}
+#endif
+#endif
+
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+static bool observed_path(uint8_t address, midi_path *path)
+{
+    *path = (midi_path){0};
+    for (;;) {
+        tuh_bus_info_t bus;
+        if (!tuh_bus_info_get(address, &bus) || bus.rhport != HOST_ROOT) return false;
+        if (bus.hub_addr == 0) return true;
+        if (path->depth == sizeof(path->ports) || bus.hub_port == 0 ||
+            bus.hub_addr <= CFG_TUH_DEVICE_MAX || !tuh_mounted(bus.hub_addr)) return false;
+        path->ports[path->depth++] = bus.hub_port;
+        address = bus.hub_addr;
+    }
+}
+
+static bool observed_interface(uint8_t index)
+{
+    const host_interface *itf = &interfaces[index];
+    const uint8_t address = itf->device_address;
+    const midi_observation *observation = &observations[index];
+    return itf->present && observation->lifetime != 0 && observation->supported &&
+           itf->rx_cables == observation->input_cables && itf->tx_cables == observation->output_cables &&
+           address > 0 && address <= CFG_TUH_DEVICE_MAX &&
+           devices_ready[address] && device_streams[address] == 1 && tuh_midi_mounted(index);
+}
+
+static bool eligible_interface(uint8_t index)
+{
+    return !interfaces[index].faulted && observed_interface(index);
+}
+
+static bool read_identity(uint8_t index, midi_identity *identity)
+{
+    const host_interface *itf = &interfaces[index];
+    *identity = (midi_identity){
+        .vid = itf->vid, .pid = itf->pid,
+        .interface = itf->number, .input_endpoint = observations[index].input_endpoint,
+        .output_endpoint = host_endpoints_out[index],
+        .inputs = (uint8_t)((1u << itf->rx_cables) - 1u),
+        .outputs = (uint8_t)((1u << itf->tx_cables) - 1u),
+    };
+    tusb_desc_device_t descriptor;
+    if (!tuh_descriptor_get_device_local(itf->device_address, &descriptor)) return false;
+    identity->revision = tu_le16toh(descriptor.bcdDevice);
+    return true;
+}
+
+static bool same_identity_shape(const midi_identity *left, const midi_identity *right)
+{
+    return left->vid == right->vid && left->pid == right->pid && left->revision == right->revision &&
+           left->interface == right->interface && left->input_endpoint == right->input_endpoint &&
+           left->output_endpoint == right->output_endpoint &&
+           left->inputs == right->inputs && left->outputs == right->outputs;
+}
+
+static bool probe_still_current(void)
+{
+    const uint8_t index = discovery.index;
+    midi_path current;
+    return index != NO_INTERFACE && eligible_interface(index) &&
+           observations[index].lifetime == discovery.lifetime &&
+           interfaces[index].device_address == discovery.address &&
+           observed_path(discovery.address, &current) &&
+           current.depth == discovery.path.depth &&
+           memcmp(current.ports, discovery.path.ports, current.depth) == 0;
+}
+
+static void read_usb_text(char *text, size_t capacity, size_t length, bool serial)
+{
+    const size_t units = length / 2;
+    if (units <= 1 || (serial && units > capacity)) return;
+    size_t end = units - 1;
+    if (end >= capacity) end = capacity - 1;
+    bool usable = false;
+    for (size_t i = 0; i < end; ++i) {
+        const uint16_t ch = tu_le16toh(discovery.string_data[i + 1]);
+        if (ch < 32 || ch > 126) return;
+        usable |= serial ? ch != ' ' && ch != '0' : ch != ' ';
+    }
+    if (!usable) return;
+    for (size_t i = 0; i < end; ++i) text[i] = (char)tu_le16toh(discovery.string_data[i + 1]);
+    text[end] = '\0';
+}
+
+static void descriptor_complete(tuh_xfer_t *transfer)
+{
+    if (!discovery.pending || transfer->user_data != discovery.lifetime || transfer->daddr != discovery.address) {
+        return;
+    }
+    discovery.pending = false;
+    if (discovery.expired || time_us_64() >= discovery.deadline) return;
+    if (!probe_still_current()) {
+        discovery.phase = PROBE_DONE;
+        return;
+    }
+
+    const uint16_t header = tu_le16toh(discovery.string_data[0]);
+    const size_t length = header & 0xffu;
+    const bool valid = transfer->result == XFER_RESULT_SUCCESS && header >> 8 == TUSB_DESC_STRING &&
+                       length >= 4 && (length & 1u) == 0 && length <= transfer->actual_len &&
+                       length <= sizeof(discovery.string_data);
+    switch (discovery.phase) {
+    case PROBE_LANG:
+        if (valid) discovery.language = tu_le16toh(discovery.string_data[1]);
+        discovery.phase = discovery.language != 0 ? PROBE_NAME : PROBE_DONE;
+        break;
+    case PROBE_NAME:
+        if (valid) read_usb_text(discovery.name, sizeof(discovery.name), length, false);
+        discovery.phase = PROBE_SERIAL;
+        break;
+    case PROBE_SERIAL:
+        if (valid) read_usb_text(discovery.identity.serial, sizeof(discovery.identity.serial), length, true);
+        discovery.phase = PROBE_DONE;
+        break;
+    case PROBE_DONE:
+        break;
+    }
+}
+
+static void start_descriptor_read(void)
+{
+    memset(discovery.string_data, 0, sizeof(discovery.string_data));
+    const uint8_t address = discovery.address;
+    const uintptr_t token = discovery.lifetime;
+    const uint16_t capacity = sizeof(discovery.string_data);
+    switch (discovery.phase) {
+    case PROBE_LANG:
+        discovery.pending = tuh_descriptor_get_string_langid(address, discovery.string_data, capacity,
+                                                             descriptor_complete, token);
+        break;
+    case PROBE_NAME:
+        if (discovery.has_name) {
+            discovery.pending = tuh_descriptor_get_product_string(address, discovery.language,
+                discovery.string_data, capacity, descriptor_complete, token);
+        } else {
+            discovery.phase = PROBE_SERIAL;
+        }
+        break;
+    case PROBE_SERIAL:
+        if (discovery.has_serial) {
+            discovery.pending = tuh_descriptor_get_serial_string(address, discovery.language,
+                discovery.string_data, capacity, descriptor_complete, token);
+        } else {
+            discovery.phase = PROBE_DONE;
+        }
+        break;
+    case PROBE_DONE:
+        break;
+    }
+}
+
+static void report_discovery_capacity(uint8_t index)
+{
+    if (observations[index].capacity_reported) return;
+    observations[index].capacity_reported = true;
+    const uint8_t cause = GRIDPICO_CAPACITY;
+    add_trace('E', index, &cause, sizeof(cause));
+}
+
+static unsigned cable_span(const midi_identity *identity)
+{
+    return (identity->inputs | identity->outputs) > 1u ? 2u : 1u;
+}
+
+static discovered_device *mounted_binding(uint8_t index)
+{
+    for (size_t slot = 0; slot < GRIDPICO_PICO_USB_DEVICES; ++slot) {
+        discovered_device *binding = &discovered[slot];
+        if (binding->lifetime != 0 && binding->index == index &&
+            binding->lifetime == observations[index].lifetime) return binding;
+    }
+    return NULL;
+}
+
+typedef struct {
+    gridpico_pico_peer peer;
+    uint8_t index, cable;
+} usb_midi_lane;
+
+static gridpico_result lookup_lane_kind(gridpico_port_id id, bool output, bool allow_disputed, usb_midi_lane *lane)
+{
+    if (id == 0) return GRIDPICO_INVALID;
+    for (unsigned p = GRIDPICO_PICO_DISCOVERED; p < GRIDPICO_PICO_PEERS; ++p) {
+        const size_t slot = p - GRIDPICO_PICO_DISCOVERED;
+        if (id != (output ? router.discovered[slot].output : router.discovered[slot].input)) continue;
+        for (size_t d = 0; d < GRIDPICO_PICO_USB_DEVICES; ++d) {
+            const discovered_device *binding = &discovered[d];
+            const unsigned first = binding->first_peer;
+            if (first == 0 || p < first || p >= first + cable_span(&binding->identity)) continue;
+            const uint8_t index = binding->index;
+            midi_path path;
+            if (binding->lifetime == 0 || (binding->ambiguous && !allow_disputed) ||
+                !router.attached[p] || mounted_binding(index) != binding ||
+                !eligible_interface(index) || !observed_path(interfaces[index].device_address, &path)) {
+                return GRIDPICO_UNAVAILABLE;
+            }
+            *lane = (usb_midi_lane){.peer = (gridpico_pico_peer)p, .index = index, .cable = (uint8_t)(p - first)};
+            return GRIDPICO_OK;
+        }
+    }
+    return GRIDPICO_INVALID;
+}
+
+static gridpico_result lookup_lane(gridpico_port_id id, bool output, usb_midi_lane *lane)
+{
+    return lookup_lane_kind(id, output, false, lane);
+}
+
+static uint32_t led_role_generation(gridpico_port_id port)
+{
+    usb_midi_lane lane;
+    return lookup_lane(port, true, &lane) == GRIDPICO_OK ? router.generation[lane.peer] : 0;
+}
+
+static bool physical_audition_pending(void)
+{
+    return router.audition.destination != 0 && router.audition.owner == GRIDPICO_PICO_APC;
+}
+
+static void attach_physical_panel(apc_roles *roles, uint32_t generation)
+{
+    if (router.attached[GRIDPICO_PICO_APC]) gridpico_pico_router_attach(&router, GRIDPICO_PICO_APC, false);
+    if (generation != 0) gridpico_pico_router_attach(&router, GRIDPICO_PICO_APC, true);
+    roles->panel_generation = router.attached[GRIDPICO_PICO_APC] ? generation : 0;
+    if (roles->led_generation != 0 && !roles->retiring) {
+        gridpico_pico_router_set_physical_feedback(&router, roles->revision);
+    }
+}
+
+static bool role_has_revision_space(const apc_roles *roles, uint64_t advances)
+{
+    return advances <= UINT64_MAX - roles->revision;
+}
+
+static void record_role_change(apc_roles *roles)
+{
+    ++roles->revision;
+    roles->graph_revision = router.graph.revision;
+}
+
+static bool compatible_panel_input(const usb_midi_lane *lane)
+{
+    const host_interface *interface = &interfaces[lane->index];
+    /* The adapter knows this controller protocol on interface 1, cable 1.
+     * An explicit logical ID and the current verified lane confer ownership.
+     */
+    return lane->cable == 1 && interface->number == 1 && interface->rx_cables == 2 &&
+           interface->tx_cables == 2 && interface->vid == 0x09e8 && interface->pid == 0x004e;
+}
+
+static bool panel_input_fenced(const usb_midi_lane *old, const usb_midi_lane *next)
+{
+    if (old == NULL && next == NULL) return true;
+    /* The pinned MIDI driver submits one IN max-packet per transfer. The
+     * single-core PIO alarm accepts it and posts completion before returning.
+     * Empty HCD queue and class FIFOs therefore fence all host-received bytes at
+     * this sample. Later completions are dispatched after this foreground edit.
+     * A busy shared interface defers the edit; do not flush sibling cables.
+     */
+    const uint32_t irq = save_and_disable_interrupts();
+    const bool quiet = !tuh_task_event_ready() &&
+        (old == NULL || tuh_midi_read_available(old->index) == 0) &&
+        (next == NULL || tuh_midi_read_available(next->index) == 0);
+    restore_interrupts(irq);
+    return quiet;
+}
+
+static uint32_t panel_lane_generation(const usb_midi_lane *lane)
+{
+    const discovered_device *binding = mounted_binding(lane->index);
+    const midi_observation *observation = &observations[lane->index];
+    if (binding == NULL || !compatible_panel_input(lane) ||
+        (binding->identity.inputs & (1u << lane->cable)) == 0 ||
+        (observation->input_endpoint & 0x80u) == 0 ||
+        binding->identity.input_endpoint != observation->input_endpoint ||
+        binding->identity.interface != interfaces[lane->index].number) return 0;
+    return router.discovered[lane->peer - GRIDPICO_PICO_DISCOVERED].input_generation;
+}
+
+static bool panel_graph_input(gridpico_port_id id, uint32_t generation, bool reserved)
+{
+    const gridpico_patch_graph *graph = &router.graph;
+    for (size_t i = 0; i < graph->inventory.port_count; ++i) {
+        const gridpico_patch_port *port = &graph->inventory.ports[i];
+        if (port->id != id) continue;
+        return port->direction == GRIDPICO_PATCH_INPUT && port->patch_eligible == !reserved &&
+            graph->ports[i].apc_panel_reserved == reserved &&
+            graph->port_capabilities[i] == (reserved ? GRIDPICO_LOCAL_PORT_PANEL : GRIDPICO_LOCAL_PORT_MANAGED) &&
+            (generation == 0 ? port->state == GRIDPICO_PATCH_DISCONNECTED :
+                port->state == GRIDPICO_PATCH_CONNECTED && graph->ports[i].generation == generation);
+    }
+    return false;
+}
+
+static gridpico_result sync_apc_roles(apc_roles *roles)
+{
+    usb_midi_lane panel_lane;
+    uint32_t panel_generation = 0;
+    if (lookup_lane(roles->panel, false, &panel_lane) == GRIDPICO_OK) {
+        panel_generation = panel_lane_generation(&panel_lane);
+    }
+    if (panel_generation != 0 &&
+        (!panel_graph_input(roles->panel, panel_generation, true) ||
+         (roles->panel_generation != panel_generation &&
+          (physical_audition_pending() || router.generation[GRIDPICO_PICO_APC] == UINT32_MAX ||
+           !panel_input_fenced(NULL, &panel_lane))))) {
+        panel_generation = 0;
+    }
+    const uint32_t led_generation = led_role_generation(roles->led);
+    if (panel_generation == roles->panel_generation && led_generation == roles->led_generation &&
+        roles->graph_revision == router.graph.revision) return GRIDPICO_OK;
+
+    /* Keep the last revision available for completing an accepted retirement. */
+    if (!role_has_revision_space(roles, roles->retiring ? 2 : 1)) return GRIDPICO_CAPACITY;
+    record_role_change(roles);
+    if (roles->led_generation != led_generation) {
+        gridpico_pico_router_set_physical_feedback(&router,
+            led_generation != 0 && !roles->retiring ? roles->revision : 0);
+        roles->led_generation = led_generation;
+    }
+    if (roles->panel_generation != panel_generation) attach_physical_panel(roles, panel_generation);
+    return GRIDPICO_OK;
+}
+
+static void copy_apc_status(const apc_roles *roles, gridpico_apc_roles_status *out)
+{
+    *out = (gridpico_apc_roles_status){
+        .revision = roles->revision, .surface = 1,
+        .panel_input = roles->panel, .led_output = roles->led,
+        .panel_state = roles->panel == 0 ? GRIDPICO_APC_ROLE_NONE :
+            roles->panel_generation != 0 ? GRIDPICO_APC_ROLE_BOUND : GRIDPICO_APC_ROLE_UNRESOLVED,
+        .led_state = roles->led == 0 ? GRIDPICO_APC_ROLE_NONE :
+            roles->retiring ? GRIDPICO_APC_ROLE_RETIRING :
+            roles->led_generation != 0 ? GRIDPICO_APC_ROLE_RESERVED : GRIDPICO_APC_ROLE_UNRESOLVED,
+    };
+}
+
+static gridpico_result read_apc_roles(void *context, gridpico_apc_roles_status *out)
+{
+    apc_roles *roles = context;
+    if (roles == NULL || out == NULL) return GRIDPICO_INVALID;
+    const gridpico_result result = sync_apc_roles(roles);
+    if (result == GRIDPICO_OK) copy_apc_status(roles, out);
+    return result;
+}
+
+static gridpico_result set_led_eligibility(void *graph, gridpico_port_id port, bool reserved)
+{
+    return gridpico_patch_graph_set_apc_led_reserved(graph, port, reserved);
+}
+
+static gridpico_result release_led_role(apc_roles *roles)
+{
+    if (!role_has_revision_space(roles, 1)) return GRIDPICO_CAPACITY;
+    const gridpico_result result = gridpico_patch_session_set_apc_led_reserved(
+        &router.session, set_led_eligibility, roles->led, false, roles->led_flight_lifetime == 0);
+    if (result != GRIDPICO_OK) return result;
+    usb_midi_lane old_lane;
+    if (lookup_lane_kind(roles->led, true, true, &old_lane) == GRIDPICO_OK) {
+        roles->released_led_generation[old_lane.peer - GRIDPICO_PICO_DISCOVERED] = router.generation[old_lane.peer];
+    }
+    roles->led = 0;
+    roles->led_generation = 0;
+    roles->retiring = false;
+    record_role_change(roles);
+    gridpico_pico_router_set_physical_feedback(&router, 0);
+    return GRIDPICO_OK;
+}
+
+static gridpico_result change_led_role(apc_roles *roles, gridpico_port_id port, bool mark)
+{
+    usb_midi_lane lane;
+    const gridpico_result lookup = lookup_lane(port, true, &lane);
+    if (lookup == GRIDPICO_INVALID) return lookup;
+    if (roles->led == port && roles->retiring) return mark ? GRIDPICO_UNAVAILABLE : GRIDPICO_OK;
+    if (roles->led != 0 && roles->led != port) return GRIDPICO_UNAVAILABLE;
+    if (mark) {
+        if (lookup != GRIDPICO_OK) return lookup;
+        if (roles->led == port) return GRIDPICO_OK;
+        if (!role_has_revision_space(roles, 1)) return GRIDPICO_CAPACITY;
+        const bool idle = !interfaces[lane.index].busy && gridpico_pico_router_note(&router, lane.peer) == NULL;
+        const gridpico_result result = gridpico_patch_session_set_apc_led_reserved(
+            &router.session, set_led_eligibility, port, true, idle);
+        if (result != GRIDPICO_OK) return result;
+        roles->led = port;
+        roles->led_generation = router.generation[lane.peer];
+        record_role_change(roles);
+        gridpico_pico_router_set_physical_feedback(&router, roles->revision);
+        return GRIDPICO_OK;
+    }
+    if (roles->led == 0) return GRIDPICO_OK;
+    if (roles->led_flight_lifetime == 0) return release_led_role(roles);
+    if (router.graph.revision == UINT64_MAX || !role_has_revision_space(roles, 2)) return GRIDPICO_CAPACITY;
+    roles->retiring = true;
+    record_role_change(roles);
+    gridpico_pico_router_set_physical_feedback(&router, 0);
+    return GRIDPICO_OK;
+}
+
+static gridpico_result set_panel_eligibility(void *graph, gridpico_port_id port, bool reserved)
+{
+    return gridpico_patch_graph_set_apc_panel_reserved(graph, port, reserved);
+}
+
+static gridpico_result change_panel_role(apc_roles *roles, gridpico_port_id port)
+{
+    usb_midi_lane current, next;
+    uint32_t next_generation = 0;
+    if (port != 0) {
+        const gridpico_result result = lookup_lane(port, false, &next);
+        if (result != GRIDPICO_OK) return result;
+        if (!compatible_panel_input(&next)) return GRIDPICO_INVALID;
+        next_generation = panel_lane_generation(&next);
+        if (next_generation == 0 || !panel_graph_input(port, next_generation, roles->panel == port)) {
+            return GRIDPICO_UNAVAILABLE;
+        }
+    }
+    if (roles->panel == port) {
+        return roles->panel_generation == next_generation ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
+    }
+    if (physical_audition_pending()) return GRIDPICO_UNAVAILABLE;
+    const bool current_live = lookup_lane_kind(roles->panel, false, true, &current) == GRIDPICO_OK;
+    const uint32_t current_generation = current_live ? panel_lane_generation(&current) : 0;
+    if (roles->panel != 0 && ((current_live && current_generation == 0) ||
+        !panel_graph_input(roles->panel, current_generation, true))) return GRIDPICO_UNAVAILABLE;
+    const unsigned graph_steps = (port != 0 ? 1u : 0u) + (roles->panel != 0 ? 1u : 0u) + (current_live ? 2u : 0u);
+    if (!role_has_revision_space(roles, roles->retiring ? 2 : 1) || graph_steps > UINT64_MAX - router.graph.revision ||
+        (port != 0 && router.generation[GRIDPICO_PICO_APC] == UINT32_MAX) ||
+        (current_live && current_generation == UINT32_MAX)) {
+        return GRIDPICO_CAPACITY;
+    }
+    if (!panel_input_fenced(current_live ? &current : NULL, port != 0 ? &next : NULL)) return GRIDPICO_UNAVAILABLE;
+
+    if (port != 0) {
+        const gridpico_result result = gridpico_patch_session_set_apc_panel_reserved(
+            &router.session, set_panel_eligibility, port, true, true);
+        if (result != GRIDPICO_OK) return result;
+    }
+    if (roles->panel != 0) {
+        /* The old claim is tagged and its exact input generation was checked.
+         * The reserved source cannot gain managed branches or note debt.
+         */
+        const gridpico_result result = gridpico_patch_session_set_apc_panel_reserved(
+            &router.session, set_panel_eligibility, roles->panel, false, true);
+        if (result != GRIDPICO_OK) return result;
+        if (current_live) {
+            const gridpico_result renewed = gridpico_pico_router_renew_managed_input(&router, current.peer);
+            if (renewed != GRIDPICO_OK) return renewed;
+        }
+    }
+    roles->panel = port;
+    record_role_change(roles);
+    attach_physical_panel(roles, next_generation);
+    return GRIDPICO_OK;
+}
+
+static gridpico_result apply_apc_role(void *context, const gridpico_apc_role_request *request,
+                                     gridpico_apc_roles_status *out)
+{
+    apc_roles *roles = context;
+    if (roles == NULL || request == NULL || out == NULL || request->surface != 1 || request->expected_revision == 0 ||
+        request->action < GRIDPICO_APC_ROLE_SET_PANEL || request->action > GRIDPICO_APC_ROLE_UNMARK_LED) {
+        return GRIDPICO_INVALID;
+    }
+    gridpico_result result = sync_apc_roles(roles);
+    if (result != GRIDPICO_OK) return result;
+    if (roles->revision != request->expected_revision) return GRIDPICO_UNAVAILABLE;
+    const bool panel = request->action == GRIDPICO_APC_ROLE_SET_PANEL;
+    bool *explicit_owner = panel ? &roles->panel_explicit : &roles->led_explicit;
+    if (!*explicit_owner && !role_has_revision_space(roles, roles->retiring ? 2 : 1)) return GRIDPICO_CAPACITY;
+    const gridpico_revision before = roles->revision;
+    if (panel) result = change_panel_role(roles, request->port);
+    else result = change_led_role(roles, request->port, request->action == GRIDPICO_APC_ROLE_MARK_LED);
+    if (result == GRIDPICO_OK) {
+        if (!*explicit_owner) {
+            *explicit_owner = true;
+            if (roles->revision == before) record_role_change(roles);
+            gridpico_pico_auto_routes_invalidate(&automatic_routes);
+        }
+        copy_apc_status(roles, out);
+    }
+    return result;
+}
+
+static void service_apc_roles(void)
+{
+    apc_roles *roles = &physical_roles;
+    if (roles->retiring && roles->led_flight_lifetime == 0) {
+        (void)release_led_role(roles);
+    }
+    (void)sync_apc_roles(roles);
+}
+
+static bool same_serial(const midi_identity *left, const midi_identity *right)
+{
+    return same_identity_shape(left, right) && left->serial[0] != '\0' &&
+           strcmp(left->serial, right->serial) == 0;
+}
+
+static bool identity_conflict(uint8_t index, bool *unresolved)
+{
+    for (uint8_t i = 0; i < CFG_TUH_MIDI; ++i) {
+        if (i == index || !observed_interface(i)) continue;
+        const midi_identity *identity = &observations[index].identity;
+        const midi_observation *other = &observations[i];
+        if (other->verified) {
+            if (same_serial(&other->identity, identity)) return true;
+            *unresolved |= other->identity.serial[0] == '\0' && same_identity_shape(&other->identity, identity);
+        } else {
+            midi_identity shape;
+            if (!read_identity(i, &shape)) shape.revision = identity->revision;
+            *unresolved |= same_identity_shape(&shape, identity);
+        }
+    }
+    return false;
+}
+
+static void bind_discovered(discovered_device *binding, uint8_t index)
+{
+    const unsigned span = cable_span(&binding->identity);
+    for (unsigned cable = 0; cable < span; ++cable) {
+        const unsigned peer = binding->first_peer + cable;
+        if (router.generation[peer] == UINT32_MAX ||
+            router.discovered[peer - GRIDPICO_PICO_DISCOVERED].input_generation == UINT32_MAX) {
+            report_discovery_capacity(index);
+            return;
+        }
+    }
+    binding->index = index;
+    binding->lifetime = observations[index].lifetime;
+    for (unsigned cable = 0; cable < span; ++cable) {
+        gridpico_pico_router_attach(&router, (gridpico_pico_peer)(binding->first_peer + cable), true);
+    }
+}
+
+static void admit_discovered(void)
+{
+    uint8_t new_mounts[CFG_TUH_MIDI];
+    size_t new_count = 0;
+    unsigned free_devices = GRIDPICO_PICO_USB_DEVICES;
+    /* Allocate contiguous cable groups in append order. Slots of retired
+       devices stay reserved, so a return never inherits another queue. */
+    unsigned next_peer = GRIDPICO_PICO_DISCOVERED;
+    for (size_t slot = 0; slot < GRIDPICO_PICO_USB_DEVICES; ++slot) {
+        const discovered_device *binding = &discovered[slot];
+        if (binding->first_peer == 0) break;
+        --free_devices;
+        next_peer += cable_span(&binding->identity);
+    }
+
+    unsigned new_cables = 0;
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        if (!observations[index].verified || !eligible_interface(index)) continue;
+        const midi_identity *identity = &observations[index].identity;
+        bool unresolved = false;
+        const bool duplicate = identity_conflict(index, &unresolved);
+        const bool bound = mounted_binding(index) != NULL;
+        bool reserved = duplicate;
+        for (size_t slot = 0; slot < GRIDPICO_PICO_USB_DEVICES; ++slot) {
+            discovered_device *binding = &discovered[slot];
+            if (binding->first_peer == 0 || !same_identity_shape(&binding->identity, identity)) continue;
+            if (same_serial(&binding->identity, identity)) {
+                reserved = true;
+                binding->ambiguous |= duplicate;
+                if (!bound && binding->lifetime == 0 && !binding->ambiguous && !unresolved) {
+                    bind_discovered(binding, index);
+                }
+                break;
+            }
+            if (binding->lifetime == 0 &&
+                (identity->serial[0] == '\0' || binding->identity.serial[0] == '\0')) reserved = true;
+        }
+        if (bound || mounted_binding(index) != NULL) continue;
+        if (reserved) report_discovery_capacity(index);
+        else {
+            new_mounts[new_count++] = index;
+            new_cables += cable_span(identity);
+        }
+    }
+
+    /* Do not pick a winner by discovery order when the batch does not fit. */
+    const bool fits = new_count <= free_devices && next_peer + new_cables <= GRIDPICO_PICO_PEERS;
+    for (size_t i = 0; i < new_count; ++i) {
+        const uint8_t index = new_mounts[i];
+        if (!fits) {
+            report_discovery_capacity(index);
+            continue;
+        }
+        const midi_observation *observation = &observations[index];
+        const midi_identity *identity = &observation->identity;
+        const gridpico_pico_peer first_peer = (gridpico_pico_peer)next_peer;
+        const gridpico_result result = gridpico_pico_router_register_device(
+            &router, first_peer, observation->name, identity->inputs, identity->outputs);
+        if (result != GRIDPICO_OK) {
+            const uint8_t cause = (uint8_t)result;
+            add_trace('E', index, &cause, sizeof(cause));
+            continue;
+        }
+        discovered_device *binding = &discovered[GRIDPICO_PICO_USB_DEVICES - free_devices--];
+        *binding = (discovered_device){.identity = *identity, .first_peer = first_peer};
+        next_peer += cable_span(identity);
+        bind_discovered(binding, index);
+    }
+}
+
+static void remember_observation(uint8_t index, const midi_identity *identity, const char *name)
+{
+    midi_observation *observation = &observations[index];
+    observation->identity = *identity;
+    if (name != NULL && name[0] != '\0') {
+        memcpy(observation->name, name, sizeof(observation->name));
+    } else {
+        snprintf(observation->name, sizeof(observation->name), "USB MIDI %04X:%04X",
+                 (unsigned)identity->vid, (unsigned)identity->pid);
+    }
+    observation->verified = true;
+    observation->examined = true;
+}
+
+static void admit_without_strings(void)
+{
+    if (!discovery_dirty) return;
+    discovery_dirty = false;
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        if (!eligible_interface(index) || observations[index].verified) continue;
+        midi_identity identity;
+        midi_path path;
+        if (read_identity(index, &identity) && observed_path(interfaces[index].device_address, &path)) {
+            remember_observation(index, &identity, NULL);
+        }
+    }
+    admit_discovered();
+}
+
+static void service_discovery(void)
+{
+    bool just_expired = false;
+    if (discovery.index != NO_INTERFACE && !discovery.expired && time_us_64() >= discovery.deadline) {
+        discovery.expired = true;
+        discovery_dirty = true;
+        just_expired = true;
+    }
+    if (discovery.expired) {
+        /* Abort only our active request if the same lifetime still owns the
+         * address. A queued request can still borrow our buffer after timeout.
+         */
+        if (discovery.pending && probe_still_current()) {
+            (void)tuh_edpt_abort_xfer(discovery.address, 0);
+        }
+        if (discovery.pending || just_expired) admit_without_strings();
+        if (!discovery.pending) {
+            discovery.index = NO_INTERFACE;
+            discovery.expired = false;
+        }
+        return;
+    }
+    if (discovery.pending) return;
+
+    if (discovery.index != NO_INTERFACE) {
+        const uint8_t index = discovery.index;
+        if (probe_still_current()) {
+            if (discovery.phase != PROBE_DONE) {
+                start_descriptor_read();
+                return;
+            }
+            remember_observation(index, &discovery.identity, discovery.name);
+        } else if (observations[index].lifetime == discovery.lifetime) {
+            observations[index].examined = false;
+        }
+        discovery.index = NO_INTERFACE;
+        discovery_dirty = true;
+        return;
+    }
+    if (!discovery_dirty) return;
+    discovery_dirty = false;
+
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        if (observations[index].examined || !eligible_interface(index)) continue;
+        const uint8_t address = interfaces[index].device_address;
+        tusb_desc_device_t descriptor;
+        if (!read_identity(index, &discovery.identity) || !observed_path(address, &discovery.path) ||
+            !tuh_descriptor_get_device_local(address, &descriptor)) continue;
+        observations[index].examined = true;
+        discovery.index = index;
+        discovery.address = address;
+        discovery.lifetime = observations[index].lifetime;
+        discovery.has_name = descriptor.iProduct != 0;
+        discovery.has_serial = descriptor.iSerialNumber != 0;
+        discovery.language = 0;
+        discovery.name[0] = '\0';
+        discovery.phase = discovery.has_name || discovery.has_serial ? PROBE_LANG : PROBE_DONE;
+        discovery.deadline = time_us_64() + TX_TIMEOUT_US;
+        return;
+    }
+    admit_discovered();
+}
+
+static bool recognizable_controller(uint8_t index)
+{
+    const usb_midi_lane control = {.index = index, .cable = 1};
+    midi_path path;
+    return observed_interface(index) && compatible_panel_input(&control) &&
+        observed_path(interfaces[index].device_address, &path);
+}
+
+static bool placed_port(const gridpico_port_id *placements, size_t count, gridpico_port_id port)
+{
+    for (size_t i = 0; i < count; ++i) {
+        if (placements[i] == port) return true;
+    }
+    return false;
+}
+
+static bool try_automatic_roles(apc_roles *roles, gridpico_port_id panel, gridpico_port_id led)
+{
+    const gridpico_apc_patch_layout *layout = &router.session.apc_layout;
+    bool claimed = false;
+    if (led != 0 && roles->led == 0 && !roles->led_explicit &&
+        !placed_port(layout->columns, GRIDPICO_PATCH_DESTINATION_COLUMNS, led)) {
+        claimed = change_led_role(roles, led, true) == GRIDPICO_OK;
+    }
+    if (panel != 0 && roles->panel == 0 && !roles->panel_explicit &&
+        !placed_port(layout->rows, GRIDPICO_PATCH_SOURCE_ROWS, panel) &&
+        change_panel_role(roles, panel) == GRIDPICO_OK) {
+        claimed = true;
+    }
+    return claimed;
+}
+
+static void nominate_controller(apc_roles *roles)
+{
+    if ((roles->panel != 0 || roles->panel_explicit) && (roles->led != 0 || roles->led_explicit)) return;
+    if (roles->suggested_panel != 0 || roles->suggested_led != 0) {
+        (void)try_automatic_roles(roles, roles->suggested_panel, roles->suggested_led);
+        return;
+    }
+
+    uint8_t ordered[CFG_TUH_MIDI];
+    size_t count = 0;
+    bool unidentified = false;
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        if (!recognizable_controller(index)) continue;
+        const midi_observation *observation = &observations[index];
+        unidentified |= !observation->verified || observation->identity.serial[0] == '\0';
+        for (size_t i = 0; i < count; ++i) {
+            if (same_serial(&observation->identity, &observations[ordered[i]].identity)) return;
+        }
+        size_t position = count++;
+        while (position > 0 && observations[ordered[position - 1]].lifetime > observation->lifetime) {
+            ordered[position] = ordered[position - 1];
+            --position;
+        }
+        ordered[position] = index;
+    }
+    if (unidentified && count > 1) return;
+    for (size_t i = 0; i < count; ++i) {
+        const uint8_t index = ordered[i];
+        const discovered_device *binding = mounted_binding(index);
+        if (binding == NULL || binding->ambiguous || !eligible_interface(index)) continue;
+        const size_t slot = (size_t)(binding->first_peer - GRIDPICO_PICO_DISCOVERED) + 1;
+        const gridpico_port_id panel = router.discovered[slot].input;
+        const gridpico_port_id led = router.discovered[slot].output;
+        if (try_automatic_roles(roles, panel, led)) {
+            /* Preserve continuity only after this controller actually owns a
+             * role. An unsuccessful suggestion cannot displace a free one.
+             */
+            roles->suggested_panel = panel;
+            roles->suggested_led = led;
+            return;
+        }
+    }
+}
+
+static void service_automatic_policy(void)
+{
+    const bool coherent = !discovery_dirty && (discovery.index == NO_INTERFACE || discovery.expired) &&
+                          sync_apc_roles(&physical_roles) == GRIDPICO_OK;
+    apc_roles *roles = &physical_roles;
+    uint32_t blocked_inputs = 0;
+    uint32_t blocked_outputs = 0;
+    if (coherent) {
+        nominate_controller(roles);
+        /* An unresolved control lane is not automatically given a musical
+         * route while the candidate role is still optional. Explicit selection
+         * and explicit role release retain their own transport ownership.
+         */
+        for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+            const discovered_device *binding = mounted_binding(index);
+            if (binding == NULL || !recognizable_controller(index)) continue;
+            const unsigned slot = binding->first_peer - GRIDPICO_PICO_DISCOVERED + 1u;
+            if (!roles->panel_explicit) blocked_inputs |= UINT32_C(1) << slot;
+            if (!roles->led_explicit) blocked_outputs |= UINT32_C(1) << slot;
+        }
+        for (unsigned slot = 0; slot < GRIDPICO_PICO_USB_CABLE_GROUPS; ++slot) {
+            const uint32_t released = roles->released_led_generation[slot];
+            if (released != 0 && released == router.generation[GRIDPICO_PICO_DISCOVERED + slot]) {
+                blocked_outputs |= UINT32_C(1) << slot;
+            }
+        }
+    }
+    gridpico_pico_auto_routes_service(&automatic_routes, coherent, blocked_inputs, blocked_outputs);
+}
+
+static void retire_host_interface(uint8_t index, bool fault)
+{
+    host_interface *itf = &interfaces[index];
+    discovered_device *binding = mounted_binding(index);
+    if (binding != NULL) binding->lifetime = 0;
+    discovery_dirty = true;
+    if (itf->busy) {
+        fault |= !tuh_edpt_abort_xfer(itf->device_address, host_endpoints_out[index]);
+        itf->busy = false;
+        itf->out_generation = 0;
+    }
+    itf->faulted |= fault;
+    if (binding != NULL) {
+        for (unsigned cable = 0; cable < cable_span(&binding->identity); ++cable) {
+            gridpico_pico_router_attach(&router, (gridpico_pico_peer)(binding->first_peer + cable), false);
+        }
+    }
+}
+#endif
+
 #ifdef GRIDPICO_RP2040_PIO_DIAGNOSTICS
 void tuh_event_hook_cb(uint8_t root, uint32_t event, bool in_isr)
 {
@@ -607,33 +1541,150 @@ void tuh_enum_descriptor_device_cb(uint8_t address, const tusb_desc_device_t *de
     }
 #endif
 }
+#endif
 
+#if defined(GRIDPICO_RP2040_PIO_DIAGNOSTICS) || defined(GRIDPICO_PICO_GENERIC_MIDI)
 bool tuh_enum_descriptor_configuration_cb(uint8_t address, uint8_t index,
                                           const tusb_desc_configuration_t *descriptor)
 {
     const uint16_t length = tu_le16toh(descriptor->wTotalLength);
+#ifdef GRIDPICO_RP2040_PIO_DIAGNOSTICS
     const uint8_t values[] = {index, descriptor->bNumInterfaces, (uint8_t)(length >> 8), (uint8_t)length};
     add_trace('C', address, values, sizeof(values));
+#else
+    (void)index;
+#endif
 #ifdef GRIDPICO_RP2040_HUB_TRACE
     gridpico_hub_trace_config(address);
+#endif
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (address > 0 && address <= CFG_TUH_DEVICE_MAX) {
+        device_streams[address] = 0;
+        /* TinyUSB checked the short header. Validate the new full header
+         * before either walker uses its length. This callback has no actual
+         * transfer length with which to detect a short response.
+         */
+        if (descriptor->bDescriptorType != TUSB_DESC_CONFIGURATION ||
+            descriptor->bLength != sizeof(*descriptor) ||
+            length < sizeof(*descriptor) || length > CFG_TUH_ENUMERATION_BUFSIZE) {
+            return false;
+        }
+
+        uint8_t streams = 0;
+        const uint8_t *bytes = (const uint8_t *)descriptor;
+        size_t offset = sizeof(*descriptor);
+        while (offset + 2 <= length && bytes[offset] >= 2 && offset + bytes[offset] <= length) {
+            const uint8_t *entry = bytes + offset;
+            if (entry[1] == TUSB_DESC_INTERFACE) {
+                if (entry[0] < sizeof(tusb_desc_interface_t)) return false;
+                if (entry[3] == 0 && entry[5] == TUSB_CLASS_AUDIO && entry[6] == AUDIO_SUBCLASS_MIDI_STREAMING) {
+                    ++streams;
+                }
+            } else if (entry[1] == TUSB_DESC_ENDPOINT && entry[0] < sizeof(tusb_desc_endpoint_t)) {
+                return false;
+            }
+            offset += entry[0];
+        }
+        if (offset != length) return false;
+        device_streams[address] = streams;
+    }
 #endif
     return true;
 }
 
 void tuh_mount_cb(uint8_t address)
 {
+#ifdef GRIDPICO_RP2040_PIO_DIAGNOSTICS
     tuh_bus_info_t bus;
     tuh_bus_info_get(address, &bus);
     const uint8_t values[] = {bus.hub_addr, bus.hub_port};
     add_trace('N', address, values, sizeof(values));
+#endif
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (address > 0 && address <= CFG_TUH_DEVICE_MAX) devices_ready[address] = true;
+    discovery_dirty = true;
+#endif
+}
+#endif
+
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+void tuh_umount_cb(uint8_t address)
+{
+    if (address > 0 && address <= CFG_TUH_DEVICE_MAX) {
+        devices_ready[address] = false;
+        device_streams[address] = 0;
+    }
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        if (interfaces[index].present && interfaces[index].device_address == address) {
+            retire_host_interface(index, false);
+        }
+    }
+    discovery_dirty = true;
+}
+
+static bool midi_data_endpoint(const tusb_desc_endpoint_t *endpoint, tusb_dir_t direction)
+{
+    if (endpoint == NULL) return false;
+    const uint8_t address = endpoint->bEndpointAddress;
+    const uint16_t packet_size = tu_edpt_packet_size(endpoint);
+    return tu_edpt_dir(address) == direction && tu_edpt_number(address) != 0 &&
+           (address & 0x70u) == 0 && packet_size >= GRIDPICO_PICO_PACKET_BYTES &&
+           packet_size <= CFG_TUH_MIDI_EP_BUFSIZE &&
+           (endpoint->bmAttributes.xfer == TUSB_XFER_BULK ||
+            endpoint->bmAttributes.xfer == TUSB_XFER_INTERRUPT);
+}
+#endif
+
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+static uint8_t endpoint_cables(const tusb_desc_interface_t *interface, uint16_t total_length,
+                               const tusb_desc_endpoint_t *endpoint, tusb_dir_t direction)
+{
+    if (!midi_data_endpoint(endpoint, direction)) return 0;
+    const uint8_t *entry = (const uint8_t *)endpoint;
+    const uint8_t *start = (const uint8_t *)interface;
+    const size_t offset = (size_t)(entry - start) + endpoint->bLength;
+    if (offset + 4u > total_length) return 0;
+    const uint8_t *jacks = start + offset;
+    const uint8_t count = jacks[3];
+    if (jacks[1] != TUSB_DESC_CS_ENDPOINT || jacks[2] != 1 ||
+        count == 0 || count > GRIDPICO_PICO_USB_CABLES ||
+        jacks[0] < 4u + count || offset + jacks[0] > total_length) return 0;
+    for (uint8_t i = 0; i < count; ++i) {
+        if (jacks[4u + i] == 0 || (i > 0 && jacks[4u + i] == jacks[4u])) return 0;
+    }
+    return count;
 }
 #endif
 
 void tuh_midi_descriptor_cb(uint8_t index, const tuh_midi_descriptor_cb_t *descriptor)
 {
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (index < CFG_TUH_MIDI && !interfaces[index].present) {
+        host_endpoints_out[index] = descriptor->desc_epout == NULL ? 0 : descriptor->desc_epout->bEndpointAddress;
+        const tusb_desc_interface_t *midi = descriptor->desc_midi;
+        const uint8_t *header = descriptor->desc_header;
+        observations[index] = (midi_observation){0};
+        if (midi != NULL && midi->bAlternateSetting == 0 &&
+            midi->bInterfaceClass == TUSB_CLASS_AUDIO && midi->bInterfaceSubClass == AUDIO_SUBCLASS_MIDI_STREAMING &&
+            header != NULL && header[0] >= 7 && header[3] == 0 && header[4] == 1) {
+            const uint8_t rx = endpoint_cables(midi, descriptor->desc_midi_total_len, descriptor->desc_epin, TUSB_DIR_IN);
+            const uint8_t tx = endpoint_cables(midi, descriptor->desc_midi_total_len, descriptor->desc_epout, TUSB_DIR_OUT);
+            const bool have_rx = descriptor->desc_epin != NULL;
+            const bool have_tx = descriptor->desc_epout != NULL;
+            if (have_rx + have_tx == midi->bNumEndpoints && midi->bNumEndpoints != 0 &&
+                (rx != 0) == have_rx && (tx != 0) == have_tx) {
+                observations[index] = (midi_observation){
+                    .supported = true, .input_cables = rx, .output_cables = tx,
+                    .input_endpoint = have_rx ? descriptor->desc_epin->bEndpointAddress : 0,
+                };
+            }
+        }
+    }
+#else
     if (index < CFG_TUH_MIDI && descriptor->desc_epout != NULL) {
         host_endpoints_out[index] = descriptor->desc_epout->bEndpointAddress;
     }
+#endif
 #ifdef GRIDPICO_RP2040_PIO_DIAGNOSTICS
     const uint8_t values[] = {
         descriptor->desc_midi == NULL ? UINT8_MAX : descriptor->desc_midi->bInterfaceNumber,
@@ -647,9 +1698,21 @@ void tuh_midi_descriptor_cb(uint8_t index, const tuh_midi_descriptor_cb_t *descr
 void tuh_midi_umount_cb(uint8_t index)
 {
     if (index >= CFG_TUH_MIDI) return;
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    retire_host_interface(index, false);
+    if (physical_roles.led_flight_interface == index &&
+        physical_roles.led_flight_lifetime == observations[index].lifetime) {
+        /* The next foreground service runs after TinyUSB finishes closing the class. */
+        physical_roles.led_flight_lifetime = 0;
+    }
+    observations[index] = (midi_observation){0};
+    discovery_dirty = true;
+#endif
     interfaces[index] = (host_interface){0};
     host_endpoints_out[index] = 0;
+#ifndef GRIDPICO_PICO_GENERIC_MIDI
     reconcile_host();
+#endif
 }
 
 void tuh_midi_mount_cb(uint8_t index, const tuh_midi_mount_cb_t *mount)
@@ -673,15 +1736,64 @@ void tuh_midi_mount_cb(uint8_t index, const tuh_midi_mount_cb_t *mount)
         .device_address = mount->daddr, .number = mount->bInterfaceNumber,
         .rx_cables = mount->rx_cable_count, .tx_cables = mount->tx_cable_count,
     };
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (next_midi_lifetime != UINT32_MAX) observations[index].lifetime = ++next_midi_lifetime;
+    discovery_dirty = true;
+#endif
     const uint8_t identity[] = {(uint8_t)(vid >> 8), (uint8_t)vid, (uint8_t)(pid >> 8), (uint8_t)pid,
                                 mount->bInterfaceNumber, mount->rx_cable_count, mount->tx_cable_count};
     add_trace('M', index, identity, sizeof(identity));
+#ifndef GRIDPICO_PICO_GENERIC_MIDI
     reconcile_host();
+#endif
 }
 
 #ifdef GRIDPICO_RP2040_HCD_TRACE
 bool __real_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t result, uint32_t transferred);
 
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t result, uint32_t transferred)
+{
+    uint8_t matched = NO_INTERFACE;
+    if (address != 0 && endpoint != 0 && tu_edpt_dir(endpoint) == TUSB_DIR_OUT) {
+        for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+            const host_interface *itf = &interfaces[index];
+            if (!itf->present || !itf->busy || itf->faulted ||
+                itf->device_address != address || host_endpoints_out[index] != endpoint) continue;
+            if (matched != NO_INTERFACE) {
+                matched = NO_INTERFACE;
+                break;
+            }
+            matched = index;
+        }
+    }
+    const bool handled = __real_midih_xfer_cb(address, endpoint, result, transferred);
+    if (matched != NO_INTERFACE) {
+        host_interface *itf = &interfaces[matched];
+        const gridpico_pico_peer owner = itf->out_owner;
+        const bool led = owner == GRIDPICO_PICO_APC;
+        const bool current = led ? physical_roles.led_flight_interface == matched &&
+            physical_roles.led_flight_lifetime == observations[matched].lifetime :
+            router.attached[owner] && itf->out_generation == router.generation[owner];
+        const bool complete = current && handled && result == XFER_RESULT_SUCCESS &&
+            transferred == GRIDPICO_PICO_PACKET_BYTES;
+        const uint8_t values[] = {address, endpoint, (uint8_t)result, (uint8_t)(transferred >> 24),
+                                  (uint8_t)(transferred >> 16), (uint8_t)(transferred >> 8), (uint8_t)transferred};
+        add_trace('H', matched, values, sizeof(values));
+        add_trace(complete ? 'T' : 'F', matched, itf->in_flight.bytes, sizeof(itf->in_flight.bytes));
+        itf->busy = false;
+        itf->out_generation = 0;
+        if (led && current) {
+            physical_roles.led_flight_lifetime = 0;
+            if (physical_roles.flight_feedback_generation == router.physical_feedback_generation) {
+                gridpico_pico_router_led_complete(&router, GRIDPICO_PICO_APC, complete);
+            }
+        }
+        if (!complete) retire_host_interface(matched, true);
+    }
+    return handled;
+}
+#else
 bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t result, uint32_t transferred)
 {
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
@@ -736,6 +1848,7 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
 #endif
 }
 #endif
+#endif
 
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
 bool __real_midid_xfer_cb(uint8_t root, uint8_t endpoint, xfer_result_t result, uint32_t transferred);
@@ -762,6 +1875,74 @@ bool __wrap_midid_xfer_cb(uint8_t root, uint8_t endpoint, xfer_result_t result, 
 }
 #endif
 
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+void tuh_midi_tx_cb(uint8_t index, uint32_t transferred)
+{
+    /* The class hook owns the complete result for direct transfers. */
+    (void)index;
+    (void)transferred;
+}
+
+static bool submit_host_packet(uint8_t index, gridpico_pico_peer owner, const gridpico_pico_packet *packet,
+                               uint8_t cable)
+{
+    host_interface *itf = &interfaces[index];
+    if (itf->busy || !eligible_interface(index) || cable >= itf->tx_cables ||
+        (owner == GRIDPICO_PICO_APC ? router.physical_feedback_generation == 0 : !router.attached[owner])) {
+        return false;
+    }
+    itf->in_flight = *packet;
+    itf->in_flight.bytes[0] = (uint8_t)((packet->bytes[0] & 0x0fu) | ((unsigned)cable << 4));
+    tuh_xfer_t transfer = {
+        .daddr = itf->device_address,
+        .ep_addr = host_endpoints_out[index],
+        .buflen = sizeof(itf->in_flight.bytes),
+        .buffer = itf->in_flight.bytes,
+    };
+    /* A refused claim cannot leave bytes in TinyUSB's class FIFO. */
+    if (!tuh_edpt_xfer(&transfer)) return false;
+    itf->out_owner = owner;
+    itf->out_generation = router.generation[owner];
+    itf->busy = true;
+    itf->deadline = time_us_64() + TX_TIMEOUT_US;
+    return true;
+}
+
+static bool service_musical_out(uint8_t index, const discovered_device *binding)
+{
+    host_interface *itf = &interfaces[index];
+    const unsigned span = cable_span(&binding->identity);
+    for (unsigned offset = 0; offset < span; ++offset) {
+        const uint8_t cable = (uint8_t)((itf->next_cable + offset) % span);
+        if ((binding->identity.outputs & (1u << cable)) == 0) continue;
+        const gridpico_pico_peer owner = (gridpico_pico_peer)(binding->first_peer + cable);
+        const gridpico_pico_packet *packet = gridpico_pico_router_note(&router, owner);
+        if (packet == NULL) continue;
+        if (submit_host_packet(index, owner, packet, cable)) {
+            add_trace('G', (uint8_t)owner, itf->in_flight.bytes, sizeof(itf->in_flight.bytes));
+            gridpico_pico_router_note_sent(&router, owner);
+            itf->next_cable = (uint8_t)((cable + 1u) % span);
+        }
+        return true;
+    }
+    return false;
+}
+static void service_apc_led_out(uint8_t index)
+{
+    apc_roles *roles = &physical_roles;
+    if (roles->led_generation == 0 || roles->retiring || roles->led_flight_lifetime != 0) return;
+    usb_midi_lane lane;
+    if (lookup_lane(roles->led, true, &lane) != GRIDPICO_OK || lane.index != index ||
+        roles->led_generation != router.generation[lane.peer]) return;
+    const gridpico_pico_packet *packet = gridpico_pico_router_led(&router, GRIDPICO_PICO_APC);
+    if (packet != NULL && submit_host_packet(index, GRIDPICO_PICO_APC, packet, lane.cable)) {
+        roles->led_flight_interface = index;
+        roles->led_flight_lifetime = observations[index].lifetime;
+        roles->flight_feedback_generation = router.physical_feedback_generation;
+        gridpico_pico_router_led_sent(&router, GRIDPICO_PICO_APC);
+    }
+}
+#else
 void tuh_midi_tx_cb(uint8_t index, uint32_t transferred)
 {
     if (index >= CFG_TUH_MIDI || !interfaces[index].busy) return;
@@ -812,6 +1993,8 @@ static bool submit_host(uint8_t index, const gridpico_pico_packet *packet)
     return true;
 }
 
+#endif
+
 static void receive(gridpico_pico_peer peer, const gridpico_pico_packet *packet)
 {
     add_trace('I', (uint8_t)peer, packet->bytes, sizeof(packet->bytes));
@@ -826,6 +2009,48 @@ static void receive(gridpico_pico_peer peer, const gridpico_pico_packet *packet)
     gridpico_pico_router_receive(&router, peer, packet);
 }
 
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+static void service_host(void)
+{
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        host_interface *itf = &interfaces[index];
+        if (!itf->present || !tuh_midi_mounted(index) || itf->faulted) continue;
+        if (itf->busy && time_us_64() >= itf->deadline) {
+            add_trace('F', index, itf->in_flight.bytes, sizeof(itf->in_flight.bytes));
+            retire_host_interface(index, true);
+            continue;
+        }
+        const discovered_device *binding = mounted_binding(index);
+        gridpico_pico_packet packet;
+        for (unsigned i = 0; i < RX_BATCH && tuh_midi_packet_read(index, packet.bytes); ++i) {
+            const uint8_t cable = packet.bytes[0] >> 4;
+            if (binding != NULL && cable < GRIDPICO_PICO_USB_CABLES &&
+                (binding->identity.inputs & (1u << cable)) != 0) {
+                const gridpico_pico_peer peer = (gridpico_pico_peer)(binding->first_peer + cable);
+                const size_t slot = peer - GRIDPICO_PICO_DISCOVERED;
+                if (router.discovered[slot].input == physical_roles.panel) {
+                    if (!binding->ambiguous && physical_roles.panel_generation != 0 &&
+                        physical_roles.panel_generation == router.discovered[slot].input_generation &&
+                        router.attached[GRIDPICO_PICO_APC]) {
+                        packet.bytes[0] = (uint8_t)((packet.bytes[0] & 0x0fu) | 0x10u);
+                        receive(GRIDPICO_PICO_APC, &packet);
+                    }
+                } else {
+                    packet.bytes[0] &= 0x0fu;
+                    receive(peer, &packet);
+                }
+            }
+        }
+    }
+    service_discovery();
+    service_apc_roles();
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        if (interfaces[index].busy) continue;
+        const discovered_device *binding = mounted_binding(index);
+        if (binding != NULL && !service_musical_out(index, binding)) service_apc_led_out(index);
+    }
+}
+#else
 static void service_host(void)
 {
     for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
@@ -874,6 +2099,8 @@ static void service_host(void)
         gridpico_pico_router_led_sent(&router, GRIDPICO_PICO_APC);
     }
 }
+
+#endif
 
 static void service_native_midi(void)
 {
@@ -962,34 +2189,39 @@ static bool start_host(void)
     return true;
 }
 
-#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
-static uint32_t onboard_first_frame;
-
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS
 /* Keep the LED sample off the router's foreground dispatch stack frame. */
-static void __attribute__((noinline)) service_onboard_status(bool host_ready)
+static void __attribute__((noinline)) service_onboard_status(void)
 {
     static uint64_t next_sample;
-    static bool host_advanced;
     const uint64_t now = time_us_64();
     if (now < next_sample) return;
     next_sample = now + 10000;
 
-    gridpico_onboard_facts facts = {.fault = !host_ready};
-    if (host_ready) {
-        host_advanced |= pio_usb_host_get_frame_number() != onboard_first_frame;
-        facts.started = host_advanced;
-        facts.midi = (apc_interface != NO_INTERFACE && tuh_midi_mounted(apc_interface)) ||
-                     (synth_interface != NO_INTERFACE && tuh_midi_mounted(synth_interface));
-        facts.recovery = apc_ambiguous || synth_ambiguous;
-        /* Only the selected APC and synth can submit OUT and latch a fault. The
-           resolver drops their selections on fault, so inspect the live slots. */
-        for (uint8_t i = 0; i < CFG_TUH_MIDI; ++i) {
-            facts.fault |= interfaces[i].present && interfaces[i].faulted && tuh_midi_mounted(i);
-        }
-        /* Pinned TinyUSB allocates hub addresses after its ordinary device slots. */
-        for (uint8_t address = CFG_TUH_DEVICE_MAX + 1; address <= CFG_TUH_DEVICE_MAX + CFG_TUH_HUB; ++address) {
-            facts.hub |= tuh_mounted(address);
-        }
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    gridpico_onboard_facts facts = {.started = true};
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        if (!observed_interface(index)) continue;
+        facts.fault |= interfaces[index].faulted;
+        facts.midi |= !interfaces[index].faulted && mounted_binding(index) != NULL;
+    }
+#else
+    gridpico_onboard_facts facts = {
+        .started = true,
+        .midi = (apc_interface != NO_INTERFACE && tuh_midi_mounted(apc_interface)) ||
+                (synth_interface != NO_INTERFACE && tuh_midi_mounted(synth_interface)),
+        .recovery = apc_ambiguous || synth_ambiguous,
+    };
+    /* Only the selected APC and synth can submit OUT and latch a fault. The
+       resolver drops their selections on fault, so inspect the live slots. */
+    for (uint8_t i = 0; i < CFG_TUH_MIDI; ++i) {
+        facts.fault |= interfaces[i].present && interfaces[i].faulted &&
+                       reserved_startup_interface(&interfaces[i]) && tuh_midi_mounted(i);
+    }
+#endif
+    /* Pinned TinyUSB allocates hub addresses after its ordinary device slots. */
+    for (uint8_t address = CFG_TUH_DEVICE_MAX + 1; address <= CFG_TUH_DEVICE_MAX + CFG_TUH_HUB; ++address) {
+        facts.hub |= tuh_mounted(address);
     }
     gridpico_onboard_show(gridpico_onboard_classify(facts));
 }
@@ -1010,12 +2242,14 @@ int main(void)
 #ifdef GRIDPICO_RP2040_PATCHBAY_BENCH
     mark_unused_stack();
 #endif
-#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+#ifdef GRIDPICO_RP2040_FLASH_ROUTER
+    const uint64_t boot_deadline = time_us_64() + FLASH_START_DEADLINE_US;
+#endif
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS
     gridpico_onboard_init();
     gridpico_onboard_show(GRIDPICO_ONBOARD_STARTING);
 #endif
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
-    const uint64_t boot_deadline = time_us_64() + FLASH_START_DEADLINE_US;
     if (!gridpico_flash_init_usb_serial()) enter_rom();
     bool startup_ready = false;
     bool cdc_ready_seen = false;
@@ -1023,7 +2257,7 @@ int main(void)
 #endif
     const tusb_rhport_init_t device = {.role = TUSB_ROLE_DEVICE, .speed = TUSB_SPEED_FULL};
     if (!tusb_init(DEVICE_ROOT, &device) || gridpico_pico_router_init(&router) != GRIDPICO_OK) {
-#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS
         gridpico_onboard_show(GRIDPICO_ONBOARD_FAULT);
 #endif
         enter_rom();
@@ -1054,17 +2288,22 @@ int main(void)
 #endif
             watchdog_update();
             host_ready = start_host();
-#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
-            onboard_first_frame = pio_usb_host_get_frame_number();
-#endif
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
-            if (!host_ready) enter_rom();
+            if (!host_ready) {
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS
+                gridpico_onboard_show(GRIDPICO_ONBOARD_FAULT);
+#endif
+                enter_rom();
+            }
             host_frame_at_start = hcd_frame_number(HOST_ROOT);
 #endif
         }
         if (host_ready) {
             tuh_task_ext(0, false);
             service_host();
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+            service_automatic_policy();
+#endif
         }
         service_native_midi();
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
@@ -1080,8 +2319,8 @@ int main(void)
             startup_ready = check_flash_start(boot_deadline, host_running, cdc_ready_seen);
         }
 #endif
-#ifdef GRIDPICO_RP2040_ONBOARD_STATUS_BENCH
-        if (host_attempted) service_onboard_status(host_ready);
+#ifdef GRIDPICO_RP2040_ONBOARD_STATUS
+        if (startup_ready) service_onboard_status();
 #endif
         watchdog_update();
     }

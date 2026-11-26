@@ -53,6 +53,105 @@ typedef gridpico_result (*gridpico_local_read_routing_fn)(
 typedef gridpico_result (*gridpico_local_read_patch_page_fn)(
     void *context, const gridpico_local_patch_viewport *request, gridpico_local_patch_page *out);
 
+typedef struct {
+    /* Nonzero token for the completed automatic-route evaluation. */
+    gridpico_revision revision;
+    uint16_t candidates;
+    uint16_t active;
+    uint16_t pending;
+    uint16_t user_off;
+    uint16_t feedback;
+    uint16_t limit;
+    uint16_t unavailable;
+} gridpico_auto_route_summary;
+
+/* Copy a complete current summary. On failure, leave out unchanged. */
+typedef gridpico_result (*gridpico_read_auto_route_summary_fn)(
+    void *context, gridpico_auto_route_summary *out);
+
+enum {
+    GRIDPICO_AUTO_ROUTE_MAX_PAIRS = (GRIDPICO_PATCH_MAX_PORTS / 2) *
+                                   (GRIDPICO_PATCH_MAX_PORTS - GRIDPICO_PATCH_MAX_PORTS / 2)
+};
+
+typedef enum {
+    GRIDPICO_AUTO_SKIP_USER_OFF = 1,
+    GRIDPICO_AUTO_SKIP_COMPUTER_RETURN,
+    GRIDPICO_AUTO_SKIP_SAME_PARENT,
+    GRIDPICO_AUTO_SKIP_KNOWN_FEEDBACK,
+    GRIDPICO_AUTO_SKIP_CYCLE,
+    GRIDPICO_AUTO_SKIP_AUDITION_RESERVED,
+    GRIDPICO_AUTO_SKIP_BRANCH_LIMIT,
+    GRIDPICO_AUTO_SKIP_FANOUT_LIMIT,
+    GRIDPICO_AUTO_SKIP_UNAVAILABLE
+} gridpico_auto_route_skip_reason;
+
+typedef struct {
+    gridpico_port_id source;
+    gridpico_port_id destination;
+    gridpico_auto_route_skip_reason reason;
+} gridpico_auto_route_skip;
+
+typedef struct {
+    gridpico_revision revision; /* Completed evaluation token, nonzero. */
+    gridpico_revision routing_revision; /* Exact named Routing token, nonzero. */
+    uint16_t total_count;
+    uint16_t next_offset; /* Equal to total_count on the last page. */
+    uint8_t record_count;
+    gridpico_auto_route_skip records[GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS];
+} gridpico_auto_route_explain_page;
+
+/* A zero expected revision permits only offset zero. Copy from one complete
+ * current evaluation. On failure leave out unchanged.
+ */
+typedef gridpico_result (*gridpico_read_auto_route_explain_fn)(
+    void *context, gridpico_revision expected_revision, uint16_t offset,
+    gridpico_auto_route_explain_page *out);
+
+/* A runtime-scoped surface handle is independent of USB and logical port IDs. */
+typedef uint16_t gridpico_apc_surface_id;
+
+typedef enum {
+    GRIDPICO_APC_ROLE_NONE,
+    GRIDPICO_APC_ROLE_BOUND,
+    GRIDPICO_APC_ROLE_RESERVED,
+    GRIDPICO_APC_ROLE_RETIRING,
+    GRIDPICO_APC_ROLE_UNRESOLVED
+} gridpico_apc_role_state;
+
+typedef struct {
+    /* Nonzero token for the target's APC inventory and ownership state. */
+    gridpico_revision revision;
+    gridpico_apc_surface_id surface;
+    gridpico_port_id panel_input;
+    gridpico_port_id led_output;
+    gridpico_apc_role_state panel_state;
+    gridpico_apc_role_state led_state;
+} gridpico_apc_roles_status;
+
+typedef enum {
+    GRIDPICO_APC_ROLE_SET_PANEL,
+    GRIDPICO_APC_ROLE_MARK_LED,
+    GRIDPICO_APC_ROLE_UNMARK_LED
+} gridpico_apc_role_action;
+
+typedef struct {
+    gridpico_revision expected_revision;
+    gridpico_apc_surface_id surface;
+    /* Zero is valid only for clearing Panel input. */
+    gridpico_port_id port;
+    gridpico_apc_role_action action;
+} gridpico_apc_role_request;
+
+typedef gridpico_result (*gridpico_apc_read_roles_fn)(
+    void *context, gridpico_apc_roles_status *out);
+/* Check the guard and apply in one serialized operation. On success, publish
+ * actual state, including LED retirement in progress. On failure leave out
+ * unchanged.
+ */
+typedef gridpico_result (*gridpico_apc_apply_role_fn)(
+    void *context, const gridpico_apc_role_request *request, gridpico_apc_roles_status *out);
+
 /* Volatile editable physical APC page. The registered-order passive viewport
  * continues to use gridpico_local_patch_page.
  */

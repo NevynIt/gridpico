@@ -11,11 +11,21 @@
 #include "frontends/apc/apc_chooser.h"
 #endif
 
+#if defined(GRIDPICO_RP2040_MATRIX_CLI) && !defined(GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
+#define GRIDPICO_PICO_GENERIC_MIDI 1
+enum { GRIDPICO_PICO_USB_CABLES = 2, GRIDPICO_PICO_USB_DEVICES = 4, GRIDPICO_PICO_USB_CABLE_GROUPS = 5 };
+#endif
+
 typedef enum {
     GRIDPICO_PICO_APC,
     GRIDPICO_PICO_WEB,
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    GRIDPICO_PICO_DISCOVERED,
+    GRIDPICO_PICO_PEERS = GRIDPICO_PICO_DISCOVERED + GRIDPICO_PICO_USB_CABLE_GROUPS,
+#else
     GRIDPICO_PICO_SYNTH,
     GRIDPICO_PICO_PEERS,
+#endif
 } gridpico_pico_peer;
 
 enum { GRIDPICO_PICO_PACKET_BYTES = 4, GRIDPICO_PICO_QUEUE_SIZE = 128 };
@@ -60,7 +70,7 @@ typedef struct {
     gridpico_pico_packet sending[GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES];
     gridpico_apc_physical_page_version latest_version;
     gridpico_apc_physical_page_version sending_version;
-    uint32_t sending_generation;
+    gridpico_revision sending_generation;
     uint8_t cursor;
     bool latest_valid;
     bool pending;
@@ -85,6 +95,14 @@ struct gridpico_pico_router {
 #ifdef GRIDPICO_RP2040_MATRIX_CLI
     gridpico_local_routing_snapshot projection_scratch;
 #endif
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    gridpico_revision physical_feedback_generation;
+    gridpico_patch_manual_routes manual_routes;
+    struct {
+        gridpico_port_id input, output;
+        uint32_t input_generation;
+    } discovered[GRIDPICO_PICO_PEERS - GRIDPICO_PICO_DISCOVERED];
+#endif
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
     gridpico_pico_keys keys;
 #endif
@@ -100,7 +118,7 @@ struct gridpico_pico_router {
 
     bool attached[GRIDPICO_PICO_PEERS];
     uint32_t generation[GRIDPICO_PICO_PEERS];
-    gridpico_pico_queue notes[2];
+    gridpico_pico_queue notes[GRIDPICO_PICO_PEERS - 1];
 #ifndef GRIDPICO_RP2040_PATCHBAY_BENCH
     gridpico_pico_packet led;
     bool led_pending[2];
@@ -117,6 +135,16 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router);
 /* Startup only. Discard the candidate on a rejected snapshot. */
 gridpico_result gridpico_pico_router_init_snapshot(gridpico_pico_router *router,
                                                   const gridpico_apc_session_snapshot *snapshot);
+#endif
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+/* Append one validated device with per-cable direction masks. No attachment or placement. */
+gridpico_result gridpico_pico_router_register_device(gridpico_pico_router *router,
+                                                    gridpico_pico_peer first_peer, const char *name,
+                                                    uint8_t inputs, uint8_t outputs);
+/* An independent physical LED owner supplies a nonzero target epoch; zero stops feedback. */
+void gridpico_pico_router_set_physical_feedback(gridpico_pico_router *router, gridpico_revision generation);
+/* The caller has fenced the input, checked revision space, and released its Panel role. */
+gridpico_result gridpico_pico_router_renew_managed_input(gridpico_pico_router *router, gridpico_pico_peer peer);
 #endif
 #ifdef GRIDPICO_RP2040_MATRIX_CLI
 gridpico_result gridpico_pico_router_read_routing(void *context, gridpico_local_routing_snapshot *out);
