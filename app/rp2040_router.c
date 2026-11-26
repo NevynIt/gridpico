@@ -987,6 +987,24 @@ void gridpico_pico_router_finish_mode(gridpico_pico_router *router, bool native_
 }
 #endif
 
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+static void retain_host_releases(gridpico_pico_queue *queue)
+{
+    /* This ring belongs to one append-only logical sink. Its release entries
+     * include the head even while that packet is on the wire.
+     */
+    uint8_t kept = 0;
+    for (unsigned i = 0; i < queue->count; ++i) {
+        const gridpico_pico_packet packet = queue->packets[(queue->head + i) % GRIDPICO_PICO_QUEUE_SIZE];
+        if (packet.bytes[0] == 8) {
+            queue->packets[(queue->head + kept) % GRIDPICO_PICO_QUEUE_SIZE] = packet;
+            ++kept;
+        }
+    }
+    queue->count = kept;
+}
+#endif
+
 void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_peer peer, bool attached)
 {
     if (peer >= GRIDPICO_PICO_PEERS) return;
@@ -1005,9 +1023,9 @@ void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_pee
     router->attached[peer] = attached;
     if (peer != GRIDPICO_PICO_APC) {
         gridpico_pico_queue *queue = &router->notes[note_queue_index(peer)];
-        queue->head = queue->count = 0;
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
         if (peer >= GRIDPICO_PICO_DISCOVERED) {
+            if (!attached) retain_host_releases(queue);
             const size_t slot = (size_t)(peer - GRIDPICO_PICO_DISCOVERED);
             if (router->discovered[slot].output != 0) update_port(router, router->discovered[slot].output, peer);
             if (router->discovered[slot].input != 0) {
@@ -1015,9 +1033,11 @@ void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_pee
                 (void)update_discovered_input(router, slot, attached);
             }
         } else {
+            queue->head = queue->count = 0;
             update_port(router, WEB_EXPORT, peer);
         }
 #else
+        queue->head = queue->count = 0;
         {
             update_port(router, peer == GRIDPICO_PICO_WEB ? WEB_EXPORT : SYNTH_NOTES, peer);
 #ifdef GRIDPICO_RP2040_KEYS_BENCH

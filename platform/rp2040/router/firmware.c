@@ -97,7 +97,7 @@ typedef struct {
     uint64_t deadline;
     gridpico_pico_packet in_flight;
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
-    uint32_t out_generation;
+    uint32_t out_generation, out_lifetime;
     gridpico_pico_peer out_owner;
     uint8_t next_cable;
 #endif
@@ -1508,6 +1508,7 @@ static void retire_host_interface(uint8_t index, bool fault)
         itf->busy = false;
         itf->out_generation = 0;
     }
+    itf->out_lifetime = 0;
     itf->faulted |= fault;
     if (binding != NULL) {
         for (unsigned cable = 0; cable < cable_span(&binding->identity); ++cable) {
@@ -1752,13 +1753,37 @@ void tuh_midi_mount_cb(uint8_t index, const tuh_midi_mount_cb_t *mount)
 bool __real_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t result, uint32_t transferred);
 
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
+static bool host_release_packet(const gridpico_pico_packet *packet)
+{
+    return (packet->bytes[0] & 0x0fu) == 8;
+}
+
+static bool current_musical_flight(uint8_t index)
+{
+    const host_interface *itf = &interfaces[index];
+    const discovered_device *binding = mounted_binding(index);
+    const gridpico_pico_peer owner = itf->out_owner;
+    const unsigned cable = itf->in_flight.bytes[0] >> 4;
+    if (binding == NULL || owner < GRIDPICO_PICO_DISCOVERED || owner >= GRIDPICO_PICO_PEERS ||
+        cable >= cable_span(&binding->identity) || (binding->identity.outputs & (1u << cable)) == 0 ||
+        owner != binding->first_peer + cable || !router.attached[owner] ||
+        itf->out_generation != router.generation[owner]) return false;
+
+    if (!host_release_packet(&itf->in_flight)) return true;
+    const gridpico_pico_packet *head = gridpico_pico_router_note(&router, owner);
+    gridpico_pico_packet sent = itf->in_flight;
+    sent.bytes[0] &= 0x0fu;
+    return head != NULL && memcmp(head->bytes, sent.bytes, sizeof(sent.bytes)) == 0;
+}
+
 bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t result, uint32_t transferred)
 {
     uint8_t matched = NO_INTERFACE;
     if (address != 0 && endpoint != 0 && tu_edpt_dir(endpoint) == TUSB_DIR_OUT) {
         for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
             const host_interface *itf = &interfaces[index];
-            if (!itf->present || !itf->busy || itf->faulted ||
+            if (!itf->present || !itf->busy || itf->faulted || itf->out_lifetime == 0 ||
+                itf->out_lifetime != observations[index].lifetime ||
                 itf->device_address != address || host_endpoints_out[index] != endpoint) continue;
             if (matched != NO_INTERFACE) {
                 matched = NO_INTERFACE;
@@ -1774,7 +1799,7 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
         const bool led = owner == GRIDPICO_PICO_APC;
         const bool current = led ? physical_roles.led_flight_interface == matched &&
             physical_roles.led_flight_lifetime == observations[matched].lifetime :
-            router.attached[owner] && itf->out_generation == router.generation[owner];
+            current_musical_flight(matched);
         const bool complete = current && handled && result == XFER_RESULT_SUCCESS &&
             transferred == GRIDPICO_PICO_PACKET_BYTES;
         const uint8_t values[] = {address, endpoint, (uint8_t)result, (uint8_t)(transferred >> 24),
@@ -1788,6 +1813,9 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
             if (physical_roles.flight_feedback_generation == router.physical_feedback_generation) {
                 gridpico_pico_router_led_complete(&router, GRIDPICO_PICO_APC, complete);
             }
+        }
+        if (complete && !led && host_release_packet(&itf->in_flight)) {
+            gridpico_pico_router_note_sent(&router, owner);
         }
         if (!complete) retire_host_interface(matched, true);
     }
@@ -1891,6 +1919,17 @@ static bool submit_host_packet(uint8_t index, gridpico_pico_peer owner, const gr
         (owner == GRIDPICO_PICO_APC ? router.physical_feedback_generation == 0 : !router.attached[owner])) {
         return false;
     }
+    const uint32_t lifetime = observations[index].lifetime;
+    if (itf->out_lifetime != lifetime) {
+        /* The PIO frame IRQ posts completions on this core before it returns.
+         * The retired device's endpoints are closed before reuse. Drain its
+         * queued events before the first flight of a replacement lifetime.
+         */
+        const uint32_t irq = save_and_disable_interrupts();
+        const bool drained = !tuh_task_event_ready();
+        restore_interrupts(irq);
+        if (!drained) return false;
+    }
     itf->in_flight = *packet;
     itf->in_flight.bytes[0] = (uint8_t)((packet->bytes[0] & 0x0fu) | ((unsigned)cable << 4));
     tuh_xfer_t transfer = {
@@ -1903,6 +1942,7 @@ static bool submit_host_packet(uint8_t index, gridpico_pico_peer owner, const gr
     if (!tuh_edpt_xfer(&transfer)) return false;
     itf->out_owner = owner;
     itf->out_generation = router.generation[owner];
+    itf->out_lifetime = lifetime;
     itf->busy = true;
     itf->deadline = time_us_64() + TX_TIMEOUT_US;
     return true;
@@ -1920,7 +1960,7 @@ static bool service_musical_out(uint8_t index, const discovered_device *binding)
         if (packet == NULL) continue;
         if (submit_host_packet(index, owner, packet, cable)) {
             add_trace('G', (uint8_t)owner, itf->in_flight.bytes, sizeof(itf->in_flight.bytes));
-            gridpico_pico_router_note_sent(&router, owner);
+            if (!host_release_packet(packet)) gridpico_pico_router_note_sent(&router, owner);
             itf->next_cable = (uint8_t)((cable + 1u) % span);
         }
         return true;
