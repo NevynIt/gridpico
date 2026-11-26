@@ -227,6 +227,96 @@ static void malformed(void)
     printf("PASS malformed sizes, references, keys, shapes, padding and fields\n");
 }
 
+static void encoded_roundtrip(const uint8_t *expected, const gridpico_pico_pat2_intent *intent,
+                              gridpico_pico_pat2_intent *decoded)
+{
+    uint8_t guarded[SECTOR + 2];
+    memset(guarded, 0xa5, sizeof(guarded));
+    uint8_t *sector = guarded + 1;
+    assert(gridpico_pico_encode_pat2(intent, sector, SECTOR) == GRIDPICO_OK);
+    const size_t extent = GRIDPICO_PICO_PAT2_RECORD_BYTES;
+    assert(guarded[0] == 0xa5 && guarded[SECTOR + 1] == 0xa5);
+    assert(memcmp(sector, expected, extent) == 0);
+    for (size_t i = extent; i < SECTOR; ++i) assert(sector[i] == 0xa5);
+    memset(sector + extent, 0xff, SECTOR - extent); /* In-memory sector for the reader. */
+
+    gridpico_pico_pat2_status status;
+    assert(gridpico_pico_read_pat2(sector, NULL, &status, decoded) == GRIDPICO_OK);
+    assert(status.selected == 0 && !status.conflict && decoded->generation == intent->generation);
+    assert(decoded->identity_count == intent->identity_count &&
+           decoded->direction_count == intent->direction_count && decoded->pair_count == intent->pair_count);
+    assert(memcmp(decoded->slots, intent->slots, sizeof(decoded->slots)) == 0);
+    for (size_t i = 0; i < intent->pair_count; ++i) {
+        assert(decoded->pairs[i].source_ref == intent->pairs[i].source_ref &&
+               decoded->pairs[i].destination_ref == intent->pairs[i].destination_ref &&
+               decoded->pairs[i].enabled == intent->pairs[i].enabled);
+    }
+}
+
+static void reject_encoding(const gridpico_pico_pat2_intent *intent, size_t capacity)
+{
+    uint8_t output[GRIDPICO_PICO_PAT2_RECORD_BYTES];
+    uint8_t before[sizeof(output)];
+    memset(output, 0xa5, sizeof(output));
+    memcpy(before, output, sizeof(before));
+    assert(gridpico_pico_encode_pat2(intent, output, capacity) == GRIDPICO_INVALID);
+    assert(memcmp(before, output, sizeof(output)) == 0);
+}
+
+static void encoding(void)
+{
+    uint8_t expected[SECTOR];
+    const uint32_t generation = UINT32_C(0x12345678);
+    small_copy(expected, generation);
+    expected[IDS + 12] = 'Z';
+    expected[IDS + 44 + 12] = 'A';
+    const uint8_t ordered[][4] = {{3, 2, 0, 0}, {1, 4, 0, 0}, {3, 4, 1, 0}, {1, 2, 1, 0}};
+    memcpy(expected + PAIRS, ordered, sizeof(ordered));
+    commit(expected, END, generation, false);
+
+    gridpico_pico_pat2_status status;
+    gridpico_pico_pat2_intent intent, decoded;
+    assert(gridpico_pico_read_pat2(expected, NULL, &status, &intent) == GRIDPICO_OK);
+    encoded_roundtrip(expected, &intent, &decoded);
+    assert(decoded.identities[0].serial[0] == 'Z' && decoded.identities[1].serial[0] == 'A' &&
+           decoded.directions[1].identity_ref == 2 && decoded.directions[3].identity_ref == 1 &&
+           decoded.pairs[0].source_ref == 3 && decoded.pairs[0].enabled == 0 &&
+           decoded.pairs[3].source_ref == 1 && decoded.pairs[3].enabled == 1);
+
+    const size_t extent = GRIDPICO_PICO_PAT2_RECORD_BYTES;
+    uint8_t exact[GRIDPICO_PICO_PAT2_RECORD_BYTES];
+    assert(gridpico_pico_encode_pat2(&intent, exact, sizeof(exact)) == GRIDPICO_OK);
+    assert(memcmp(exact, expected, sizeof(exact)) == 0);
+    assert(gridpico_pico_encode_pat2(&intent, NULL, extent) == GRIDPICO_INVALID);
+    reject_encoding(&intent, extent - 1);
+    reject_encoding(NULL, extent);
+    intent.generation = 0;
+    reject_encoding(&intent, extent);
+    intent.generation = generation;
+    intent.identity_count = GRIDPICO_PICO_PAT2_IDENTITIES + 1;
+    reject_encoding(&intent, extent);
+    intent.identity_count = 2;
+    intent.slots[0] = 2; /* OUT in a row. */
+    reject_encoding(&intent, extent);
+    intent.slots[0] = 1;
+    intent.directions[0].label[31] = 'X';
+    reject_encoding(&intent, extent);
+    intent.directions[0].label[31] = '\0';
+    intent.pairs[1] = intent.pairs[0];
+    reject_encoding(&intent, extent);
+
+    union {
+        gridpico_pico_pat2_intent intent;
+        uint8_t bytes[GRIDPICO_PICO_PAT2_RECORD_BYTES];
+    } overlap;
+    memset(&overlap, 0xa5, sizeof(overlap));
+    overlap.intent = decoded;
+    memcpy(exact, overlap.bytes, sizeof(exact));
+    assert(gridpico_pico_encode_pat2(&overlap.intent, overlap.bytes, sizeof(overlap.bytes)) == GRIDPICO_INVALID);
+    assert(memcmp(exact, overlap.bytes, sizeof(exact)) == 0);
+    puts("PASS PAT2 encode/decode exact On/Off and stored order, padding, generation, bounds and untouched output");
+}
+
 static void maximum(void)
 {
     enum { MAX_END = 1361 };
@@ -260,9 +350,12 @@ static void maximum(void)
     gridpico_pico_pat2_status status;
     gridpico_pico_pat2_intent intent;
     assert(gridpico_pico_read_pat2(bytes, NULL, &status, &intent) == GRIDPICO_OK);
-    assert(intent.generation == UINT32_MAX && intent.identity_count == 8 &&
-           intent.direction_count == 18 && intent.pair_count == 81 &&
-           intent.identities[0].serial_length == 31 && strlen(intent.directions[0].label) == 31 &&
+    gridpico_pico_pat2_intent decoded;
+    encoded_roundtrip(bytes, &intent, &decoded);
+    puts("PASS PAT2 encoder maximal 1361-byte record in 1792-byte data/commit envelope");
+    assert(decoded.generation == UINT32_MAX && decoded.identity_count == 8 &&
+           decoded.direction_count == 18 && decoded.pair_count == 81 &&
+           decoded.identities[0].serial_length == 31 && strlen(decoded.directions[0].label) == 31 &&
            intent.pairs[80].source_ref == 9 && intent.pairs[80].destination_ref == 18);
 
     const gridpico_pico_pat2_verified_view empty = {.graph_revision = 65, .layout_revision = 77};
@@ -452,6 +545,7 @@ int main(void)
     assert(crc(0, (const uint8_t *)"123456789", 9) == UINT32_C(0xcbf43926));
     selection();
     malformed();
+    encoding();
     maximum();
     restore_plan();
     return 0;

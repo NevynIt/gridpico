@@ -13,14 +13,23 @@ enum {
 _Static_assert(HEADER_BYTES + MAX_PAYLOAD == 1361, "PAT2 maximum data extent");
 _Static_assert(HEADER_BYTES + MAX_PAYLOAD <= GRIDPICO_PICO_PAT2_DATA_BYTES,
                "PAT2 must fit its data pages");
-_Static_assert(GRIDPICO_PICO_PAT2_DATA_BYTES + GRIDPICO_PICO_SAVE_PAGE == 1792 &&
-               1792 <= GRIDPICO_PICO_SAVE_SECTOR, "PAT2 commit must fit a separate page");
+_Static_assert(GRIDPICO_PICO_PAT2_RECORD_BYTES == 1792 &&
+               GRIDPICO_PICO_PAT2_RECORD_BYTES <= (int)GRIDPICO_PICO_SAVE_SECTOR,
+               "PAT2 commit must fit a separate page");
 
 static uint32_t read_le(const uint8_t *bytes, unsigned width)
 {
     uint32_t value = 0;
     for (unsigned i = 0; i < width; ++i) value |= (uint32_t)bytes[i] << (8u * i);
     return value;
+}
+
+static void write_le(uint8_t *bytes, uint32_t value, unsigned width)
+{
+    for (unsigned i = 0; i < width; ++i) {
+        bytes[i] = (uint8_t)value;
+        value >>= 8;
+    }
 }
 
 static uint32_t crc_bytes(uint32_t crc, const uint8_t *bytes, size_t count)
@@ -32,6 +41,18 @@ static uint32_t crc_bytes(uint32_t crc, const uint8_t *bytes, size_t count)
         }
     }
     return crc;
+}
+
+static uint32_t record_crc(const uint8_t *bytes, size_t payload_size)
+{
+    return ~crc_bytes(crc_bytes(UINT32_MAX, bytes, 16), bytes + HEADER_BYTES, payload_size);
+}
+
+static size_t payload_extent(uint8_t identities, uint8_t directions, uint8_t pairs)
+{
+    return COUNTS_BYTES + IDENTITY_BYTES * (size_t)identities +
+           DIRECTION_BYTES * (size_t)directions + GRIDPICO_PICO_PAT2_SLOTS +
+           PAIR_BYTES * (size_t)pairs;
 }
 
 static bool all_bytes(const uint8_t *bytes, size_t count, uint8_t value)
@@ -148,6 +169,74 @@ static bool valid_intent(const gridpico_pico_pat2_intent *intent)
     return true;
 }
 
+static bool overlaps_intent(const gridpico_pico_pat2_intent *intent, const uint8_t *record)
+{
+    const uintptr_t input = (uintptr_t)intent, output = (uintptr_t)record;
+    return output >= input ? output - input < sizeof(*intent)
+                           : input - output < GRIDPICO_PICO_PAT2_RECORD_BYTES;
+}
+
+gridpico_result gridpico_pico_encode_pat2(
+    const gridpico_pico_pat2_intent *intent, uint8_t *record, size_t capacity)
+{
+    if (intent == NULL || record == NULL || capacity < GRIDPICO_PICO_PAT2_RECORD_BYTES ||
+        overlaps_intent(intent, record) || !valid_intent(intent)) return GRIDPICO_INVALID;
+
+    memset(record, 0xff, GRIDPICO_PICO_PAT2_RECORD_BYTES);
+    const size_t payload_size = payload_extent(intent->identity_count, intent->direction_count,
+                                               intent->pair_count);
+    memcpy(record, "GPSN", 4);
+    write_le(record + 4, 2, 2);
+    write_le(record + 6, (uint32_t)payload_size, 2);
+    write_le(record + 8, intent->generation, 4);
+    memcpy(record + 12, "PAT2", 4);
+
+    uint8_t *bytes = record + HEADER_BYTES;
+    bytes[0] = intent->identity_count;
+    bytes[1] = intent->direction_count;
+    bytes[2] = intent->pair_count;
+    bytes[3] = 0;
+    bytes += COUNTS_BYTES;
+    for (size_t i = 0; i < intent->identity_count; ++i, bytes += IDENTITY_BYTES) {
+        const gridpico_pico_pat2_identity *id = &intent->identities[i];
+        write_le(bytes, id->vid, 2);
+        write_le(bytes + 2, id->pid, 2);
+        write_le(bytes + 4, id->bcd_device, 2);
+        bytes[6] = id->interface_number;
+        bytes[7] = id->input_endpoint;
+        bytes[8] = id->output_endpoint;
+        bytes[9] = id->input_cables;
+        bytes[10] = id->output_cables;
+        bytes[11] = id->serial_length;
+        memcpy(bytes + 12, id->serial, sizeof(id->serial));
+    }
+    for (size_t i = 0; i < intent->direction_count; ++i, bytes += DIRECTION_BYTES) {
+        const gridpico_pico_pat2_direction *dir = &intent->directions[i];
+        bytes[0] = dir->identity_ref;
+        bytes[1] = dir->cable;
+        bytes[2] = dir->direction == GRIDPICO_PATCH_INPUT ? 0 : 1;
+        bytes[3] = 0;
+        memcpy(bytes + 4, dir->label, sizeof(dir->label));
+    }
+    memcpy(bytes, intent->slots, sizeof(intent->slots));
+    bytes += sizeof(intent->slots);
+    for (size_t i = 0; i < intent->pair_count; ++i, bytes += PAIR_BYTES) {
+        const gridpico_pico_pat2_pair *pair = &intent->pairs[i];
+        bytes[0] = pair->source_ref;
+        bytes[1] = pair->destination_ref;
+        bytes[2] = pair->enabled;
+        bytes[3] = 0;
+    }
+
+    const uint32_t crc = record_crc(record, payload_size);
+    write_le(record + 16, crc, 4);
+    uint8_t *commit = record + GRIDPICO_PICO_PAT2_DATA_BYTES;
+    memcpy(commit, "GPCM", 4);
+    write_le(commit + 4, intent->generation, 4);
+    write_le(commit + 8, crc, 4);
+    return GRIDPICO_OK;
+}
+
 static bool decode(const uint8_t *bytes, size_t size, uint32_t generation,
                    gridpico_pico_pat2_intent *intent)
 {
@@ -155,9 +244,7 @@ static bool decode(const uint8_t *bytes, size_t size, uint32_t generation,
     const uint8_t identities = bytes[0], directions = bytes[1], pairs = bytes[2];
     if (identities > GRIDPICO_PICO_PAT2_IDENTITIES || directions > GRIDPICO_PICO_PAT2_DIRECTIONS ||
         pairs > GRIDPICO_PICO_PAT2_PAIRS || bytes[3] != 0 ||
-        size != COUNTS_BYTES + IDENTITY_BYTES * (size_t)identities +
-                DIRECTION_BYTES * (size_t)directions + GRIDPICO_PICO_PAT2_SLOTS +
-                PAIR_BYTES * (size_t)pairs) return false;
+        size != payload_extent(identities, directions, pairs)) return false;
 
     *intent = (gridpico_pico_pat2_intent){
         .generation = generation, .identity_count = identities,
@@ -223,7 +310,7 @@ static gridpico_pico_pat2_copy inspect(const uint8_t *bytes,
         read_le(commit + 8, 4) == crc &&
         all_bytes(commit + COMMIT_BYTES,
                   GRIDPICO_PICO_SAVE_SECTOR - GRIDPICO_PICO_PAT2_DATA_BYTES - COMMIT_BYTES, 0xff) &&
-        ~crc_bytes(crc_bytes(UINT32_MAX, bytes, 16), bytes + HEADER_BYTES, payload_size) == crc &&
+        record_crc(bytes, payload_size) == crc &&
         decode(bytes + HEADER_BYTES, payload_size, generation, scratch)) {
         return (gridpico_pico_pat2_copy){.kind = GRIDPICO_PICO_PAT2_COMMITTED, .generation = generation};
     }

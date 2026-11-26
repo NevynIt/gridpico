@@ -9,6 +9,7 @@ enum {
     GRIDPICO_PICO_PAT2_SLOTS = GRIDPICO_PATCH_SOURCE_ROWS + GRIDPICO_PATCH_DESTINATION_COLUMNS,
     GRIDPICO_PICO_PAT2_PAIRS = 81,
     GRIDPICO_PICO_PAT2_DATA_BYTES = 6 * GRIDPICO_PICO_SAVE_PAGE,
+    GRIDPICO_PICO_PAT2_RECORD_BYTES = GRIDPICO_PICO_PAT2_DATA_BYTES + GRIDPICO_PICO_SAVE_PAGE,
 };
 
 typedef struct {
@@ -39,6 +40,14 @@ typedef struct {
     uint8_t slots[GRIDPICO_PICO_PAT2_SLOTS]; /* Rows then columns, zero means empty. */
     gridpico_pico_pat2_pair pairs[GRIDPICO_PICO_PAT2_PAIRS];
 } gridpico_pico_pat2_intent;
+
+/* Encode exactly RECORD_BYTES into caller RAM, with the commit page at
+ * DATA_BYTES. The record borrows the nonzero generation from intent. Invalid
+ * intent, a short span or overlap returns INVALID with the output unchanged.
+ * On success any capacity beyond RECORD_BYTES remains untouched.
+ */
+gridpico_result gridpico_pico_encode_pat2(
+    const gridpico_pico_pat2_intent *intent, uint8_t *record, size_t capacity);
 
 typedef enum {
     GRIDPICO_PICO_PAT2_UNREADABLE,
