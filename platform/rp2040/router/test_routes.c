@@ -42,7 +42,7 @@ static void connect(void)
     expect_led(GRIDPICO_PICO_APC, 0x15);
 }
 
-static void test_inputs_and_releases(void)
+static void test_independent_note_messages(void)
 {
     connect();
     assert(receive(GRIDPICO_PICO_APC, 9, 0x96, 60, 100) == GRIDPICO_OK);
@@ -50,24 +50,24 @@ static void test_inputs_and_releases(void)
     expect_note(GRIDPICO_PICO_SYNTH, 9, 0x96, 60, 100);
     assert(receive(GRIDPICO_PICO_WEB, 9, 0x96, 60, 70) == GRIDPICO_OK);
     assert(gridpico_pico_router_note(&router, GRIDPICO_PICO_WEB) == NULL);
-    assert(gridpico_pico_router_note(&router, GRIDPICO_PICO_SYNTH) == NULL);
+    expect_note(GRIDPICO_PICO_SYNTH, 9, 0x96, 60, 70);
 
     assert(receive(GRIDPICO_PICO_APC, 8, 0x86, 60, 23) == GRIDPICO_OK);
     expect_note(GRIDPICO_PICO_WEB, 8, 0x86, 60, 23);
-    assert(gridpico_pico_router_note(&router, GRIDPICO_PICO_SYNTH) == NULL);
+    expect_note(GRIDPICO_PICO_SYNTH, 8, 0x86, 60, 23);
     assert(receive(GRIDPICO_PICO_WEB, 9, 0x96, 60, 0) == GRIDPICO_OK);
     expect_note(GRIDPICO_PICO_SYNTH, 8, 0x86, 60, 0);
     assert(receive(GRIDPICO_PICO_APC, 9, 0x86, 61, 20) == GRIDPICO_INVALID);
 }
 
-static void test_shared_pad_independent_holds(void)
+static void test_shared_pad_and_current_routes(void)
 {
     connect();
     assert(receive(GRIDPICO_PICO_APC, 9, 0x90, 60, 100) == GRIDPICO_OK);
     expect_note(GRIDPICO_PICO_WEB, 9, 0x90, 60, 100);
     expect_note(GRIDPICO_PICO_SYNTH, 9, 0x90, 60, 100);
     assert(receive(GRIDPICO_PICO_APC, 0x19, 0x90, 0, 127) == GRIDPICO_OK);
-    expect_note(GRIDPICO_PICO_SYNTH, 8, 0x80, 60, 0);
+    assert(gridpico_pico_router_note(&router, GRIDPICO_PICO_SYNTH) == NULL);
     expect_led(GRIDPICO_PICO_WEB, 0);
     /* Leave the physical LED pending while Web receives the committed state. */
     assert(receive(GRIDPICO_PICO_APC, 0x19, 0x90, 0, 127) == GRIDPICO_OK);
@@ -86,7 +86,7 @@ static void test_shared_pad_independent_holds(void)
     assert(receive(GRIDPICO_PICO_WEB, 0x19, 0x90, 0, 127) == GRIDPICO_OK);
     assert(gridpico_pico_router_led(&router, GRIDPICO_PICO_WEB) == NULL);
     gridpico_pico_router_attach(&router, GRIDPICO_PICO_WEB, false);
-    expect_note(GRIDPICO_PICO_SYNTH, 8, 0x80, 61, 0);
+    assert(gridpico_pico_router_note(&router, GRIDPICO_PICO_SYNTH) == NULL);
     gridpico_pico_router_attach(&router, GRIDPICO_PICO_WEB, true);
     expect_led(GRIDPICO_PICO_WEB, 0x15);
     assert(receive(GRIDPICO_PICO_WEB, 0x19, 0x90, 0, 127) == GRIDPICO_OK);
@@ -104,8 +104,9 @@ static void test_destination_replacement(void)
     assert(receive(GRIDPICO_PICO_APC, 8, 0x80, 60, 11) == GRIDPICO_OK);
     expect_note(GRIDPICO_PICO_WEB, 8, 0x80, 60, 11);
     gridpico_pico_router_attach(&router, GRIDPICO_PICO_SYNTH, true);
-    expect_note(GRIDPICO_PICO_SYNTH, 8, 0x80, 60, 0);
     assert(gridpico_pico_router_note(&router, GRIDPICO_PICO_SYNTH) == NULL);
+    assert(receive(GRIDPICO_PICO_WEB, 8, 0x80, 61, 17) == GRIDPICO_OK);
+    expect_note(GRIDPICO_PICO_SYNTH, 8, 0x80, 61, 17);
     expect_led(GRIDPICO_PICO_APC, 0x15);
     expect_led(GRIDPICO_PICO_WEB, 0x15);
 }
@@ -113,16 +114,16 @@ static void test_destination_replacement(void)
 static void test_stalled_export(void)
 {
     connect();
-    bool rejected = false;
     for (unsigned i = 0; i < GRIDPICO_PICO_QUEUE_SIZE; ++i) {
-        const gridpico_result on = receive(GRIDPICO_PICO_APC, 9, 0x90, 60, 100);
-        if (on == GRIDPICO_UNAVAILABLE) rejected = true;
-        else assert(on == GRIDPICO_OK);
+        assert(receive(GRIDPICO_PICO_APC, 9, 0x90, 60, 100) == GRIDPICO_OK);
         expect_note(GRIDPICO_PICO_SYNTH, 9, 0x90, 60, 100);
-        assert(receive(GRIDPICO_PICO_APC, 8, 0x80, 60, 23) == GRIDPICO_OK);
-        expect_note(GRIDPICO_PICO_SYNTH, 8, 0x80, 60, 23);
     }
-    assert(rejected);
+    assert(receive(GRIDPICO_PICO_APC, 8, 0x80, 60, 23) == GRIDPICO_UNAVAILABLE);
+    expect_note(GRIDPICO_PICO_SYNTH, 8, 0x80, 60, 23);
+    for (unsigned i = 0; i < GRIDPICO_PICO_QUEUE_SIZE; ++i) {
+        expect_note(GRIDPICO_PICO_WEB, 9, 0x90, 60, 100);
+    }
+    assert(gridpico_pico_router_note(&router, GRIDPICO_PICO_WEB) == NULL);
 }
 
 #ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH
@@ -147,12 +148,11 @@ static void test_program_change_admission(void)
     assert(gridpico_pico_router_led(&router, GRIDPICO_PICO_WEB) == NULL);
     assert(gridpico_pico_router_led(&router, GRIDPICO_PICO_APC) == NULL);
 
-    /* Only the physical APC is sounding. It still makes the synth busy. */
+    /* Only the sink's actual queue controls this transport gate. */
     assert(receive(GRIDPICO_PICO_APC, 9, 0x90, 61, 96) == GRIDPICO_OK);
-    expect_note(GRIDPICO_PICO_SYNTH, 9, 0x90, 61, 96);
     assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
+    expect_note(GRIDPICO_PICO_SYNTH, 9, 0x90, 61, 96);
     assert(receive(GRIDPICO_PICO_APC, 8, 0x80, 61, 32) == GRIDPICO_OK);
-    assert(gridpico_patch_graph_destination_idle(&router.graph, native_to_synth.destination));
     assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
     expect_note(GRIDPICO_PICO_SYNTH, 8, 0x80, 61, 32);
     /* The native export still holds both frames. It cannot block the synth. */
@@ -173,11 +173,8 @@ static void test_program_change_admission(void)
     gridpico_pico_router_attach(&router, GRIDPICO_PICO_SYNTH, false);
     assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
     assert(receive(GRIDPICO_PICO_WEB, 8, 0x83, 63, 32) == GRIDPICO_OK);
-    assert(!gridpico_patch_graph_destination_idle(&router.graph, native_to_synth.destination));
     gridpico_pico_router_attach(&router, GRIDPICO_PICO_SYNTH, true);
-    assert(gridpico_patch_graph_destination_idle(&router.graph, native_to_synth.destination));
-    assert(!gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
-    expect_note(GRIDPICO_PICO_SYNTH, 8, 0x83, 63, 0);
+    assert(gridpico_pico_router_note(&router, GRIDPICO_PICO_SYNTH) == NULL);
     assert(gridpico_pico_router_can_program_change(&router, GRIDPICO_PICO_WEB, &minimum));
 
     const gridpico_local_route_request disable = {.route = native_to_synth, .enabled = false};
@@ -188,8 +185,8 @@ static void test_program_change_admission(void)
 
 int main(void)
 {
-    test_inputs_and_releases();
-    test_shared_pad_independent_holds();
+    test_independent_note_messages();
+    test_shared_pad_and_current_routes();
     test_destination_replacement();
     test_stalled_export();
 #ifdef GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH

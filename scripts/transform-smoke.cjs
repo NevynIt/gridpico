@@ -238,6 +238,10 @@ async function run() {
       'ROUTE 1 12 MANAGED ACTIVE'
     ]) assert.ok(active.rows.includes(record), record);
     await frames([], []);
+    sendMidi('803711');
+    await frames(['803711'], ['803711']);
+    sendMidi('903800');
+    await frames(['803800'], ['803800']);
 
     sendMidi('903c64');
     await frames(['903c64'], ['903c64']);
@@ -251,14 +255,14 @@ async function run() {
     const switched = BigInt(active.revision) + 1n;
     assert.deepEqual(await command('transform 1 12 7 4 if ' + active.revision),
                      ['TRANSFORM 1 12 7 4 ' + switched]);
-    await frames(['803c00'], []);
+    await frames([], []);
     assert.equal((await routing(command)).revision, String(switched));
     await command('transform 1 12 0 0 if ' + active.revision, 'ERR UNAVAILABLE');
     assert.deepEqual(await command('transform 1 12 7 4 if ' + switched),
                      ['TRANSFORM 1 12 7 4 ' + switched]);
     await frames([], []);
     sendMidi('803c27');
-    await frames([], ['803c27']);
+    await frames(['834327'], ['803c27']);
 
     sendMidi('903d62');
     await frames(['934462'], ['903d62']);
@@ -269,10 +273,10 @@ async function run() {
     const identity = switched + 1n;
     assert.deepEqual(await command('transform 1 12 0 0 if ' + switched),
                      ['TRANSFORM 1 12 0 0 ' + identity]);
-    await frames(['834400'], []);
+    await frames([], []);
     assert.equal((await routing(command)).revision, String(identity));
     sendMidi('803d13');
-    await frames([], ['803d13']);
+    await frames(['803d13'], ['803d13']);
     sendMidi('92412a');
     await frames(['92412a'], ['92412a']);
     sendMidi('824118');
@@ -283,19 +287,27 @@ async function run() {
     const second = identity + 1n;
     assert.deepEqual(await command('transform 1 6 -12 0 if ' + identity),
                      ['TRANSFORM 1 6 -12 0 ' + second]);
-    await frames([], ['824100'], []);
+    await frames([], []);
     assert.equal((await routing(command)).revision, String(second));
     sendMidi('824118');
-    await frames(['824118'], [], ['824118']);
+    await frames(['824118'], ['823518'], ['824118']);
     sendMidi('92412a');
     await frames(['92412a'], ['92352a'], ['92412a']);
     sendMidi('824118');
     await frames(['824118'], ['823518'], ['824118']);
 
-    assert.deepEqual(await command('route 1 6 managed off'), ['ROUTE 1 6 MANAGED OFF']);
+    sendMidi('903f65');
+    await frames(['903f65'], ['903365'], ['903f65']);
+    const beforeOff = await routing(command);
+    assert.deepEqual(await command('route 1 6 managed off if ' + beforeOff.revision),
+                     ['ROUTE 1 6 MANAGED OFF']);
+    await frames([], []);
+    sendMidi('803f30');
+    await frames(['803f30'], [], ['803f30']);
     const off = await routing(command);
     await command('transform 1 6 7 4 if ' + off.revision, 'ERR UNAVAILABLE');
-    assert.deepEqual(await command('route 1 6 managed on'), ['ROUTE 1 6 MANAGED ACTIVE']);
+    assert.deepEqual(await command('route 1 6 managed on if ' + off.revision),
+                     ['ROUTE 1 6 MANAGED ACTIVE']);
     sendMidi('92412a');
     await frames(['92412a'], ['92412a']);
     sendMidi('824118');
@@ -310,14 +322,26 @@ async function run() {
     await waitFor(async () => (await command('route 1 12 managed'))[0] ===
                             'ROUTE 1 12 MANAGED PENDING', 'selected route Pending');
     await connect('/midi/12', receiveTransformed);
-    await frames(['834400'], []);
+    await frames([], []);
     sendMidi('803d1e');
-    await frames([], ['803d1e']);
+    await frames(['83441e'], ['803d1e']);
     sendMidi('903d62');
     await frames(['934462'], ['903d62']);
     sendMidi('803d1e');
     await frames(['83441e'], ['803d1e']);
-    console.log('PASS two guarded Active-pair transforms, independent control, exact releases and identity');
+    const other = await connect('/midi/7');
+    const beforeFanIn = await routing(command);
+    assert.deepEqual(await command('route 7 5 managed on if ' + beforeFanIn.revision),
+                     ['ROUTE 7 5 MANAGED ACTIVE']);
+    sendMidi('903e63');
+    await frames(['934563'], ['903e63']);
+    other.send(Buffer.from('903e71', 'hex'));
+    await frames([], [], ['903e71']);
+    sendMidi('803e11');
+    await frames(['834511'], ['803e11']);
+    other.send(Buffer.from('803e22', 'hex'));
+    await frames([], [], ['803e22']);
+    console.log('PASS current-message transforms, independent fan-in, Off and reattach without generated MIDI');
   });
 }
 

@@ -18,6 +18,9 @@
 #if defined(GRIDPICO_RP2040_FLASH_ROUTER) || defined(GRIDPICO_PICO_GENERIC_MIDI)
 #include "device/dcd.h"
 #endif
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+#include "hardware/structs/usb.h"
+#endif
 #if defined(GRIDPICO_RP2040_FLASH_ROUTER) || defined(GRIDPICO_RP2040_PATCHBAY_BENCH)
 #include "hardware/sync.h"
 #endif
@@ -201,9 +204,13 @@ static uint32_t apc_led_generation;
 #endif
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
 typedef enum { NATIVE_OUT_IDLE, NATIVE_OUT_NOTE, NATIVE_OUT_PANEL } native_out_kind;
-static volatile uint32_t native_bus_epoch, native_posted_epoch;
+enum { NATIVE_EVENT_IDLE, NATIVE_EVENT_ARMED, NATIVE_EVENT_SEEN, NATIVE_EVENT_DUPLICATE };
+static volatile uint8_t native_event_state, native_event_result;
+static volatile uint32_t native_event_length;
+static volatile uint32_t native_bus_epoch, native_accepted_reset_epoch;
 static uint32_t native_mounted_epoch, native_configuration;
 static uint32_t native_active_epoch, native_active_configuration;
+static bool native_out_started;
 static struct {
     uint64_t deadline;
     gridpico_pico_packet packet;
@@ -479,8 +486,18 @@ void __real_dcd_event_handler(const dcd_event_t *event, bool in_isr);
 
 void __wrap_dcd_event_handler(const dcd_event_t *event, bool in_isr)
 {
-    if (native_bus_loss(event->rhport, event->event_id) && native_bus_epoch != UINT32_MAX) {
-        ++native_bus_epoch;
+    if (native_bus_loss(event->rhport, event->event_id)) {
+        if (native_bus_epoch != UINT32_MAX) ++native_bus_epoch;
+        native_event_state = NATIVE_EVENT_IDLE;
+    } else if (event->rhport == DEVICE_ROOT && event->event_id == DCD_EVENT_XFER_COMPLETE &&
+               event->xfer_complete.ep_addr == GRIDPICO_NATIVE_MIDI_IN_EP) {
+        if (native_event_state == NATIVE_EVENT_ARMED) {
+            native_event_result = event->xfer_complete.result;
+            native_event_length = event->xfer_complete.len;
+            native_event_state = NATIVE_EVENT_SEEN;
+        } else if (native_event_state == NATIVE_EVENT_SEEN) {
+            native_event_state = NATIVE_EVENT_DUPLICATE;
+        }
     }
     __real_dcd_event_handler(event, in_isr);
 }
@@ -488,7 +505,15 @@ void __wrap_dcd_event_handler(const dcd_event_t *event, bool in_isr)
 void tud_mount_cb(void)
 {
     if (native_configuration != UINT32_MAX) ++native_configuration;
-    native_mounted_epoch = native_bus_epoch;
+    const uint32_t epoch = native_bus_epoch;
+    native_mounted_epoch = epoch == native_accepted_reset_epoch ? epoch : 0;
+}
+
+static bool native_endpoint_quiet(void)
+{
+    _Static_assert(GRIDPICO_NATIVE_MIDI_IN_EP == 0x83, "native MIDI buffer is EP3 IN");
+    return (usb_hw->sie_status & USB_SIE_STATUS_BUS_RESET_BITS) == 0 &&
+           (usb_hw->buf_status & USB_BUFF_STATUS_EP3_IN_BITS) == 0;
 }
 
 static bool native_epoch_current(void)
@@ -504,8 +529,8 @@ void tud_event_hook_cb(uint8_t root, uint32_t event, bool in_isr)
 {
     (void)in_isr;
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
-    /* TinyUSB only invokes this hook after the event queue accepts the event. */
-    if (native_bus_loss(root, event)) native_posted_epoch = native_bus_epoch;
+    /* Only an accepted BUS_RESET can prove an epoch for later reopening. */
+    if (root == DEVICE_ROOT && event == DCD_EVENT_BUS_RESET) native_accepted_reset_epoch = native_bus_epoch;
 #endif
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
     if (root == DEVICE_ROOT && (event == DCD_EVENT_BUS_RESET || event == DCD_EVENT_SETUP_RECEIVED)) {
@@ -612,6 +637,7 @@ void tud_umount_cb(void)
     native_led_refresh_at = 0;
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
     native_mounted_epoch = 0;
+    native_event_state = NATIVE_EVENT_IDLE;
 #elif defined(GRIDPICO_RP2040_PATCHBAY_BENCH)
     native_led_generation = 0;
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
@@ -1810,22 +1836,6 @@ void tuh_midi_mount_cb(uint8_t index, const tuh_midi_mount_cb_t *mount)
 bool __real_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t result, uint32_t transferred);
 
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
-static bool host_release_packet(const gridpico_pico_packet *packet)
-{
-    return (packet->bytes[0] & 0x0fu) == 8;
-}
-
-static bool recovery_sink_current(uint8_t index, gridpico_pico_peer owner)
-{
-    const size_t slot = owner - GRIDPICO_PICO_DISCOVERED;
-    if (!router.discovered[slot].recovering_output) return true;
-
-    const discovered_device *binding = mounted_binding(index);
-    return binding != NULL && !binding->ambiguous && observations[index].verified &&
-        eligible_interface(index) && binding->identity.output_endpoint == host_endpoints_out[index] &&
-        same_serial(&binding->identity, &observations[index].identity);
-}
-
 static bool current_musical_flight(uint8_t index)
 {
     const host_interface *itf = &interfaces[index];
@@ -1837,7 +1847,6 @@ static bool current_musical_flight(uint8_t index)
         owner != binding->first_peer + cable || !router.attached[owner] ||
         itf->out_generation != router.generation[owner]) return false;
 
-    if (!host_release_packet(&itf->in_flight)) return true;
     const gridpico_pico_packet *head = gridpico_pico_router_note(&router, owner);
     gridpico_pico_packet sent = itf->in_flight;
     sent.bytes[0] &= 0x0fu;
@@ -1882,7 +1891,7 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
                 gridpico_pico_router_led_complete(&router, GRIDPICO_PICO_APC, complete);
             }
         }
-        if (complete && !led && host_release_packet(&itf->in_flight) && recovery_sink_current(matched, owner)) {
+        if (complete && !led) {
             gridpico_pico_router_note_sent(&router, owner);
         }
         if (!complete) retire_host_interface(matched, true);
@@ -1954,12 +1963,24 @@ bool __wrap_midid_xfer_cb(uint8_t root, uint8_t endpoint, xfer_result_t result, 
     const bool handled = __real_midid_xfer_cb(root, endpoint, result, transferred);
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
     if (root != DEVICE_ROOT || endpoint != GRIDPICO_NATIVE_MIDI_IN_EP ||
-        native_out.kind == NATIVE_OUT_IDLE || !native_epoch_current() ||
-        native_out.generation != router.generation[GRIDPICO_PICO_WEB]) return handled;
+        native_out.kind == NATIVE_OUT_IDLE) return handled;
 
+    const uint32_t irq = save_and_disable_interrupts();
+    const bool owned = native_epoch_current() && !tud_suspended() && native_endpoint_quiet() &&
+        native_out.generation == router.generation[GRIDPICO_PICO_WEB] &&
+        native_event_state >= NATIVE_EVENT_SEEN;
+    const bool complete = owned && native_event_state == NATIVE_EVENT_SEEN &&
+        native_event_result == result && native_event_length == transferred &&
+        handled && result == XFER_RESULT_SUCCESS && transferred == GRIDPICO_PICO_PACKET_BYTES;
     const native_out_kind kind = native_out.kind;
-    native_out.kind = NATIVE_OUT_IDLE;
-    if (!handled || result != XFER_RESULT_SUCCESS || transferred != GRIDPICO_PICO_PACKET_BYTES) {
+    if (owned) {
+        native_event_state = NATIVE_EVENT_IDLE;
+        native_out.kind = NATIVE_OUT_IDLE;
+    }
+    restore_interrupts(irq);
+    if (!owned) return handled;
+
+    if (!complete) {
         gridpico_pico_router_retire_native_output(&router);
     } else if (kind == NATIVE_OUT_NOTE) {
         const gridpico_pico_packet *head = gridpico_pico_router_note(&router, GRIDPICO_PICO_WEB);
@@ -2045,12 +2066,10 @@ static bool service_musical_out(uint8_t index, const discovered_device *binding)
         const uint8_t cable = (uint8_t)((itf->next_cable + offset) % span);
         if ((binding->identity.outputs & (1u << cable)) == 0) continue;
         const gridpico_pico_peer owner = (gridpico_pico_peer)(binding->first_peer + cable);
-        if (!recovery_sink_current(index, owner)) continue;
         const gridpico_pico_packet *packet = gridpico_pico_router_note(&router, owner);
         if (packet == NULL) continue;
         if (submit_host_packet(index, owner, packet, cable)) {
             add_trace('G', (uint8_t)owner, itf->in_flight.bytes, sizeof(itf->in_flight.bytes));
-            if (!host_release_packet(packet)) gridpico_pico_router_note_sent(&router, owner);
             itf->next_cable = (uint8_t)((cable + 1u) % span);
         }
         return true;
@@ -2238,23 +2257,27 @@ static void service_native_epoch(void)
     if (native_epoch_current()) return;
     if (native_active_epoch != 0) {
         native_active_epoch = 0;
+        native_event_state = NATIVE_EVENT_IDLE;
         native_out.kind = NATIVE_OUT_IDLE;
         native_led_refresh_at = 0;
         gridpico_pico_router_attach(&router, GRIDPICO_PICO_WEB, false);
     }
 
-    /* The loss event must have made it into TinyUSB, and the foreground
-     * must have processed it and a new SET_CONFIGURATION before opening.
-     * An old mount callback cannot survive a later queued reset plus drain.
+    /* Reopen only after the latest observed BUS_RESET was queued, the
+     * queue drained and a configuration survived the reset. UNPLUGGED
+     * only invalidates ownership. An old queued mount alone cannot reopen.
      */
     const uint32_t irq = save_and_disable_interrupts();
     const uint32_t epoch = native_bus_epoch;
     const bool configured = epoch != 0 && epoch != UINT32_MAX &&
-        epoch == native_posted_epoch && epoch == native_mounted_epoch &&
-        native_configuration != UINT32_MAX && !tud_task_event_ready() && tud_midi_mounted();
+        epoch == native_accepted_reset_epoch && epoch == native_mounted_epoch &&
+        native_configuration != UINT32_MAX && !tud_task_event_ready() && tud_midi_mounted() &&
+        !tud_suspended() && usbd_edpt_ready(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP) &&
+        native_endpoint_quiet();
     if (configured) {
         native_active_epoch = epoch;
         native_active_configuration = native_configuration;
+        native_out_started = false;
     }
     restore_interrupts(irq);
     if (configured) gridpico_pico_router_attach(&router, GRIDPICO_PICO_WEB, true);
@@ -2267,13 +2290,20 @@ static bool submit_native_packet(const gridpico_pico_packet *packet, native_out_
      * same-core deadline and four-byte direct submission own one flight.
      */
     const uint32_t irq = save_and_disable_interrupts();
-    const bool accepted = native_epoch_current() && !tud_suspended() &&
-        usbd_edpt_claim(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP) &&
-        usbd_edpt_xfer(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP, native_out.packet.bytes,
-                      GRIDPICO_PICO_PACKET_BYTES, false);
-    if (accepted) {
-        native_out.generation = router.generation[GRIDPICO_PICO_WEB];
-        native_out.kind = kind;
+    bool accepted = false;
+    if (native_epoch_current() && !tud_suspended() &&
+        (native_out_started || !tud_task_event_ready()) && native_endpoint_quiet() &&
+        usbd_edpt_claim(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP)) {
+        native_event_state = NATIVE_EVENT_ARMED;
+        accepted = usbd_edpt_xfer(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP, native_out.packet.bytes,
+                                 GRIDPICO_PICO_PACKET_BYTES, false);
+        if (accepted) {
+            native_out.generation = router.generation[GRIDPICO_PICO_WEB];
+            native_out.kind = kind;
+            native_out_started = true;
+        } else {
+            native_event_state = NATIVE_EVENT_IDLE;
+        }
     }
     restore_interrupts(irq);
     if (accepted) native_out.deadline = time_us_64() + TX_TIMEOUT_US;
@@ -2284,21 +2314,20 @@ static void service_native_midi(void)
 {
     service_native_epoch();
     if (!native_epoch_current() || !router.attached[GRIDPICO_PICO_WEB]) return;
+    const uint64_t now = time_us_64();
+    if (native_out.kind != NATIVE_OUT_IDLE && now >= native_out.deadline) {
+        native_event_state = NATIVE_EVENT_IDLE;
+        native_out.kind = NATIVE_OUT_IDLE;
+        gridpico_pico_router_retire_native_output(&router);
+    }
+    if (tud_suspended()) return;
     gridpico_pico_packet packet;
     for (unsigned i = 0; i < RX_BATCH && tud_midi_packet_read(packet.bytes); ++i) {
         if (!native_epoch_current()) return;
         if (packet.bytes[0] >> 4 == 0 || router.native_output_ready) receive(GRIDPICO_PICO_WEB, &packet);
     }
-    if (!router.native_output_ready) return;
+    if (!router.native_output_ready || native_out.kind != NATIVE_OUT_IDLE) return;
 
-    const uint64_t now = time_us_64();
-    if (native_out.kind != NATIVE_OUT_IDLE) {
-        if (now >= native_out.deadline) {
-            native_out.kind = NATIVE_OUT_IDLE;
-            gridpico_pico_router_retire_native_output(&router);
-        }
-        return;
-    }
     const gridpico_pico_packet *note = gridpico_pico_router_note(&router, GRIDPICO_PICO_WEB);
     if (note != NULL) {
         if (submit_native_packet(note, NATIVE_OUT_NOTE)) {

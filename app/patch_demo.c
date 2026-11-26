@@ -240,7 +240,7 @@ static bool run_demo(patch_demo *demo)
     puts("2. Disable MIDI A while both outputs sound");
     if (!submit(demo, keybed_note(1, GRIDPICO_NOTE_ON, 62, 96), initial_outputs, 2) ||
         !set_route(demo, MIDI_A, false) ||
-        !expect_capture(demo, keybed_note(1, GRIDPICO_NOTE_OFF, 62, 0), &initial_outputs[0], 1) ||
+        !expect_silence(demo) ||
         !expect_snapshot(demo, off, active, 0, 1) ||
         !submit(demo, keybed_note(1, GRIDPICO_NOTE_OFF, 62, 32), &initial_outputs[1], 1)) {
         return false;
@@ -254,7 +254,7 @@ static bool run_demo(patch_demo *demo)
         !expect_snapshot(demo, active, pending, MIDI_B, 1) || !expect_silence(demo) ||
         !submit(demo, keybed_note(1, GRIDPICO_NOTE_OFF, 64, 32), &initial_outputs[0], 1) ||
         !update_port(demo, reconnected_outputs[1], GRIDPICO_PATCH_CONNECTED, GRIDPICO_OK) ||
-        !expect_capture(demo, keybed_note(1, GRIDPICO_NOTE_OFF, 64, 0), &reconnected_outputs[1], 1) ||
+        !expect_silence(demo) ||
         !expect_snapshot(demo, active, active, 0, 1)) {
         return false;
     }
@@ -270,6 +270,7 @@ static bool run_demo(patch_demo *demo)
         !expect_result("Submit stale source generation",
                        gridpico_patch_graph_submit_note(&demo->graph, &stale), GRIDPICO_UNAVAILABLE) ||
         !expect_silence(demo) ||
+        !submit(demo, keybed_note(2, GRIDPICO_NOTE_OFF, 66, 24), reconnected_outputs, 2) ||
         !submit(demo, keybed_note(2, GRIDPICO_NOTE_ON, 65, 96), reconnected_outputs, 2) ||
         !submit(demo, keybed_note(2, GRIDPICO_NOTE_OFF, 65, 32), reconnected_outputs, 2)) {
         return false;

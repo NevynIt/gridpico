@@ -184,9 +184,12 @@ static bool write_records(const local_runtime *runtime)
             if (printf("fault midi %u %" PRIu32 "\n", port, generation) < 0) {
                 return false;
             }
-        } else if (printf("midi %u %" PRIu32 " ", port, generation) < 0 ||
-                   !write_hex((const char *)row->bytes, sizeof(row->bytes))) {
-            return false;
+        } else {
+            local_port_state state;
+            if (local_runtime_port(runtime, row->destination.endpoint, &state) != GRIDPICO_OK ||
+                !state.attached || state.generation != generation) continue;
+            if (printf("midi %u %" PRIu32 " ", port, generation) < 0 ||
+                !write_hex((const char *)row->bytes, sizeof(row->bytes))) return false;
         }
     }
     if (runtime->serial.fault) {
@@ -341,7 +344,7 @@ int local_router_run(local_runtime *runtime, const local_router_service *service
     const gridpico_result retired = local_runtime_retire(runtime);
     const bool flushed = complete && (runtime->output_count == 0 || write_event(runtime));
     if (!flushed || retired != GRIDPICO_OK) {
-        fputs("Local router stopped with a pipe or cleanup error\n", stderr);
+        fputs("Local router stopped with a pipe or detach error\n", stderr);
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;

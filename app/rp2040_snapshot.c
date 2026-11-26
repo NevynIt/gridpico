@@ -211,10 +211,12 @@ static void encode_plan(gridpico_pico_save_plan *plan, uint32_t generation,
     write_le(plan->commit + 8, crc, 4);
 }
 
-static bool musical_idle(const gridpico_pico_router *router)
+static bool snapshot_queues_empty(const gridpico_pico_router *router)
 {
-    if (router->graph.occurrence_count != 0 || router->audition.destination != 0 ||
-        router->notes[0].count != 0 || router->notes[1].count != 0) return false;
+    if (router->audition.destination != 0) return false;
+    for (size_t i = 0; i < sizeof(router->notes) / sizeof(router->notes[0]); ++i) {
+        if (router->notes[i].count != 0) return false;
+    }
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
     if (router->keys.mode != GRIDPICO_APC_CHOOSER_PATCHBAY || router->keys.apc_queue.count != 0 ||
         router->keys.next_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST || router->keys.chooser.open) return false;
@@ -222,12 +224,6 @@ static bool musical_idle(const gridpico_pico_router *router)
         if (router->keys.holds[i].count != 0) return false;
     }
 #endif
-    const gridpico_patch_inventory *inventory = &router->graph.inventory;
-    for (size_t i = 0; i < inventory->port_count; ++i) {
-        const gridpico_patch_port *port = &inventory->ports[i];
-        if (port->direction == GRIDPICO_PATCH_OUTPUT &&
-            !gridpico_patch_graph_destination_idle(&router->graph, port->id)) return false;
-    }
     return true;
 }
 
@@ -236,7 +232,7 @@ gridpico_result gridpico_pico_save_patch(const gridpico_pico_router *router, con
 {
     if (router == NULL || store == NULL || store->read == NULL || store->apply == NULL || state == NULL ||
         scratch == NULL || state->sector >= GRIDPICO_PICO_SAVE_SECTORS) return GRIDPICO_INVALID;
-    if (state->reconcile_required || !musical_idle(router)) return GRIDPICO_UNAVAILABLE;
+    if (state->reconcile_required || !snapshot_queues_empty(router)) return GRIDPICO_UNAVAILABLE;
     const record records[] = {inspect(store->read(store->context, 0)), inspect(store->read(store->context, 1))};
     if (records[0].kind == UNREADABLE || records[1].kind == UNREADABLE) {
         state->storage_issue = state->reconcile_required = true;

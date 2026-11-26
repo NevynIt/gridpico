@@ -45,7 +45,7 @@ transform 1 12 7 4 if REV
 
 Replace `REV` with the current revision from `ROUTING`. The example shifts notes up seven semitones and sends them on MIDI channel 4. Semitones range from −127 to 127. Notes whose shifted pitch falls outside the MIDI range are filtered. Use channel `1`–`16` to remap or `0` to preserve the input channel. A successful `TRANSFORM` reply includes the committed revision. Use `transform 1 12 0 0 if REV` with the current revision to restore identity.
 
-A change releases any affected held notes on that branch at their former pitch and channel. Other branches keep their current notes and settings. New branches start at identity. Settings last for the life of an enabled branch in the running router.
+Each incoming Note On or Note Off uses the active routes and their transforms at ingress. Changing a transform sends no MIDI by itself. A later Note Off uses the new pitch and channel, which may leave the former note sounding. Other branches keep their settings. New branches start at identity. Settings last for the life of an enabled branch in the running router.
 
 To reproduce the loopback check with the stock runner, build and install the dependencies as above, then run `node scripts/transform-smoke.cjs build/web-ui/gridpico_local_router`. It starts the ordinary Web UI host on a free loopback port and verifies exact Note On and Note Off bytes on two editable branches and an unchanged control branch.
 
@@ -61,7 +61,7 @@ device ID NAME
 port ID DEVICE in|out managed|raw|panel QUEUE ROLE socket|unavailable NAME
 ```
 
-Use one `limits` row and one `surface` row. The normal portable build backs up to 12 devices, 36 ports, 12 managed routes, one Raw route, four managed destinations per source, 50 held occurrences and 200 release credits. Set `PEERS` to a positive limit within the number of socket ports. Each queue has 1–128 frames. Managed outputs need room for the largest owed release batch, and the LED output needs at least 40 frames for a complete page.
+Use one `limits` row and one `surface` row. The normal portable build supports up to 12 devices, 36 ports, 12 Managed routes, one Raw route and four Managed destinations per source. The parser still accepts the legacy `OCCURRENCES` and `CREDITS` fields. They do not limit current-message forwarding. Set `PEERS` to a positive limit within the number of socket ports. Each queue has 1–128 frames. The LED output needs at least 40 frames for a complete page.
 
 `note-transform on` is optional and may appear once. Without it the profile omits the transform command. The row enables the command and leaves every new branch at identity.
 

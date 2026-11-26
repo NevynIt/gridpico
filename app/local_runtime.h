@@ -11,9 +11,8 @@ enum {
     LOCAL_SERIAL_QUEUE = 8192,
     LOCAL_SERIAL_CHUNK = 256,
     LOCAL_RAW_LEASE_MS = 30000,
-    /* One dispatch can retire all credits, render feedback and stage faults. */
-    LOCAL_MIDI_STAGE_FRAMES = GRIDPICO_LOCAL_MAX_RELEASE_CREDITS +
-        2 * GRIDPICO_PATCH_LED_FRAMES + GRIDPICO_LOCAL_MAX_FANOUT + 1,
+    /* One dispatch can render feedback as well as its MIDI fan-out. */
+    LOCAL_MIDI_STAGE_FRAMES = 2 * GRIDPICO_PATCH_LED_FRAMES + GRIDPICO_LOCAL_MAX_FANOUT + 1,
 };
 
 typedef struct {

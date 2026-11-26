@@ -690,7 +690,6 @@ gridpico_result local_runtime_midi(local_runtime *runtime, const gridpico_local_
                 .detail.error = result,
             });
             runtime->feedback_refresh = true;
-            port->fault = result == GRIDPICO_CAPACITY;
         }
         return result;
     }

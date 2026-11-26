@@ -203,17 +203,12 @@ static bool read_row(local_router_profile *profile, char *rest, bool *surface_se
 static bool valid_resources(const local_router_profile *profile)
 {
     size_t claimable = 0;
-    size_t cleanup = profile->limits.occurrence_limit;
-    if (cleanup > profile->limits.release_credit_limit) cleanup = profile->limits.release_credit_limit;
     const gridpico_patch_inventory *inventory = &profile->registry.inventory;
     for (size_t i = 0; i < inventory->port_count; ++i) {
         const local_profile_port port = profile->ports[i];
         if (!port.socket) continue;
         ++claimable;
-        if ((port.role == LOCAL_ROLE_LED && port.queue_limit < GRIDPICO_PATCH_LED_FRAMES) ||
-            (inventory->ports[i].direction == GRIDPICO_PATCH_OUTPUT &&
-             profile->registry.port_capabilities[i] == GRIDPICO_LOCAL_PORT_MANAGED &&
-             profile->limits.managed_branch_limit != 0 && port.queue_limit < cleanup)) return false;
+        if (port.role == LOCAL_ROLE_LED && port.queue_limit < GRIDPICO_PATCH_LED_FRAMES) return false;
     }
     return profile->limits.midi_peer_limit != 0 && profile->limits.midi_peer_limit <= claimable;
 }
