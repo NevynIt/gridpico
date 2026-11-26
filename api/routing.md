@@ -127,19 +127,53 @@ Installed Pico `d311cf3` passed direct CDC readback and [same-board recovery](pi
 
 ### Master musical forwarding and Panic
 
-The normal portable runtime owns one master gate for ordinary live musical forwarding. It starts Running with gate revision `1`. The gate is volatile and survives tool and terminal reconnect within that runtime. Saved route intent, port assignment and transforms have their existing independent lifecycle. Per-edge Off, Pending and Active still describe the configured edge and its bindings. Panel feedback, local controller gestures, Raw control and serial CLI remain usable. Route and transform edits still work through their existing guards while paused.
+The normal portable `local_runtime` is the sole owner of the master gate for ordinary live musical forwarding. It starts Running with gate revision `1`. The host mirrors the committed gate for queue dispatch. The gate is volatile and survives tool and terminal reconnect within that runtime. Saved route intent, port assignment and transforms have their existing independent lifecycle. Per-edge Off, Pending and Active still describe the configured edge and its bindings. Panel feedback, local controller gestures, Raw control and serial CLI remain usable. Route and transform edits still work through their existing guards while paused.
 
-Use an optional provider in the existing target CLI. The read callback takes its context and a caller-owned result containing `bool running` and `gridpico_revision revision`. The apply callback also takes the desired `running` and nonzero expected gate revision. It guards and commits in one serialized dispatch, returning the same committed result shape. On refusal the output is untouched. `forwarding` reads `FORWARDING RUNNING|PAUSED REV` and `OK`. `forwarding running|paused if REV` writes and returns the same record. A stale guard returns `ERR UNAVAILABLE`. Invalid syntax returns `ERR INVALID`. Revision exhaustion returns `ERR CAPACITY` before an effective change. An effective change advances the gate revision once. A current same-value edit is idempotent. Graph and Routing revisions do not advance due to the gate. Advertise read, apply and `panic` only for their bound, qualified providers. The existing Routing and status records retain their formats.
+Use these optional providers in `api/routing.h` and bind them through `frontends/cli/cli_frontend.h` before command processing.
+
+```c
+typedef struct {
+    gridpico_revision revision;
+    bool running;
+} gridpico_forwarding_status;
+
+typedef struct {
+    gridpico_connection output;
+    uint8_t accepted_count;
+    bool count_known;
+} gridpico_panic_output;
+
+typedef struct {
+    size_t count;
+    gridpico_panic_output outputs[GRIDPICO_PATCH_MAX_PORTS];
+} gridpico_panic_report;
+
+typedef gridpico_result (*gridpico_read_forwarding_fn)(
+    void *context, gridpico_forwarding_status *out);
+typedef gridpico_result (*gridpico_apply_forwarding_fn)(
+    void *context, bool running, gridpico_revision expected_revision,
+    gridpico_forwarding_status *out);
+typedef gridpico_result (*gridpico_panic_fn)(
+    void *context, gridpico_panic_report *out);
+
+void gridpico_cli_bind_musical_control(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_read_forwarding_fn read_forwarding,
+    gridpico_apply_forwarding_fn apply_forwarding,
+    gridpico_panic_fn panic, gridpico_panic_report *panic_scratch);
+```
+
+The callbacks borrow outputs for the call only and leave them untouched on failure. Panic scratch is caller-owned and reused by the serialized CLI. Read requires its reader, apply requires the reader and applier, and `panic` requires its callback and scratch. `forwarding` reads `FORWARDING RUNNING|PAUSED REV` followed by `OK`. `forwarding running|paused if REV` returns the same committed record. The apply callback checks the nonzero expected gate revision and commits in one call. Invalid syntax or revision zero returns `ERR INVALID`. A stale guard returns `ERR UNAVAILABLE` even for a same-value request. A current same-value edit succeeds at the same revision, including at `UINT64_MAX`. An effective edit at `UINT64_MAX` returns `ERR CAPACITY` before changing state or queues. All other effective edits advance the gate revision once. Graph and Routing revisions and ordinary `status` records keep their existing contract.
 
 Validate the ordinary message and its source generation at the existing runtime ingress before applying the gate. While paused, consume valid ordinary input with no delivery and successful dispatch so a healthy input binding stays live. A platform may advertise the gate only when all its ordinary musical producers use the same admission and queue fence. Treat supported Audition output as ordinary music and invalidate its stale scheduled work. Keep local UI gesture pairing. The first portable implementation can gate at `local_runtime_midi` and the owned adapter entry points without extending Graph.
 
-Serialize Pause with ordinary dispatch. Before reporting Paused, purge waiting ordinary ingress and egress owned by runtime and host. Distinguish each pipe binding's trusted musical/control class and the provenance of ordinary and explicit output work. Carry the committed gate result in the existing private launcher pipe before exposing the associated serial reply, so the host applies the same fence before its next dispatch. Connection generations and public MIDI framing stay intact. Resume admits events newly accepted at the target after the gate transition. A WebSocket or native write already issued is outside the purge boundary and can still arrive. The gate generates no MIDI or release obligations and establishes no receiver silence.
+Serialize the gate with ordinary dispatch. Each Running revision is one dispatch interval. Waiting ordinary ingress and egress belong to the accepting Running revision and their exact bindings. Before reporting Paused, close ordinary admission and invalidate and purge waiting work from the retiring interval in the runtime and host. Use the trusted binding class and work provenance to preserve control and explicit Panic. On an effective change, carry `forwarding-state REV running|paused` on the private launcher pipe before the associated public serial reply and before work of the new interval. The host mirrors that state, applies its fence and only then forwards the reply or dispatches the next work. A stale pending callback cannot queue ordinary data in a new interval. Resume admits traffic newly accepted at the target during its new Running revision. Connection generations and public MIDI framing stay intact. An already-issued WebSocket or native write can still arrive. This gate generates no MIDI or release obligations and establishes no receiver silence.
 
-The first Panic slice implements the optional explicit `panic` command for All Notes Off. The product's timed second action is a separate qualification. On acceptance, snapshot the eligible connected musical output IDs and their current generations. Send MIDI All Notes Off, CC 123 value `0`, once on each of the 16 channels for each selected output through its own actual adapter. This action bypasses the gate and individual route and transform settings. Exclude disconnected, unresolved, control-only, Panel, LED, Raw and reserved capture-only outputs. The command uses no remembered keys and leaves gate, routes and transforms unchanged. Keep generations and existing per-output order. Pause leaves explicit Panic work eligible. Disconnect still retires queued Panic for that binding. Bound work by the active output pool, attempt each eligible output independently and report refusal or uncertainty without retrying or replaying.
+The first Panic slice implements the optional explicit `panic` command for All Notes Off. The product's timed second action is a separate qualification. On acceptance, snapshot the eligible connected musical output IDs and their current generations. Request MIDI All Notes Off, CC 123 value `0`, on each of the 16 channels for each selected output through its own actual adapter. This action bypasses the gate and individual route and transform settings. Exclude disconnected, unresolved, control-only, Panel, LED, Raw and reserved capture-only outputs. The command uses no remembered keys and leaves gate, routes and transforms unchanged. Keep generations and existing per-output order. Pause leaves explicit Panic work eligible. Disconnect still retires queued Panic for that binding. Bound work by the active output pool, attempt each eligible output independently and report refusal or uncertainty without retrying or replaying.
 
 Eligibility includes an available musical output with no assigned cell or enabled edge. The runtime sends the fixed three-byte message `Bn 7B 00` through a private, exact-generation output adapter. The Managed Graph API remains Note On/Off-only. A full Panic queue is a refusal for that output and leaves its healthy binding available for subsequent ordinary traffic. Preflight the bounded result and staging capacity before any emission. At most `16 × eligible outputs` triplets can be attempted. Budget this independently of ordinary per-message fan-out.
 
-The independent Panic callback takes its context and caller-owned bounded result storage. On a completed evaluation emit `PANIC N` followed by exactly `N` records `PANIC_OUT PORT GENERATION ACCEPTED` in logical port order, then `OK`. `ACCEPTED` is the exact count `0`–`16` accepted by the router's output adapter, or `-` if the count is unconfirmed. `N` can be zero. The report includes refusals and partial results. A command error before evaluation emits only `ERR`. Name the acceptance boundary in the UI. Receiver receipt and actual silence require separate observations.
+Evaluate outputs in ascending logical port order and channels in ascending order within each output. Stop that output at its first refusal or unconfirmed outcome and continue with the next output. Revalidate each binding before delivery. The callback returns a completed report even when some or all outputs refuse. Emit `PANIC N` followed by exactly `N` records `PANIC_OUT PORT GENERATION ACCEPTED` in that order, then `OK`. `ACCEPTED` is the exact accepted prefix length `0`–`16` at the router's output adapter, or `-` if the count is unconfirmed. Set `accepted_count` to zero when `count_known` is false. `N` can be zero. A command error before evaluation emits only `ERR`. Name the acceptance boundary in the UI. Receiver receipt and actual silence require separate observations.
 
 The initial receiver is the existing Diagnostics Monitor. Accept exactly three MIDI bytes `Bn 7B 00` on its current receive binding and release only its local voices on MIDI channel `n + 1`. This is a receiver action. Managed ingress remains Note On/Off-only, and `PANIC_OUT` still reports adapter acceptance. With Monitor audio explicitly enabled, hold a note and confirm Pause while the voice is still sounding. Keep the binding and audio live, send Panic, then separately verify CC receipt and measured Monitor silence after its release interval. The witness applies to that Monitor's audio output.
 
