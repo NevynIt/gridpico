@@ -47,7 +47,7 @@ Application Assembly supplies the execution context. Platform callbacks submit b
 
 ### MIDI graph and processors
 
-The basic route is **source selection → processor chain → destination(s)**. Fan-out can have independent branches and processor settings. The patch grid and advanced editing operate on this one model, not separate routing engines.
+Keep one bounded, flat table of directed source-to-destination routes. Each route has enabled intent and can apply its own transform. Fan-out uses one matching record per destination. The Patchbay, CLI and browser read and edit this shared table.
 
 Bindings use stable logical IDs and user aliases. Platform adapters report device, interface, cable and direction independently of MIDI channel, display name and attachment generation. Session keeps desired routes and placements across detach. Platform adapters discard stale queued traffic on detach and admit fresh messages on a verified generation. Missing or ambiguous identity leaves routes Pending. Aliases change labels only.
 
@@ -57,7 +57,7 @@ Represent cable/port, MIDI channel and device identity separately. USB packet fr
 
 Live Managed routing evaluates each received note against the currently Active branches and current transforms. Note Off follows the same rule as Note On. Route edits and disconnects generate no MIDI. [Current-message routing](api/local-router.md#current-message-managed-routing) defines admission, overload and the implications of edits while notes sound.
 
-Detect or reject graph-local feedback cycles. External applications can create loops outside the graph's visibility; do not claim to detect those universally. PC loopback is explicit routing, never automatic all-to-all echo.
+Device parents group inventory. Deliberate Managed edits accept eligible directions regardless of topology. Auto leaves explicitly identified loopbacks Off by default. The shared route table uses directional eligibility and actual backing. Raw lease authority and PAT1 format and storage retain their existing boundaries. [Managed admission](api/local-router.md#production-graph)
 
 Processors include filters, transpose, key/velocity splits, channel and controller mapping, curves, relative/absolute conversion and bounded stateful operations. Extensibility is a goal; unrestricted scripting or unbounded generated traffic is not a requirement. The precise extension mechanism belongs to Architect after resource discussion.
 
