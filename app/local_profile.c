@@ -25,6 +25,7 @@ static const role_kind roles[LOCAL_ROLE_COUNT] = {
     [LOCAL_ROLE_SEQUENCE] = {"sequence", GRIDPICO_LOCAL_PORT_RAW, GRIDPICO_PATCH_INPUT},
     [LOCAL_ROLE_MONITOR] = {"monitor", GRIDPICO_LOCAL_PORT_MANAGED, GRIDPICO_PATCH_OUTPUT},
     [LOCAL_ROLE_LOG] = {"log", GRIDPICO_LOCAL_PORT_MANAGED, GRIDPICO_PATCH_OUTPUT},
+    [LOCAL_ROLE_FM] = {"fm", GRIDPICO_LOCAL_PORT_MANAGED, GRIDPICO_PATCH_OUTPUT},
 };
 
 static bool space(char byte)
@@ -116,14 +117,15 @@ static bool read_port(local_router_profile *profile, char *rest)
     if (!integer(&rest, LOCAL_PANEL_QUEUE, &limit) || limit == 0) return false;
     const char *role_word = word(&rest);
     const char *access = word(&rest);
-    if (strcmp(access, "socket") != 0 && strcmp(access, "unavailable") != 0) return false;
+    const bool socket = strcmp(access, "socket") == 0;
+    if (!socket && strcmp(access, "unavailable") != 0) return false;
 
     const bool input = strcmp(direction_word, "in") == 0;
     if (!input && strcmp(direction_word, "out") != 0) return false;
     const gridpico_patch_direction direction = input ? GRIDPICO_PATCH_INPUT : GRIDPICO_PATCH_OUTPUT;
     size_t role = 0;
     while (role < LOCAL_ROLE_COUNT && strcmp(roles[role].token, role_word) != 0) ++role;
-    if (role == LOCAL_ROLE_COUNT || (role != LOCAL_ROLE_AUX &&
+    if (role == LOCAL_ROLE_COUNT || (role == LOCAL_ROLE_FM && !socket) || (role != LOCAL_ROLE_AUX &&
         (roles[role].direction != direction || local_profile_role(profile, (local_port_role)role) != 0))) {
         return false;
     }
@@ -145,7 +147,7 @@ static bool read_port(local_router_profile *profile, char *rest)
     row->state = GRIDPICO_PATCH_DISCONNECTED;
     row->patch_eligible = capability == GRIDPICO_LOCAL_PORT_MANAGED;
     profile->registry.port_capabilities[slot] = capability;
-    profile->ports[slot] = (local_profile_port){(local_port_role)role, limit, strcmp(access, "socket") == 0};
+    profile->ports[slot] = (local_profile_port){(local_port_role)role, limit, socket};
     ++inventory->port_count;
     return true;
 }
@@ -273,12 +275,12 @@ bool local_profile_load(const char *path, local_router_profile *profile)
 
 bool local_profile_supports_web_ui(const local_router_profile *profile)
 {
-    static const gridpico_port_id starter_ids[LOCAL_ROLE_COUNT] = {
+    static const gridpico_port_id starter_ids[] = {
         [LOCAL_ROLE_KEYBED] = 1, [LOCAL_ROLE_PANEL] = 2, [LOCAL_ROLE_LED] = 3,
         [LOCAL_ROLE_SEQUENCE] = 4, [LOCAL_ROLE_MONITOR] = 5, [LOCAL_ROLE_LOG] = 6,
     };
     if (profile->limits.midi_peer_limit < GRIDPICO_LOCAL_PORTS) return false;
-    for (size_t role = LOCAL_ROLE_KEYBED; role < LOCAL_ROLE_COUNT; ++role) {
+    for (size_t role = LOCAL_ROLE_KEYBED; role < sizeof starter_ids / sizeof starter_ids[0]; ++role) {
         bool matched = false;
         for (size_t i = 0; i < profile->registry.inventory.port_count; ++i) {
             if (profile->ports[i].role == role && profile->ports[i].socket &&

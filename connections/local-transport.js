@@ -15,7 +15,7 @@
       Object.freeze({ keybed: 1, panel: 2, led: 3, sequence: 4, monitor: 5, log: 6 }) : undefined;
   const midi = window.navigator;
   const roleDirection = new Map([["keybed", "send"], ["panel", "send"], ["led", "receive"],
-    ["sequence", "send"], ["monitor", "receive"], ["log", "receive"]]);
+    ["sequence", "send"], ["monitor", "receive"], ["log", "receive"], ["fm", "receive"]]);
   let capabilityStatus = hasSocketMidi ? "loading" : "offline";
   let capabilityRetry;
   let capabilities;
@@ -55,7 +55,7 @@
       ports.add(binding.port);
       Object.freeze(binding);
     }
-    requireValid(Array.isArray(autoBind) && autoBind.length <= 5 && new Set(autoBind).size === autoBind.length &&
+    requireValid(Array.isArray(autoBind) && autoBind.length <= 6 && new Set(autoBind).size === autoBind.length &&
       autoBind.every(role => typeof role === "string" && role !== "sequence" && Object.hasOwn(roles, role)));
     const actionNames = ["cli", "ledTest", "recording"];
     if (actions && Object.hasOwn(actions, "picoCdc")) actionNames.push("picoCdc");
@@ -77,17 +77,21 @@
     if (!response.ok || !/^application\/json(?:\s*;|$)/i.test(response.headers.get("Content-Type"))) {
       throw new Error("Router capabilities unavailable");
     }
-    const decoder = new TextDecoder("utf-8", { fatal: true });
+    const bytes = await readBounded(response, 2048);
+    return validateCapabilities(JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)));
+  }
+
+  async function readBounded(response, limit) {
     const reader = response.body.getReader();
-    let bytes = 0;
-    let json = "";
+    const bytes = new Uint8Array(limit);
+    let size = 0;
     try {
       for (;;) {
         const { value, done } = await reader.read();
-        if (done) break;
-        bytes += value.byteLength;
-        if (bytes > 2048) throw new Error("Router capabilities exceed their bound");
-        json += decoder.decode(value, { stream: true });
+        if (done) return bytes.subarray(0, size);
+        if (size + value.byteLength > limit) throw new Error("Router response exceeds its bound");
+        bytes.set(value, size);
+        size += value.byteLength;
       }
     } catch (error) {
       void reader.cancel().catch(() => {});
@@ -95,7 +99,28 @@
     } finally {
       reader.releaseLock();
     }
-    return validateCapabilities(JSON.parse(json + decoder.decode()));
+  }
+
+  async function verifySameOriginFm(description) {
+    if (!loopback || !description?.roles.fm || description !== capabilities) return false;
+    try {
+      const signal = AbortSignal.timeout(5000);
+      const [current, response] = await Promise.all([
+        readCapabilities(documentOrigin, signal),
+        fetch("/web-ui/SHA256SUMS", { cache: "no-store", mode: "same-origin", redirect: "error", signal }),
+      ]);
+      if (!response.ok || !current || current.instance !== description.instance || current.release !== description.release ||
+          current.roles.fm?.port !== description.roles.fm?.port) {
+        void response.body?.cancel().catch(() => {});
+        return false;
+      }
+      const bytes = await readBounded(response, 8192);
+      const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+      const release = Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
+      return description === capabilities && release === description.release;
+    } catch {
+      return false;
+    }
   }
 
   function initialPorts(description) {
@@ -357,6 +382,10 @@
   function socketMidi(port, options) {
     const owner = target;
     if (owner.origin !== documentOrigin) checkRemoteRole(port, options);
+    if (options.role === "fm" &&
+        (!loopback || options.direction !== "receive" || owner.capabilities?.roles.fm?.port !== port)) {
+      throw new Error("This router does not publish that FM Instrument input.");
+    }
     function reportFailure() {
       if (target === owner && owner.epoch > 0) {
         window.dispatchEvent(new CustomEvent("gridpico-target-bind-failed", { detail: owner }));
@@ -629,6 +658,7 @@
     get midiProviders() { return availableMidiProviders(); },
     requestMidiAccess,
     listMidiPorts,
+    verifySameOriginFm,
     mountServerSelection,
     openMidi(portId, options) {
       if (options?.direction !== "send" && options?.direction !== "receive") {

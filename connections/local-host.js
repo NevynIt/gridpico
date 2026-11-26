@@ -127,8 +127,11 @@ function legacyAssets() {
 const legacy = bundle ? undefined : legacyAssets();
 const capabilityBodies = new Map();
 let alternateCapabilities;
+let fmPort;
 
 function prepareCapabilities(runtimeRoles) {
+  fmPort = runtimeRoles.get("fm")?.port;
+  if (recorder && fmPort === recorderPort) throw new Error("FM needs a separate MIDI port from the recorder");
   const instance = randomBytes(16).toString("hex");
   if (lan) {
     for (const [role, port, direction] of [["keybed", 1, "in"], ["panel", 2, "in"], ["led", 3, "out"]]) {
@@ -139,12 +142,13 @@ function prepareCapabilities(runtimeRoles) {
     }
   }
   for (const listener of [undefined, ...[lan, network].filter(Boolean)]) {
-    const roles = Object.fromEntries([...runtimeRoles].filter(([, { port, direction }]) =>
-      !listener || listener.ports.get(port) === direction).map(([role, { port, direction }]) =>
+    const roles = Object.fromEntries([...runtimeRoles].filter(([role, { port, direction }]) =>
+      !listener || (role !== "fm" && listener.ports.get(port) === direction)).map(([role, { port, direction }]) =>
       [role, { port, direction: direction === "in" ? "send" : "receive" }]));
     const autoBind = (listener?.trustedLan ? ["keybed", "panel", "led"] :
       !listener && webUi ? ["keybed", "panel", "led", "monitor", "log"] : [])
       .filter(role => Object.hasOwn(roles, role));
+    if (roles.fm) autoBind.push("fm");
     const actions = {
       cli: !listener,
       ledTest: !listener && webUi && roles.sequence?.port === 4 && roles.led?.port === 3,
@@ -434,7 +438,7 @@ function pump() {
     let line;
     let complete;
     if (!peer.bound) {
-      const verb = peer.synthReceive ? "bind-managed-out" : "bind";
+      const verb = peer.managedReceive ? "bind-managed-out" : "bind";
       line = port === undefined ? `serial-bind ${generation}` : `${verb} ${port} ${generation}`;
       complete = (error) => {
         if (!error && port === undefined) {
@@ -445,7 +449,8 @@ function pump() {
           if (!peer.closing) reject(peer.raw, error === "INVALID" ? "404 Not Found" : "503 Service Unavailable");
           if (peer.bound) retire(peer);
           else removePeer(peer);
-        } else if (peer.expectedDirection && peer.direction !== peer.expectedDirection) {
+        } else if ((peer.expectedDirection && peer.direction !== peer.expectedDirection) ||
+                   (peer.managedReceive && peer.direction !== "out")) {
           reject(peer.raw, "403 Forbidden");
           retire(peer);
         } else if (peers.get(peer.key) === peer) {
@@ -510,6 +515,11 @@ function acceptUpgrade(request, raw, head, listener) {
     reject(raw, "404 Not Found");
     return;
   }
+  const fmReceive = fmPort !== undefined && port === fmPort;
+  if (fmReceive && listener) {
+    reject(raw, "404 Not Found");
+    return;
+  }
   const expectedDirection = synthReceive
     ? (port === synthReceive.portId ? "out" : undefined) : listener?.ports.get(port);
   if (listener && !expectedDirection) {
@@ -527,7 +537,7 @@ function acceptUpgrade(request, raw, head, listener) {
 
   raw.pause();
   const peer = {
-    key, port, generation, request, raw, head, expectedDirection, synthReceive: Boolean(synthReceive),
+    key, port, generation, request, raw, head, expectedDirection, managedReceive: Boolean(synthReceive) || fmReceive,
     bound: false, closing: false, input: [], inputBytes: 0,
     beforeUpgrade: [], outputFrames: 0, outputBytes: 0,
   };

@@ -501,6 +501,7 @@ gridpico_result local_runtime_enable_recorder_route(local_runtime *runtime)
     if (!managed_port(runtime, source, GRIDPICO_PATCH_INPUT) ||
         !managed_port(runtime, destination, GRIDPICO_PATCH_OUTPUT) ||
         !runtime->profile->ports[source].socket || !runtime->profile->ports[destination].socket ||
+        runtime->profile->ports[destination].role == LOCAL_ROLE_FM ||
         runtime->profile->limits.midi_peer_limit < 2) {
         return GRIDPICO_INVALID;
     }

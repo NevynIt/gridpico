@@ -10,7 +10,7 @@ const defaultMidiPeers = 6;
 const maxMidiPeers = 65535; // Directional port ID space.
 const uiDirections = new Map([
   ["keybed", "in"], ["panel", "in"], ["led", "out"],
-  ["sequence", "in"], ["monitor", "out"], ["log", "out"],
+  ["sequence", "in"], ["monitor", "out"], ["log", "out"], ["fm", "out"],
 ]);
 
 function unsigned(text, maximum) {

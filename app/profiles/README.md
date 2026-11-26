@@ -66,3 +66,5 @@ Use one `limits` row and one `surface` row. The normal portable build backs up t
 `note-transform on` is optional and may appear once. Without it the profile omits the transform command. The row enables the command and leaves every new branch at identity.
 
 Use `aux` for additional managed inputs or outputs. Dedicated roles are `keybed`, `panel`, `led`, `sequence`, `monitor` and `log`. Each can appear once with the direction and capability shown in the example. Only the configured Sequence input and LED output can use the Raw lease. An `unavailable` port stays registered for routing and has no socket attachment path. Use the direct command for a custom role or port layout. The launcher with `--web-ui` expects the six starter roles to be claimable on ports 1–6 and a peer limit of at least six.
+
+The optional `fm` role may appear once on a socket-backed Managed output. The [FM loopback example](fm-loopback.conf) registers it at port `42`. Enable an explicit Managed route to that output after the peers attach. An active recorder reservation cannot use the same output.

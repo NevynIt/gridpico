@@ -13,6 +13,7 @@ typedef enum {
     LOCAL_ROLE_SEQUENCE,
     LOCAL_ROLE_MONITOR,
     LOCAL_ROLE_LOG,
+    LOCAL_ROLE_FM,
     LOCAL_ROLE_COUNT,
 } local_port_role;
 

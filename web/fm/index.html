@@ -29,6 +29,8 @@
   .midi-server-actions { display: flex; flex-wrap: wrap; gap: .45rem; }
   .midi-server-actions input { flex: 1 1 14rem; width: auto; min-width: 0; }
   .status { min-height: 1.5em; margin-bottom: 0; overflow-wrap: anywhere; }
+  details { margin-top: .8rem; }
+  summary { cursor: pointer; }
 </style>
 <script defer src="/local-transport.js"></script>
 </head>
@@ -40,34 +42,40 @@
   </nav>
   <h1>FM Instrument</h1>
   <p>One velocity-sensitive FM voice with a bright attack and a soft, sustained tone.</p>
-  <section aria-labelledby="input-title">
-    <h2 id="input-title">MIDI input</h2>
-    <div id="midi-server"></div>
-    <p id="capability-error" hidden>Could not load capabilities from this MIDI server. <button type="button" aria-label="Retry loading router capabilities">Retry</button></p>
-    <form id="midi-form" hidden>
-      <label for="provider">Transport</label>
-      <select id="provider"></select>
-      <div id="router-choice">
-        <label for="router-port">Router output port</label>
-        <input id="router-port" type="text" inputmode="numeric" autocomplete="off" maxlength="5" required>
-        <p id="router-choice-help">Choose an available output from Diagnostics inventory, such as port 5 or 6.</p>
-      </div>
-      <div id="web-choice" hidden>
-        <div class="actions"><button type="button" id="midi-access">Allow Web MIDI</button></div>
-        <label for="web-port">System MIDI input</label>
-        <select id="web-port"></select>
-      </div>
-      <div class="actions">
-        <button type="submit" id="connect">Connect</button>
-        <button type="button" id="disconnect" disabled>Disconnect</button>
-      </div>
-    </form>
-    <p class="status" id="midi-status" role="status">MIDI disconnected.</p>
-  </section>
   <section aria-labelledby="audio-title">
     <h2 id="audio-title">Audio</h2>
     <button type="button" id="audio-toggle">Enable audio</button>
     <p class="status" id="audio-status" role="status">Audio off.</p>
+    <p id="note-status">No notes sounding.</p>
+  </section>
+  <section aria-labelledby="input-title">
+    <h2 id="input-title">MIDI input</h2>
+    <div id="midi-server"></div>
+    <p class="status" id="midi-status" role="status">MIDI disconnected.</p>
+    <button type="button" id="retry-discovery" hidden>Retry discovery</button>
+    <button type="button" id="retry-connect" hidden>Retry</button>
+    <details id="midi-details" hidden>
+      <summary>MIDI connection details</summary>
+      <form id="midi-form">
+        <label for="provider">Transport</label>
+        <select id="provider"></select>
+        <p id="fm-role" hidden></p>
+        <div id="router-choice">
+          <label for="router-port">Router output port</label>
+          <input id="router-port" type="text" inputmode="numeric" autocomplete="off" maxlength="5" required>
+          <p id="router-choice-help">Choose an available output from Diagnostics inventory, such as port 5 or 6.</p>
+        </div>
+        <div id="web-choice" hidden>
+          <div class="actions"><button type="button" id="midi-access">Allow Web MIDI</button></div>
+          <label for="web-port">System MIDI input</label>
+          <select id="web-port"></select>
+        </div>
+        <div class="actions">
+          <button type="submit" id="connect">Connect</button>
+          <button type="button" id="disconnect" disabled>Disconnect</button>
+        </div>
+      </form>
+    </details>
   </section>
 </main>
 <script>
@@ -76,6 +84,7 @@
 const byId = id => document.getElementById(id);
 const audioButton = byId("audio-toggle");
 const audioStatus = byId("audio-status");
+const noteStatus = byId("note-status");
 const voiceLimit = 25;
 const voices = new Set();
 const held = new Map();
@@ -99,6 +108,7 @@ function disposeVoice(voice, stop = true) {
 function silence() {
   held.clear();
   for (const voice of voices) disposeVoice(voice);
+  noteStatus.textContent = "No notes sounding.";
 }
 
 function noteOn(key, note, velocity) {
@@ -133,6 +143,7 @@ function noteOn(key, note, velocity) {
   state.count++;
   state.voice = voice;
   held.set(key, state);
+  noteStatus.textContent = `Note ${note} held.`;
   carrier.onended = () => disposeVoice(voice, false);
   modulator.start(now);
   carrier.start(now);
@@ -142,6 +153,7 @@ function noteOff(key) {
   const state = held.get(key);
   if (!state || --state.count) return;
   held.delete(key);
+  noteStatus.textContent = held.size ? `${held.size} notes held.` : `Note ${key % 128} released.`;
   const voice = state.voice;
   if (!voice) return;
   voice.releasing = true;
@@ -209,20 +221,36 @@ const webPort = byId("web-port");
 const accessButton = byId("midi-access");
 const connectButton = byId("connect");
 const disconnectButton = byId("disconnect");
+const retryConnect = byId("retry-connect");
+const retryDiscovery = byId("retry-discovery");
+let releaseUnverified = false;
 let accessGranted = false;
+let namedHosted = false;
+let advertised;
+let pageAdapter;
 
-function disconnect(message = "MIDI disconnected.") {
+function disconnect(message = "MIDI disconnected.", retry = false) {
   const active = binding;
   binding = null;
   silence();
   active?.handle?.close();
   disconnectButton.disabled = true;
   midiStatus.textContent = message;
+  retryConnect.hidden = !retry;
+  if (pageAdapter) showChoice(pageAdapter);
 }
 
 function showChoice(adapter) {
   const webMidi = provider.value === "web-midi";
-  byId("router-choice").hidden = routerPort.disabled = webMidi;
+  byId("router-choice").hidden = routerPort.disabled = webMidi || namedHosted;
+  const named = byId("fm-role");
+  named.hidden = webMidi || !advertised;
+  named.textContent = advertised ? `FM Instrument (port ${advertised.port})` : "";
+  retryDiscovery.hidden = webMidi || (adapter.capabilityStatus !== "unavailable" && !releaseUnverified);
+  if (!webMidi && namedHosted && !advertised) {
+    midiStatus.textContent = adapter.capabilityStatus === "unavailable" ?
+      "FM Instrument publication could not be verified." : "FM Instrument is not published by this router.";
+  }
   byId("web-choice").hidden = !webMidi;
   if (webMidi) {
     const selected = webPort.value;
@@ -231,20 +259,19 @@ function showChoice(adapter) {
     for (const { id, name } of available) webPort.add(new Option(name, id));
     webPort.value = available.some(port => port.id === selected) ? selected : "";
   }
-  connectButton.disabled = webMidi && !webPort.value;
+  connectButton.disabled = Boolean(binding) || (webMidi ? !webPort.value : namedHosted && !advertised);
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
   const adapter = window.gridpicoLocal;
+  pageAdapter = adapter;
   await adapter?.ready;
+  namedHosted = (location.protocol === "http:" && location.hostname === "127.0.0.1") || Boolean(adapter?.trustedLan);
+  advertised = namedHosted ? adapter?.capabilities?.roles.fm : undefined;
   byId("navigation").hidden = !/^https?:$/.test(location.protocol);
   byId("home-link").hidden = location.protocol === "https:";
   if (adapter) adapter.mountServerSelection(byId("midi-server"), "/fm/");
-  if (adapter?.capabilityStatus === "unavailable") {
-    const error = byId("capability-error");
-    error.hidden = false;
-    error.querySelector("button").addEventListener("click", () => location.reload());
-  }
+  retryDiscovery.addEventListener("click", () => location.reload());
   if (adapter?.capabilities?.actions.cli === false || adapter?.capabilityStatus === "unavailable") {
     byId("router-choice-help").textContent = "Enter an output port authorized on this router.";
   }
@@ -253,9 +280,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     return;
   }
   for (const id of adapter.midiProviders) provider.add(new Option(id === "websocket" ? "Gridpico WebSocket" : "Web MIDI", id));
-  form.hidden = false;
+  const details = byId("midi-details");
+  details.hidden = false;
+  details.open = location.protocol === "file:";
   showChoice(adapter);
-
   provider.addEventListener("change", () => {
     disconnect();
     showChoice(adapter);
@@ -266,7 +294,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   webPort.addEventListener("change", () => {
     if (binding) disconnect();
-    connectButton.disabled = !webPort.value;
+    showChoice(adapter);
   });
   accessButton.addEventListener("click", async () => {
     accessButton.disabled = true;
@@ -287,43 +315,64 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
-  form.addEventListener("submit", event => {
-    event.preventDefault();
+  async function connectMidi() {
     const webMidi = provider.value === "web-midi";
-    const id = webMidi ? webPort.value : Number(routerPort.value);
-    if (webMidi && !id) return;
-    if (!webMidi && (!/^[1-9]\d{0,4}$/.test(routerPort.value) || id > 65535)) {
+    const named = !webMidi && namedHosted;
+    const id = webMidi ? webPort.value : named ? advertised?.port : Number(routerPort.value);
+    if (!id || binding) return;
+    if (!webMidi && !named && (!/^[1-9]\d{0,4}$/.test(routerPort.value) || id > 65535)) {
       routerPort.setCustomValidity("Enter a port ID from 1 to 65535.");
       routerPort.reportValidity();
       return;
     }
-    if (binding?.id === id) return;
-    disconnect();
-    const label = webMidi ? webPort.selectedOptions[0].textContent : `router output ${id}`;
+    const label = webMidi ? webPort.selectedOptions[0].textContent :
+      named ? `FM Instrument (port ${id})` : `router output ${id}`;
     const active = { id, ready: false, handle: null };
     binding = active;
     disconnectButton.disabled = false;
+    retryConnect.hidden = true;
+    showChoice(adapter);
     midiStatus.textContent = `Connecting to ${label}…`;
     try {
+      if (named) {
+        const verified = await adapter.verifySameOriginFm(adapter.capabilities);
+        if (binding !== active) return;
+        releaseUnverified = !verified;
+        if (!verified) {
+          disconnect("Could not verify the FM Instrument release.");
+          return;
+        }
+        showChoice(adapter);
+      }
       active.handle = adapter.openMidi(id, {
         provider: provider.value,
         direction: "receive",
+        role: named ? "fm" : undefined,
         onData: bytes => receive(active, bytes),
         onState(state, reason) {
           if (binding !== active) return;
           if (state === "connected") {
             active.ready = true;
-            midiStatus.textContent = `Connected to ${label}.`;
+            midiStatus.textContent = named ? "Connected to FM Instrument." : `Connected to ${label}.`;
           } else if (state === "disconnected") {
-            disconnect(reason || "MIDI disconnected.");
+            disconnect(reason || "MIDI disconnected.", Boolean(reason));
           }
         },
       });
       if (binding !== active) active.handle.close();
     } catch (error) {
-      disconnect(error instanceof Error ? error.message : "Could not connect the MIDI input.");
+      disconnect(error instanceof Error ? error.message : "Could not connect the MIDI input.", true);
     }
+  }
+
+  retryConnect.addEventListener("click", () => { void connectMidi(); });
+  form.addEventListener("submit", event => {
+    event.preventDefault();
+    void connectMidi();
   });
+  if (advertised && adapter.startupPorts?.fm === advertised.port && provider.value === "websocket") {
+    void connectMidi();
+  }
 }, { once: true });
 
 disconnectButton.addEventListener("click", () => disconnect());
