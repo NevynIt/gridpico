@@ -10,7 +10,7 @@ Read the whole repository as useful; edit only your assigned paths. Architect ow
 
 UI Designer owns `USE_CASES.md` and the associated visual designs. Discuss major UI changes and new workflows with a visual concept before asking for approval. A single sheet can show several key states or steps across web and physical controls. Use ImageGen for visual exploration and have UI Designer review UI choices before implementation. Testing independently verifies usability and the intended visual hierarchy. Aim for a good, usable implementation. Ask UI Designer about uncertain decisions first and escalate unresolved product choices to the human through Strategist.
 
-Only Strategist initiates human communication. Direct peer clarification is allowed. Answer a brief question from the human when addressed, but route broader decisions through Strategist. Do not treat discussion as authorization.
+Strategist coordinates Jill’s questions, replies and decisions and writes to her Herdr inbox. Jill replies in the Strategist chat. Direct peer clarification is allowed. Do not treat discussion as authorization.
 
 Start every message to another agent with `FROM: seat@location` on its own line, followed by the message. Use your own seat name and location label, for example `FROM: strategist@dev`.
 

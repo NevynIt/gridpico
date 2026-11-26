@@ -14,7 +14,7 @@ This is a lightweight agreement for a fixed team of persistent Codex sessions op
 - **Fixed seats, persistent sessions, reactive work.** A seat has a stable role and one continuing Codex session. Do the assigned work, report, then wait. No self-assignment or dynamically spawned subagents.
 - **Read broadly; write narrowly.** Everyone can inspect the repository. Changes belong to an explicitly assigned owner/path. This agreement is not itself a claim of technical sandbox enforcement.
 - **Interfaces over implementation.** Architect owns public contracts and their documentation, never module internals.
-- **One proactive human-facing agent.** Only Strategist initiates human communication. A human may ask another agent a brief direct question; its answer neither opens a new conversation channel nor authorizes work.
+- **Human correspondence.** Strategist coordinates Jill’s questions, requests and decisions and writes to her Herdr inbox. Strategist records her incoming messages, flags uncertainty, and posts answers and reports there. Other seats send their reports through Strategist. Jill replies in the Strategist chat. A message in the inbox does not itself authorize work.
 - **Direct peer communication remains open.** Ask the decision owner rather than relaying every question through a management hierarchy.
 - **One shared repository and one gridpico development container.** Use Herdr's supported facilities and independent Codex sessions, without an additional custom orchestrator, message server or agent container fleet.
 

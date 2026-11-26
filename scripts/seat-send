@@ -1,17 +1,26 @@
 #!/usr/bin/env python3
-"""Queue one message for an original Gridpico seat."""
+"""Queue one Gridpico seat message or append to Jill's local inbox."""
 
 import argparse
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
 import re
 import shutil
+import stat
 import subprocess
 import sys
 
 
 ROSTER = Path(__file__).resolve().parent.parent / ".team/local/roster.json"
+JILL_INBOX = ROSTER.with_name("jill-inbox.txt")
+JILL_SEPARATOR = "------------"
+JILL_HEADER = re.compile(
+    r"^\[J([0-9]{3,})\] [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2} "
+    r"(?:CET|CEST) \| [^|\r\n]+ \| [^|\r\n]+ \| (?:Reply needed|No reply needed)\r?$",
+    re.MULTILINE,
+)
 SEAT_NAME = re.compile(r"[A-Za-z0-9]+(?:[ _\t-]+[A-Za-z0-9]+)*")
 THREAD_ID = re.compile(r"[0-9a-fA-F]{8}(?:-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}")
 
@@ -171,13 +180,52 @@ def send(executable, thread, sender, recipient, body):
         raise SendError(f"native queue for {recipient} failed with exit status {result.returncode}", result.returncode)
 
 
+def jill_header(number, sender, topic, reply_needed, now):
+    try:
+        from zoneinfo import ZoneInfo
+
+        berlin = ZoneInfo("Europe/Berlin")
+    except (ImportError, KeyError):
+        raise SendError("Europe/Berlin time zone data is unavailable") from None
+    timestamp = now.astimezone(berlin).strftime("%Y-%m-%d %H:%M %Z")
+    reply = "Reply needed" if reply_needed else "No reply needed"
+    return f"[J{number:03d}] {timestamp} | {sender} | {topic} | {reply}"
+
+
+def open_inbox(path, flags):
+    return os.open(path, flags | os.O_APPEND | os.O_NOFOLLOW | os.O_NONBLOCK)
+
+
+def append_jill(sender, topic, reply_needed, body):
+    import fcntl
+
+    try:
+        with open(JILL_INBOX, "r+b", opener=open_inbox) as inbox:
+            if not stat.S_ISREG(os.fstat(inbox.fileno()).st_mode):
+                raise SendError("Jill's inbox must be an existing regular file")
+            fcntl.flock(inbox, fcntl.LOCK_EX)
+            previous = inbox.read().decode("utf-8")
+            records = re.split(rf"(?m)^{JILL_SEPARATOR}\r?\n", previous)
+            headers = (JILL_HEADER.search(record) for record in records)
+            number = 1 + max((int(header[1]) for header in headers if header), default=0)
+            header = jill_header(number, sender, topic, reply_needed, datetime.now(timezone.utc))
+            body = body.rstrip("\r\n")
+            entry = f"\n{header}\n{body}\n\n{JILL_SEPARATOR}\n"
+            inbox.write(entry.encode("utf-8"))
+    except (OSError, ValueError):
+        raise SendError("could not append to Jill's local inbox") from None
+    print(f"Appended J{number:03d} to Jill's local inbox.")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Queue a message to a Gridpico seat with an automatic FROM line.",
+        description="Queue a seat message or append to Jill's local inbox.",
         epilog="Example: ./scripts/seat-send architect 'message'",
     )
     parser.add_argument("--from", dest="sender", metavar="NAME[@LOCATION]", help="assert a sender name, including a human name")
-    parser.add_argument("recipient", metavar="SEAT", help="roster seat name or alias")
+    parser.add_argument("--topic", metavar="TOPIC", help="one-line topic for jill")
+    parser.add_argument("--reply-needed", action="store_true", help="mark a jill entry as needing a reply")
+    parser.add_argument("recipient", metavar="SEAT", help="roster seat name or alias, or jill for Strategist")
     parser.add_argument("message", nargs="?", metavar="MESSAGE", help="one quoted message, or omit to read stdin")
     args = parser.parse_args()
     try:
@@ -189,6 +237,15 @@ def main():
         body.encode("utf-8")
         if not body or "\0" in body:
             raise SendError("provide a nonempty message without NUL bytes")
+        if args.recipient == "jill":
+            if args.sender is None or asserted_sender(read_roster(), args.sender) != "strategist@dev":
+                raise SendError("use --from strategist@dev for Jill's local inbox")
+            if not args.topic or not args.topic.strip() or not args.topic.isprintable() or "|" in args.topic:
+                raise SendError("jill requires a nonempty one-line --topic without |")
+            append_jill("Strategist", args.topic, args.reply_needed, body)
+            return
+        if args.topic is not None or args.reply_needed:
+            raise SendError("--topic and --reply-needed are only available for jill")
         seats = read_roster()
         recipient = resolve(seats, args.recipient)
         pane = current_pane()
