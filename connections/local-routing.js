@@ -48,9 +48,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // The CLI projection backing is 8 devices, 18 ports and 13 enabled routes.
-  const maxDevices = 8;
-  const maxPorts = 18;
+  // Upper bound for the portable CLI projection. Smaller profiles use the same grammar.
+  const maxDevices = 12;
+  const maxPorts = 36;
   const maxRoutes = 13;
   const maxRecords = maxDevices + maxPorts + maxRoutes;
   const maxRevision = 0xffffffffffffffffn;

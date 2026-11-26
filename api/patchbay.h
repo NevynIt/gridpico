@@ -24,12 +24,17 @@ enum {
     GRIDPICO_PATCH_MONITOR_PORT_ID = 6
 };
 
-/* Shared backing for the configured-profile bench. These extents do not
- * set any initializer's admitted counts. The viewport remains 5 by 8.
+/* Backing extents for each target ABI. The RP2040 device retains its
+ * qualified storage. Initializer admission and the viewport are independent.
  */
 enum {
+#if defined(PICO_ON_DEVICE) && PICO_ON_DEVICE && defined(PICO_RP2040) && PICO_RP2040
     GRIDPICO_PATCH_MAX_DEVICES = 8,
     GRIDPICO_PATCH_MAX_PORTS = 18,
+#else
+    GRIDPICO_PATCH_MAX_DEVICES = 12,
+    GRIDPICO_PATCH_MAX_PORTS = 36,
+#endif
     GRIDPICO_PATCH_MAX_BRANCHES = 13,
     GRIDPICO_PATCH_SOURCE_ROWS = 5,
     GRIDPICO_PATCH_DESTINATION_COLUMNS = 8,
