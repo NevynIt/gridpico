@@ -210,11 +210,46 @@ OK
 
 Bind providers and their scratch before processing commands. A reader and scratch are required to advertise and execute `panic status`. The starter also needs the applier. Advertise only the exact available forms `panic` and `panic status` in `help panic` for an M1a-only provider. Known unbound forms return only `ERR UNAVAILABLE` without calling a provider. Malformed forms return only `ERR INVALID`. A current job still running returns only `ERR UNAVAILABLE` on an activation. Preflight bounded staging and report capacity before work. A capacity refusal emits only `ERR CAPACITY`. Rejections leave committed state and previous reports intact. Use the existing command framing and leave other CLI commands and profiles independent of these bindings.
 
-Use the authorized selected-runtime CLI for typed commands. The APC control surface is the editable 5×8 Patchbay and its Web APC counterpart. The portable CLI and Monitor witness can qualify before the editable surface is available. Keep every pad's route edit and committed feedback working through Pause. A qualified trusted Panel handler can call the same in-process provider with current binding and revision authority. Physical gestures and returned status feedback require their own target qualification. For portable Web APC, an explicit control attach beside the panel may use the existing authorized same-origin CLI lease for that runtime. Keep the target visible and the lease exclusive. Maintain one dispatcher per gesture, and keep MIDI and Monitor live on control detach. A passive portable panel and the separate Routing table establish no editable APC acceptance. With neither qualified path, show controls unavailable. No extra listener, inferred authority from a MIDI binding, or automatic lease acquisition.
+Use the authorized selected-runtime CLI for typed commands. The [editable APC Patchbay](#m1a-apc-patchbay-control-binding) shares its provider. The portable CLI and Monitor can qualify before the editable surface is available.
 
 For browser readback, use only the selected target's matching committed response. On stale readback or a lost reply keep the last confirmed state, mark the action unconfirmed and refresh on the existing authorized path. Use a new deliberate gesture for any later action. Never send a repeat on reconnect. The report gives local adapter acceptance. MIDI wire receipt and receiver silence require separate evidence.
 
-Qualify M1a with the ordinary portable CLI and authorized Web APC surface. Check stale and same-value revisions, queued ingress and egress across Pause/Resume, continued control and feedback, refused/partial Panic output alongside healthy outputs, and absent or partial provider bindings. With audio explicitly enabled on the existing Diagnostics Monitor, hold a note and confirm Pause while it still sounds. Keep the binding and audio live and request explicit Panic. Monitor receives exactly three bytes `Bn 7B 00` and releases only its local voices on channel `n + 1`. Capture the actual CC on that binding, measure silence after its release interval, then Resume and verify a fresh balanced note. Treat the router report, MIDI receipt and Monitor audio as distinct observations.
+First qualify M1a with the ordinary portable CLI and Diagnostics Monitor. Check stale and same-value revisions, queued ingress and egress across Pause/Resume, continued control and feedback, refused/partial Panic output alongside healthy outputs, and absent or partial provider bindings. With audio explicitly enabled on the existing Diagnostics Monitor, hold a note and confirm Pause while it still sounds. Keep the binding and audio live and request explicit Panic. Monitor receives exactly three bytes `Bn 7B 00` and releases only its local voices on channel `n + 1`. Capture the actual CC on that binding, measure silence after its release interval, then Resume and verify a fresh balanced note. Treat the router report, MIDI receipt and Monitor audio as distinct observations.
+
+#### M1a APC Patchbay control binding
+
+The APC action surface is the editable 5×8 LED Patchbay, on the physical APC and its Web APC counterpart. The 40 pads still edit routes and report committed cell state while paused. Preserve the chooser, Keys, Arrange, Assign, Move, Learn, Audition and their existing gesture ownership. Audition musical delivery follows the ordinary master gate. A passive panel or the separate browser Routing table supplies no evidence for this surface.
+
+Bind the editable frontend only on a qualified trusted Panel input with current role and attachment ownership. The runtime adapter uses the same M1a provider and serialized queue fence as CLI. There is one mutation dispatcher per gesture. MIDI admission alone supplies no M1 authority. For portable Web APC, an explicit control attach beside the editable panel may use the existing authorized same-origin CLI lease for that runtime. Name the target, preserve lease exclusivity, and keep MIDI and Monitor live on control detach. Use either that path or the trusted Panel dispatcher for a gesture. With neither available, show control unavailable. Keep the existing CLI, listener and grants.
+
+In ordinary Patchbay with Arrange closed, consume one unmodified Play/Pause press (candidate Panel note `0x5b`) to request the opposite of the last confirmed Running/Paused state. Use its exact revision. A missing or stale state earns a readback and requires a fresh press. Shift held before the first fresh Record press (candidate `0x5d`) invokes explicit CC123 Panic once. Bare Record retains its existing behavior. Match these candidates after chooser or mode admission and before the frontend's general Shift filter. Keep repeat and matching-release disposition with the initial gesture and owner through cutover. Repeat, release, Shift alone, binding, mode entry and refresh never invoke an action. A stale refusal refreshes only. M1a has no sweep gesture.
+
+Use an optional private binding in `frontends/apc/apc_physical.h`. The callbacks borrow the existing `panel_context`. Place the result indication through the serialized foreground, after the start callback returns.
+
+```c
+typedef gridpico_result (*gridpico_apc_start_panic_fn)(void *panel_context);
+
+typedef enum {
+    GRIDPICO_APC_PANIC_COMPLETE,
+    GRIDPICO_APC_PANIC_ATTENTION
+} gridpico_apc_panic_cue;
+
+void gridpico_apc_physical_bind_musical_control(
+    gridpico_apc_physical *frontend,
+    gridpico_read_forwarding_fn read,
+    gridpico_apply_forwarding_fn apply,
+    gridpico_apc_start_panic_fn start_panic);
+void gridpico_apc_physical_panic_result(
+    gridpico_apc_physical *frontend, gridpico_apc_panic_cue cue, uint64_t now_ms);
+```
+
+The adapter checks the exact current Panel owner and feedback destination before enabling the binding. A forwarding toggle requires read and apply. Publish only an actual committed provider result after its queue fence, including changes initiated by CLI. Refresh on attach or return to Patchbay, committed state change and stale refusal. Keep one confirmed value and revision per current surface. No pending command can advance them. Invalidate the current lamp state when committed readback is unavailable. Discard cached state and undelivered cues when the input or feedback owner changes. With forwarding unavailable, retain all ordinary Patchbay operations.
+
+The Panic adapter starts the shared M1a job using runtime-owned report scratch. A successful start indicates admission. Post one terminal cue only to the still-current initiating surface after checking its exact input and output epochs and correlating the job. Choose Complete only when a nonempty result reports every output row fully accepted at the adapter. A rejected deliberate press can show Attention without a job. Cancellation, partial, unknown or an empty cohort can show Attention on the terminal job. Emit no completion for admission, for somebody else's job or to a replacement surface. Detailed counts remain available through authorized CLI readback. LED indications supply no evidence of sink silence.
+
+Show confirmed Running steady, Paused blinking and unavailable unlit on the dedicated Play/Pause lamp. Candidate fixed-color messages are `90 5B 01`, `90 5B 02` and `90 5B 00` pending physical optical proof. Current Web APC does not decode this transport lamp. Qualify its rendered state on the same current feedback binding before claiming the mirror. Coalesce one latest lamp frame per surface and use the existing per-output flight fence. Keep it outside the 53-frame route page and its completion. Musical service keeps its existing priority. The optional Panic cue is one brief pulse for Complete or three for Attention on the bottom Scene edge. Apply it only in ordinary Patchbay, then redraw that edge from current selection and activity. Never alter the 40 cell bytes or their revision guards for either indication. In Keys and the chooser leave feedback with their existing owner.
+
+Keep portable provider and Monitor evidence independent of editable Web APC and physical checks. For the editable surface, verify both actions from current gestures, CLI-originated readback on the panel, stale and busy refusal, no repeat, mode and owner retirement, all 40 cells and Arrange/Keys/Audition controls, and feedback loss with no old result presented as current. The physical gate also witnesses real button bytes and paired releases and lamp optics under row activity, independent of MIDI transfer receipt. These are acceptance checks, with no board action authorized by this contract.
 
 #### M1b · Approved timed individual Note Off sweep
 
