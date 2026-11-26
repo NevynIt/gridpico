@@ -49,7 +49,7 @@ static const local_router_profile default_profile = {
 
 static size_t port_index(const local_runtime *runtime, gridpico_port_id id)
 {
-    const gridpico_patch_inventory *inventory = &runtime->profile->registry.inventory;
+    const gridpico_patch_inventory *inventory = &runtime->graph.inventory;
     for (size_t i = 0; i < inventory->port_count; ++i) {
         if (inventory->ports[i].id == id) {
             return i;
@@ -61,16 +61,22 @@ static size_t port_index(const local_runtime *runtime, gridpico_port_id id)
 static bool managed_port(const local_runtime *runtime, size_t index,
                          gridpico_patch_direction direction)
 {
-    const gridpico_local_registry *registry = &runtime->profile->registry;
-    return index < registry->inventory.port_count &&
-        registry->inventory.ports[index].direction == direction &&
-        registry->port_capabilities[index] == GRIDPICO_LOCAL_PORT_MANAGED;
+    return index < runtime->graph.inventory.port_count &&
+        runtime->graph.inventory.ports[index].direction == direction &&
+        runtime->graph.port_capabilities[index] == GRIDPICO_LOCAL_PORT_MANAGED;
+}
+
+static const local_profile_port *port_metadata(const local_runtime *runtime, size_t index)
+{
+    static const local_profile_port fm_port = {LOCAL_ROLE_FM, LOCAL_MIDI_QUEUE, true};
+    return index < runtime->profile->registry.inventory.port_count
+        ? &runtime->profile->ports[index] : &fm_port;
 }
 
 static local_binding *binding(local_runtime *runtime, gridpico_port_id id)
 {
     const size_t index = port_index(runtime, id);
-    return index < runtime->profile->registry.inventory.port_count ? &runtime->bindings[index] : NULL;
+    return index < runtime->graph.inventory.port_count ? &runtime->bindings[index] : NULL;
 }
 
 static bool socket_pool_full(const local_runtime *runtime)
@@ -78,6 +84,11 @@ static bool socket_pool_full(const local_runtime *runtime)
     size_t admitted = 0;
     for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
         if (runtime->bindings[i].attached && !runtime->bindings[i].adapter_owned) ++admitted;
+    }
+    if (runtime->fm_runtime_epoch != 0) {
+        for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+            if (runtime->fm_allocations[i].state != LOCAL_FM_FREE) ++admitted;
+        }
     }
     return admitted >= runtime->profile->limits.midi_peer_limit;
 }
@@ -114,7 +125,7 @@ static gridpico_result stage_midi(local_runtime *runtime, gridpico_connection to
                                   gridpico_revision forwarding_revision, bool panic)
 {
     const size_t index = port_index(runtime, to.endpoint);
-    if (index == runtime->profile->registry.inventory.port_count) {
+    if (index == runtime->graph.inventory.port_count) {
         return GRIDPICO_UNAVAILABLE;
     }
     local_binding *sink = &runtime->bindings[index];
@@ -122,7 +133,7 @@ static gridpico_result stage_midi(local_runtime *runtime, gridpico_connection to
         (panic && sink->adapter_owned)) {
         return GRIDPICO_UNAVAILABLE;
     }
-    if (sink->queued >= runtime->profile->ports[index].queue_limit ||
+    if (sink->queued >= port_metadata(runtime, index)->queue_limit ||
         (sink->adapter.send == NULL &&
          runtime->output_count - runtime->fault_count >= LOCAL_MIDI_STAGE_FRAMES)) {
         if (!panic) sink->fault = true;
@@ -267,7 +278,8 @@ static gridpico_result apply_port(local_runtime *runtime, gridpico_connection co
 static void stage_fault(local_runtime *runtime, gridpico_connection connection)
 {
     local_binding *port = binding(runtime, connection.endpoint);
-    if (!port->adapter_owned && !port->fault_staged) {
+    if (!port->adapter_owned && !port->fault_staged &&
+        runtime->fault_count < GRIDPICO_PATCH_MAX_PORTS) {
         port->fault_staged = true;
         ++runtime->fault_count;
         runtime->output[runtime->output_count++] =
@@ -297,6 +309,10 @@ static gridpico_result set_local_route(void *context, const gridpico_local_route
 {
     local_runtime *runtime = context;
     const gridpico_local_route route = request->route;
+    const size_t destination = port_index(runtime, route.destination);
+    if (request->enabled && destination < runtime->graph.inventory.port_count &&
+        runtime->graph.ports[destination].ephemeral_managed_output &&
+        !runtime->bindings[destination].attached) return GRIDPICO_UNAVAILABLE;
     const bool raw = route.mode == GRIDPICO_LOCAL_RAW;
     const bool leased = runtime->raw_deadline_ms != 0;
     const bool current = leased && route.source == runtime->raw_route.source &&
@@ -412,7 +428,7 @@ static bool panic_serial_current(const local_runtime *runtime)
 static bool panic_output_eligible(const local_runtime *runtime, size_t slot)
 {
     if (!managed_port(runtime, slot, GRIDPICO_PATCH_OUTPUT)) return false;
-    const local_profile_port *port = &runtime->profile->ports[slot];
+    const local_profile_port *port = port_metadata(runtime, slot);
     const local_binding *sink = &runtime->bindings[slot];
     return port->socket && port->role != LOCAL_ROLE_LOG && !sink->adapter_owned &&
            sink->attached && !sink->fault;
@@ -434,7 +450,7 @@ static gridpico_result start_panic(void *context, gridpico_panic_stage_report *o
     }
 
     gridpico_panic_stage_report report = {.state = GRIDPICO_PANIC_STAGE_COMPLETE};
-    const gridpico_patch_inventory *inventory = &runtime->profile->registry.inventory;
+    const gridpico_patch_inventory *inventory = &runtime->graph.inventory;
     for (size_t i = 0; i < inventory->port_count; ++i) {
         if (!panic_output_eligible(runtime, i)) continue;
         if (report.count == GRIDPICO_PATCH_MAX_PORTS) return GRIDPICO_CAPACITY;
@@ -470,6 +486,20 @@ static void finish_panic_output(local_runtime *runtime, gridpico_panic_output *r
 {
     row->state = state;
     if (--runtime->panic_pending == 0) runtime->panic_report.state = GRIDPICO_PANIC_STAGE_COMPLETE;
+}
+
+static void cancel_panic_output(local_runtime *runtime, gridpico_connection connection)
+{
+    if (runtime->panic_report.state != GRIDPICO_PANIC_STAGE_RUNNING) return;
+    for (size_t i = 0; i < runtime->panic_report.count; ++i) {
+        gridpico_panic_output *row = &runtime->panic_report.outputs[i];
+        if (row->state == GRIDPICO_PANIC_OUTPUT_PENDING &&
+            row->output.endpoint == connection.endpoint &&
+            row->output.generation == connection.generation) {
+            finish_panic_output(runtime, row, GRIDPICO_PANIC_OUTPUT_CANCELLED);
+            return;
+        }
+    }
 }
 
 static void cancel_panic(local_runtime *runtime)
@@ -518,7 +548,7 @@ static gridpico_result read_availability(
     gridpico_local_port_availability out[GRIDPICO_PATCH_MAX_PORTS])
 {
     const local_runtime *runtime = context;
-    const gridpico_patch_inventory *inventory = &runtime->profile->registry.inventory;
+    const gridpico_patch_inventory *inventory = &runtime->graph.inventory;
     if (registry->inventory.port_count != inventory->port_count) return GRIDPICO_INVALID;
     for (size_t i = 0; i < inventory->port_count; ++i) {
         if (registry->inventory.ports[i].id != inventory->ports[i].id) return GRIDPICO_INVALID;
@@ -527,7 +557,8 @@ static gridpico_result read_availability(
     for (size_t i = 0; i < inventory->port_count; ++i) {
         const local_binding *port = &runtime->bindings[i];
         out[i] = port->attached ? GRIDPICO_LOCAL_IN_USE :
-            runtime->profile->ports[i].socket && !port->adapter_owned &&
+            !runtime->graph.ports[i].ephemeral_managed_output &&
+            port_metadata(runtime, i)->socket && !port->adapter_owned &&
             port->generation != UINT32_MAX && !full ? GRIDPICO_LOCAL_FREE : GRIDPICO_LOCAL_UNAVAILABLE;
     }
     return GRIDPICO_OK;
@@ -543,7 +574,8 @@ static bool transformable_port(const local_runtime *runtime, gridpico_port_id id
                                gridpico_patch_direction direction)
 {
     const size_t index = port_index(runtime, id);
-    return managed_port(runtime, index, direction) && runtime->profile->ports[index].socket &&
+    return managed_port(runtime, index, direction) && port_metadata(runtime, index)->socket &&
+        (!runtime->graph.ports[index].ephemeral_managed_output || runtime->bindings[index].attached) &&
         !runtime->bindings[index].adapter_owned && (!runtime->recording_enabled || id != RECORDER_PORT);
 }
 
@@ -605,19 +637,27 @@ static void enable_routing(local_runtime *runtime)
     runtime->routing_enabled = true;
 }
 
-gridpico_result local_runtime_init_profile(local_runtime *runtime, const local_router_profile *profile)
+static gridpico_result init_profile(local_runtime *runtime, const local_router_profile *profile,
+                                   bool prepare_fm)
 {
     *runtime = (local_runtime){.forwarding_running = true, .forwarding_revision = 1};
     runtime->configured = profile != NULL;
     runtime->profile = runtime->configured ? profile : &default_profile;
     const gridpico_local_registry *registry = &runtime->profile->registry;
+    gridpico_local_profile limits = runtime->profile->limits;
+    if (prepare_fm) {
+        limits.dynamic_device_limit = GRIDPICO_PATCH_MAX_DEVICES;
+        limits.dynamic_port_limit = GRIDPICO_PATCH_MAX_PORTS;
+    }
     const gridpico_result result = runtime->configured
-        ? gridpico_patch_graph_init_local_profile(&runtime->graph, registry, &profile->limits,
+        ? gridpico_patch_graph_init_local_profile(&runtime->graph, registry, &limits,
                                                   deliver_note, deliver_raw, runtime)
         : gridpico_patch_graph_init_local(&runtime->graph, registry, deliver_note, deliver_raw, runtime);
     if (result != GRIDPICO_OK) {
         return result;
     }
+    runtime->next_fm_device = 1;
+    runtime->next_fm_port = 1;
     runtime->feedback_port = local_profile_role(runtime->profile, LOCAL_ROLE_LED);
     runtime->sequence_port = local_profile_role(runtime->profile, LOCAL_ROLE_SEQUENCE);
     for (size_t i = 0; i < registry->inventory.port_count; ++i) {
@@ -632,9 +672,264 @@ gridpico_result local_runtime_init_profile(local_runtime *runtime, const local_r
     return GRIDPICO_OK;
 }
 
+gridpico_result local_runtime_init_profile(local_runtime *runtime, const local_router_profile *profile)
+{
+    return init_profile(runtime, profile, false);
+}
+
+gridpico_result local_runtime_prepare_fm_profile(local_runtime *runtime, const local_router_profile *profile)
+{
+    if (runtime == NULL || profile == NULL || !profile->passive_surface) return GRIDPICO_INVALID;
+    return init_profile(runtime, profile, true);
+}
+
+gridpico_result local_runtime_init_fm_profile(local_runtime *runtime, const local_router_profile *profile,
+                                             uint64_t runtime_epoch)
+{
+    if (runtime_epoch == 0) return GRIDPICO_INVALID;
+    const gridpico_result result = local_runtime_prepare_fm_profile(runtime, profile);
+    if (result == GRIDPICO_OK) runtime->fm_runtime_epoch = runtime_epoch;
+    return result;
+}
+
 gridpico_result local_runtime_init(local_runtime *runtime)
 {
     return local_runtime_init_profile(runtime, NULL);
+}
+
+static bool valid_fm_name(const char *name, size_t *length)
+{
+    size_t n = 0;
+    while (n < GRIDPICO_PATCH_NAME_BYTES && name[n] != '\0') ++n;
+    if (n == 0 || n == GRIDPICO_PATCH_NAME_BYTES) return false;
+    for (size_t i = 0; i < n;) {
+        const unsigned char first = (unsigned char)name[i++];
+        if (first < 0x20 || first == 0x7f) return false;
+        if (first < 0x80) continue;
+        if (first < 0xc2 || first > 0xf4) return false;
+        const size_t rest = first < 0xe0 ? 1 : first < 0xf0 ? 2 : 3;
+        if (rest > n - i) return false;
+        const unsigned char second = (unsigned char)name[i];
+        if ((first == 0xe0 && second < 0xa0) || (first == 0xed && second >= 0xa0) ||
+            (first == 0xf0 && second < 0x90) || (first == 0xf4 && second >= 0x90)) return false;
+        for (size_t j = 0; j < rest; ++j) {
+            if (((unsigned char)name[i++] & 0xc0u) != 0x80u) return false;
+        }
+    }
+    *length = n;
+    return true;
+}
+
+static uint32_t fresh_fm_id(const local_runtime *runtime, uint32_t id, bool device)
+{
+    const gridpico_patch_inventory *prefix = &runtime->profile->registry.inventory;
+    const size_t count = device ? prefix->device_count : prefix->port_count;
+    for (; id <= UINT16_MAX; ++id) {
+        size_t slot = 0;
+        for (; slot < count; ++slot) {
+            if (id == (device ? prefix->devices[slot].id : prefix->ports[slot].id)) break;
+        }
+        if (slot == count) break;
+    }
+    return id;
+}
+
+static bool same_connection(gridpico_connection left, gridpico_connection right)
+{
+    return left.endpoint == right.endpoint && left.generation == right.generation;
+}
+
+static local_fm_allocation *find_fm(local_runtime *runtime, gridpico_port_id port)
+{
+    for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+        local_fm_allocation *allocation = &runtime->fm_allocations[i];
+        if (allocation->state != LOCAL_FM_FREE && allocation->lease.output.endpoint == port) {
+            return allocation;
+        }
+    }
+    return NULL;
+}
+
+static local_fm_allocation *claim_fm(local_runtime *runtime, local_fm_lease lease,
+                                    const void *reservation_owner)
+{
+    if (lease.runtime_epoch != runtime->fm_runtime_epoch || reservation_owner == NULL) return NULL;
+    local_fm_allocation *allocation = find_fm(runtime, lease.output.endpoint);
+    return allocation != NULL && allocation->reservation_owner == reservation_owner &&
+        allocation->lease.device == lease.device &&
+        same_connection(allocation->lease.output, lease.output) ? allocation : NULL;
+}
+
+local_fm_state local_runtime_fm_lease_state(local_runtime *runtime, local_fm_lease lease,
+                                          const void *reservation_owner)
+{
+    const local_fm_allocation *allocation = claim_fm(runtime, lease, reservation_owner);
+    return allocation == NULL ? LOCAL_FM_FREE : allocation->state;
+}
+
+uint64_t local_runtime_fm_deadline(const local_runtime *runtime)
+{
+    uint64_t deadline = 0;
+    if (runtime->fm_runtime_epoch == 0) return 0;
+    for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+        const local_fm_allocation *allocation = &runtime->fm_allocations[i];
+        if (allocation->state == LOCAL_FM_PENDING &&
+            (deadline == 0 || allocation->deadline_ms < deadline)) {
+            deadline = allocation->deadline_ms;
+        }
+    }
+    return deadline;
+}
+
+gridpico_result local_runtime_reserve_fm(local_runtime *runtime, const char *name, uint64_t deadline_ms,
+                                       const void *reservation_owner, local_fm_lease *out)
+{
+    size_t length;
+    if (runtime == NULL || name == NULL || out == NULL || reservation_owner == NULL ||
+        !valid_fm_name(name, &length)) return GRIDPICO_INVALID;
+    if (runtime->fm_runtime_epoch == 0 || runtime->recording_enabled ||
+        deadline_ms <= runtime->now_ms) return GRIDPICO_UNAVAILABLE;
+
+    local_fm_allocation *free_slot = NULL;
+    size_t pending = 0;
+    for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+        local_fm_allocation *allocation = &runtime->fm_allocations[i];
+        if (allocation->state == LOCAL_FM_FREE) {
+            if (free_slot == NULL) free_slot = allocation;
+        } else {
+            if (allocation->reservation_owner == reservation_owner) return GRIDPICO_UNAVAILABLE;
+            if (allocation->state == LOCAL_FM_PENDING) ++pending;
+        }
+    }
+    if (free_slot == NULL || socket_pool_full(runtime) ||
+        runtime->graph.inventory.device_count + pending >= runtime->graph.local_profile.dynamic_device_limit ||
+        runtime->graph.inventory.port_count + pending >= runtime->graph.local_profile.dynamic_port_limit ||
+        runtime->graph.revision == UINT64_MAX || runtime->session.routing_revision == UINT64_MAX) {
+        return GRIDPICO_CAPACITY;
+    }
+
+    const uint32_t device = fresh_fm_id(runtime, runtime->next_fm_device, true);
+    const uint32_t port = fresh_fm_id(runtime, runtime->next_fm_port, false);
+    if (device > UINT16_MAX || port > UINT16_MAX) return GRIDPICO_CAPACITY;
+    const local_fm_lease lease = {
+        .runtime_epoch = runtime->fm_runtime_epoch,
+        .device = (gridpico_device_id)device,
+        .output = {(gridpico_port_id)port, 2},
+    };
+    *free_slot = (local_fm_allocation){
+        .lease = lease, .reservation_owner = reservation_owner,
+        .deadline_ms = deadline_ms, .state = LOCAL_FM_PENDING,
+    };
+    memcpy(free_slot->name, name, length);
+    runtime->next_fm_device = device + 1;
+    runtime->next_fm_port = port + 1;
+    *out = lease;
+    return GRIDPICO_OK;
+}
+
+gridpico_result local_runtime_publish_fm(local_runtime *runtime, local_fm_lease lease,
+                                       const void *reservation_owner, const void *socket_owner)
+{
+    if (runtime == NULL || socket_owner == NULL) return GRIDPICO_INVALID;
+    local_fm_allocation *allocation = claim_fm(runtime, lease, reservation_owner);
+    if (allocation == NULL || allocation->state != LOCAL_FM_PENDING) return GRIDPICO_UNAVAILABLE;
+    if (runtime->recording_enabled || runtime->now_ms >= allocation->deadline_ms) {
+        *allocation = (local_fm_allocation){0};
+        return GRIDPICO_UNAVAILABLE;
+    }
+    for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+        if (runtime->fm_allocations[i].socket_owner == socket_owner) return GRIDPICO_UNAVAILABLE;
+    }
+    if (runtime->session.routing_revision == UINT64_MAX) {
+        *allocation = (local_fm_allocation){0};
+        return GRIDPICO_CAPACITY;
+    }
+
+    gridpico_patch_device device = {.id = lease.device, .state = GRIDPICO_PATCH_DISCONNECTED};
+    gridpico_patch_port port = {
+        .id = lease.output.endpoint, .device = lease.device,
+        .direction = GRIDPICO_PATCH_OUTPUT, .state = GRIDPICO_PATCH_DISCONNECTED, .patch_eligible = true,
+    };
+    memcpy(device.name, allocation->name, sizeof device.name);
+    memcpy(port.name, allocation->name, sizeof port.name);
+    const size_t device_slot = runtime->graph.inventory.device_count;
+    const size_t port_slot = runtime->graph.inventory.port_count;
+    const gridpico_result result = gridpico_patch_graph_publish_ephemeral_managed_output(
+        &runtime->graph, &device, &port, lease.output);
+    if (result != GRIDPICO_OK) {
+        *allocation = (local_fm_allocation){0};
+        return result;
+    }
+    runtime->bindings[port_slot] = (local_binding){.generation = lease.output.generation, .attached = true};
+    runtime->session.colors[device_slot] = (gridpico_patch_color_preference){0};
+    allocation->socket_owner = socket_owner;
+    allocation->state = LOCAL_FM_ATTACHED;
+    runtime->feedback_refresh = true;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result retire_fm_allocation(local_runtime *runtime, local_fm_allocation *allocation)
+{
+    if (allocation->state == LOCAL_FM_PENDING) {
+        *allocation = (local_fm_allocation){0};
+        return GRIDPICO_OK;
+    }
+    const local_fm_lease lease = allocation->lease;
+    const size_t port_slot = port_index(runtime, lease.output.endpoint);
+    const gridpico_patch_inventory *inventory = &runtime->graph.inventory;
+    const gridpico_patch_inventory *prefix = &runtime->profile->registry.inventory;
+    if (port_slot < prefix->port_count || port_slot >= inventory->port_count ||
+        !runtime->graph.ports[port_slot].ephemeral_managed_output ||
+        runtime->graph.ports[port_slot].generation != lease.output.generation ||
+        runtime->bindings[port_slot].generation != lease.output.generation) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    size_t device_slot = 0;
+    while (device_slot < inventory->device_count && inventory->devices[device_slot].id != lease.device) {
+        ++device_slot;
+    }
+    if (device_slot < prefix->device_count || device_slot >= inventory->device_count ||
+        inventory->ports[port_slot].device != lease.device) return GRIDPICO_UNAVAILABLE;
+
+    /* The old lease becomes undeliverable even if Graph retirement refuses. */
+    allocation->state = LOCAL_FM_FENCED;
+    runtime->bindings[port_slot].attached = false;
+    runtime->bindings[port_slot].fault = false;
+    runtime->bindings[port_slot].queued = 0;
+    size_t kept = 0;
+    for (size_t i = 0; i < runtime->output_count; ++i) {
+        const local_output *row = &runtime->output[i];
+        if (row->fault || !same_connection(row->destination, lease.output)) {
+            runtime->output[kept++] = *row;
+        }
+    }
+    runtime->output_count = kept;
+    cancel_panic_output(runtime, lease.output);
+    if (runtime->session.routing_revision == UINT64_MAX) return GRIDPICO_CAPACITY;
+    const gridpico_result result =
+        gridpico_patch_graph_retire_ephemeral_managed_output(&runtime->graph, lease.output);
+    if (result != GRIDPICO_OK) return result;
+
+    const size_t port_tail = inventory->port_count;
+    const size_t device_tail = inventory->device_count;
+    memmove(&runtime->bindings[port_slot], &runtime->bindings[port_slot + 1],
+            (port_tail - port_slot) * sizeof runtime->bindings[0]);
+    runtime->bindings[port_tail] = (local_binding){0};
+    memmove(&runtime->session.colors[device_slot], &runtime->session.colors[device_slot + 1],
+            (device_tail - device_slot) * sizeof runtime->session.colors[0]);
+    runtime->session.colors[device_tail] = (gridpico_patch_color_preference){0};
+    *allocation = (local_fm_allocation){0};
+    runtime->feedback_refresh = true;
+    return GRIDPICO_OK;
+}
+
+gridpico_result local_runtime_retire_fm(local_runtime *runtime, local_fm_lease lease,
+                                      const void *reservation_owner, const void *socket_owner)
+{
+    if (runtime == NULL) return GRIDPICO_INVALID;
+    local_fm_allocation *allocation = claim_fm(runtime, lease, reservation_owner);
+    if (allocation == NULL || allocation->socket_owner != socket_owner) return GRIDPICO_UNAVAILABLE;
+    return retire_fm_allocation(runtime, allocation);
 }
 
 void local_runtime_enable_desktop_note_transform(local_runtime *runtime)
@@ -663,6 +958,7 @@ gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime)
 
 gridpico_result local_runtime_enable_recorder_route(local_runtime *runtime)
 {
+    if (runtime->fm_runtime_epoch != 0) return GRIDPICO_UNAVAILABLE;
     const size_t source = port_index(runtime, APC_KEYBED_PORT);
     const size_t destination = port_index(runtime, RECORDER_PORT);
     if (!managed_port(runtime, source, GRIDPICO_PATCH_INPUT) ||
@@ -685,7 +981,7 @@ gridpico_result local_runtime_bind_forwarding_transport(local_runtime *runtime)
 {
     if (!runtime->forwarding_transport) return GRIDPICO_INVALID;
     if (runtime->forwarding_enabled || runtime->serial.generation != 0) return GRIDPICO_UNAVAILABLE;
-    for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
+    for (size_t i = 0; i < runtime->graph.inventory.port_count; ++i) {
         if (runtime->bindings[i].generation != 1 || runtime->bindings[i].adapter_owned) {
             return GRIDPICO_UNAVAILABLE;
         }
@@ -707,7 +1003,7 @@ void local_runtime_begin(local_runtime *runtime, uint64_t now_ms)
     runtime->forwarding_barrier_count = 0;
     runtime->serial_count = 0;
     runtime->serial.fault = false;
-    for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
+    for (size_t i = 0; i < runtime->graph.inventory.port_count; ++i) {
         runtime->bindings[i].queued = 0;
         runtime->bindings[i].fault_staged = false;
     }
@@ -717,28 +1013,31 @@ gridpico_result local_runtime_port(const local_runtime *runtime, gridpico_port_i
                                   local_port_state *out)
 {
     const size_t index = port_index(runtime, id);
-    if (index == runtime->profile->registry.inventory.port_count) {
+    if (index == runtime->graph.inventory.port_count) {
         return GRIDPICO_INVALID;
     }
     const local_binding *binding = &runtime->bindings[index];
+    const local_profile_port *metadata = port_metadata(runtime, index);
     *out = (local_port_state){
-        .direction = runtime->profile->registry.inventory.ports[index].direction,
-        .limit = runtime->profile->ports[index].queue_limit,
+        .direction = runtime->graph.inventory.ports[index].direction,
+        .limit = metadata->queue_limit,
         .generation = binding->generation,
         .attached = binding->attached,
         .adapter_owned = binding->adapter_owned,
-        .socket = runtime->profile->ports[index].socket,
-        .managed = runtime->profile->registry.port_capabilities[index] == GRIDPICO_LOCAL_PORT_MANAGED,
+        .socket = metadata->socket,
+        .managed = runtime->graph.port_capabilities[index] == GRIDPICO_LOCAL_PORT_MANAGED,
     };
     return GRIDPICO_OK;
 }
 
 gridpico_result local_runtime_reserve_adapter(local_runtime *runtime, gridpico_port_id id)
 {
-    local_binding *port = binding(runtime, id);
-    if (port == NULL) {
+    const size_t index = port_index(runtime, id);
+    if (index == runtime->graph.inventory.port_count) {
         return GRIDPICO_INVALID;
     }
+    if (runtime->graph.ports[index].ephemeral_managed_output) return GRIDPICO_UNAVAILABLE;
+    local_binding *port = &runtime->bindings[index];
     if (port->attached || port->generation != 1) {
         return GRIDPICO_UNAVAILABLE;
     }
@@ -753,7 +1052,8 @@ static gridpico_result bind_port(local_runtime *runtime, gridpico_connection con
     if (known != GRIDPICO_OK || connection.generation == 0) {
         return GRIDPICO_INVALID;
     }
-    if (port->adapter_owned != (adapter.retire != NULL) ||
+    if (runtime->graph.ports[port_index(runtime, connection.endpoint)].ephemeral_managed_output ||
+        port->adapter_owned != (adapter.retire != NULL) ||
         (adapter.retire == NULL && (!port->socket || socket_pool_full(runtime))) ||
         port->attached || connection.generation <= port->generation ||
         (port->generation == 1 && connection.generation != 2)) {
@@ -802,27 +1102,19 @@ gridpico_result local_runtime_bind_adapter(local_runtime *runtime, gridpico_conn
 
 gridpico_result local_runtime_detach(local_runtime *runtime, gridpico_connection connection)
 {
-    local_binding *port = binding(runtime, connection.endpoint);
-    if (port == NULL || connection.generation == 0) {
+    const size_t index = port_index(runtime, connection.endpoint);
+    if (index == runtime->graph.inventory.port_count || connection.generation == 0) {
         return GRIDPICO_INVALID;
     }
-    if (!port->attached || port->generation != connection.generation) {
+    local_binding *port = &runtime->bindings[index];
+    if (runtime->graph.ports[index].ephemeral_managed_output ||
+        !port->attached || port->generation != connection.generation) {
         return GRIDPICO_UNAVAILABLE;
     }
     port->fault = false;
     gridpico_result result = apply_port(runtime, connection, false);
-    if (runtime->panic_report.state == GRIDPICO_PANIC_STAGE_RUNNING) {
-        for (size_t i = 0; i < runtime->panic_report.count; ++i) {
-            gridpico_panic_output *row = &runtime->panic_report.outputs[i];
-            if (row->state == GRIDPICO_PANIC_OUTPUT_PENDING &&
-                row->output.endpoint == connection.endpoint &&
-                row->output.generation == connection.generation) {
-                finish_panic_output(runtime, row, GRIDPICO_PANIC_OUTPUT_CANCELLED);
-                break;
-            }
-        }
-    }
-    if (runtime->profile->registry.port_capabilities[port_index(runtime, connection.endpoint)] == GRIDPICO_LOCAL_PORT_PANEL) {
+    cancel_panic_output(runtime, connection);
+    if (runtime->graph.port_capabilities[index] == GRIDPICO_LOCAL_PORT_PANEL) {
         if (runtime->profile->passive_surface) gridpico_apc_patch_reset_gestures(&runtime->apc);
         else reset_panel(runtime);
         runtime->feedback_refresh = true;
@@ -849,8 +1141,8 @@ gridpico_result local_runtime_midi_at_revision(local_runtime *runtime,
                                                gridpico_revision revision)
 {
     const size_t index = port_index(runtime, input->source.endpoint);
-    if (index == runtime->profile->registry.inventory.port_count ||
-        runtime->profile->registry.inventory.ports[index].direction != GRIDPICO_PATCH_INPUT ||
+    if (index == runtime->graph.inventory.port_count ||
+        runtime->graph.inventory.ports[index].direction != GRIDPICO_PATCH_INPUT ||
         !valid_triplet(input->bytes) || input->source.generation == 0) {
         return GRIDPICO_INVALID;
     }
@@ -858,7 +1150,7 @@ gridpico_result local_runtime_midi_at_revision(local_runtime *runtime,
     if (!port->attached || port->generation != input->source.generation) {
         return GRIDPICO_UNAVAILABLE;
     }
-    const gridpico_local_port_capability capability = runtime->profile->registry.port_capabilities[index];
+    const gridpico_local_port_capability capability = runtime->graph.port_capabilities[index];
     if (revision != 0 && (!runtime->forwarding_enabled || capability != GRIDPICO_LOCAL_PORT_MANAGED)) {
         return GRIDPICO_INVALID;
     }
@@ -976,13 +1268,24 @@ gridpico_result local_runtime_serial(local_runtime *runtime, uint32_t generation
 static gridpico_result retire_faults(local_runtime *runtime)
 {
     gridpico_result result = GRIDPICO_OK;
-    for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
+    for (size_t i = 0; i < runtime->graph.inventory.port_count;) {
         local_binding *port = &runtime->bindings[i];
         if (port->attached && port->fault) {
-            const gridpico_connection connection = {runtime->profile->registry.inventory.ports[i].id, port->generation};
-            result = first_error(result, local_runtime_detach(runtime, connection));
-            stage_fault(runtime, connection);
+            const gridpico_connection connection = {runtime->graph.inventory.ports[i].id, port->generation};
+            if (runtime->graph.ports[i].ephemeral_managed_output) {
+                local_fm_allocation *allocation = find_fm(runtime, connection.endpoint);
+                if (allocation != NULL && same_connection(allocation->lease.output, connection)) {
+                    stage_fault(runtime, connection);
+                    const gridpico_result retired = retire_fm_allocation(runtime, allocation);
+                    result = first_error(result, retired);
+                    if (retired == GRIDPICO_OK) continue;
+                }
+            } else {
+                result = first_error(result, local_runtime_detach(runtime, connection));
+                stage_fault(runtime, connection);
+            }
         }
+        ++i;
     }
     if (runtime->serial.fault && runtime->serial.attached) {
         local_runtime_serial_detach(runtime, runtime->serial.generation);
@@ -1005,7 +1308,7 @@ gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result res
     const size_t output_before = runtime->output_count;
     gridpico_result refreshed = GRIDPICO_UNAVAILABLE;
     const size_t index = port_index(runtime, runtime->feedback_port);
-    const size_t limit = runtime->profile->ports[index].queue_limit;
+    const size_t limit = port_metadata(runtime, index)->queue_limit;
     if (before + GRIDPICO_PATCH_LED_FRAMES <= limit) {
         runtime->refreshing = true;
         refreshed = gridpico_apc_patch_refresh(&runtime->apc);
@@ -1024,6 +1327,14 @@ gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result res
 
 gridpico_result local_runtime_expire(local_runtime *runtime)
 {
+    if (runtime->fm_runtime_epoch != 0) {
+        for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+            local_fm_allocation *allocation = &runtime->fm_allocations[i];
+            if (allocation->state == LOCAL_FM_PENDING && runtime->now_ms >= allocation->deadline_ms) {
+                *allocation = (local_fm_allocation){0};
+            }
+        }
+    }
     return runtime->raw_deadline_ms != 0 && runtime->now_ms >= runtime->raw_deadline_ms
         ? end_raw(runtime) : GRIDPICO_OK;
 }
@@ -1040,6 +1351,12 @@ gridpico_result local_runtime_retire(local_runtime *runtime)
                 const gridpico_connection connection = {port->id, state->generation};
                 result = first_error(result, local_runtime_detach(runtime, connection));
             }
+        }
+    }
+    for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+        local_fm_allocation *allocation = &runtime->fm_allocations[i];
+        if (allocation->state != LOCAL_FM_FREE) {
+            result = first_error(result, retire_fm_allocation(runtime, allocation));
         }
     }
     runtime->serial.attached = false;

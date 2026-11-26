@@ -10,6 +10,7 @@ const { createWssListener } = require("./wss-listener");
 const { createTrustedLanListener } = require("./trusted-lan-listener");
 const { createRecorder, recorderPort } = require("./recording");
 const { createRecordingsHttp } = require("./recordings-http");
+const { createLocalFmJoin, fmJoinProtocol } = require("./local-fm-join");
 const { loadWebUiBundle } = require("./web-ui-bundle");
 
 const address = "127.0.0.1";
@@ -128,11 +129,12 @@ const legacy = bundle ? undefined : legacyAssets();
 const capabilityBodies = new Map();
 let alternateCapabilities;
 let fmPort;
+let fmJoin;
+const runtimeInstance = randomBytes(16).toString("hex");
 
 function prepareCapabilities(runtimeRoles) {
   fmPort = runtimeRoles.get("fm")?.port;
   if (recorder && fmPort === recorderPort) throw new Error("FM needs a separate MIDI port from the recorder");
-  const instance = randomBytes(16).toString("hex");
   if (lan) {
     for (const [role, port, direction] of [["keybed", 1, "in"], ["panel", 2, "in"], ["led", 3, "out"]]) {
       const published = runtimeRoles.get(role);
@@ -155,7 +157,8 @@ function prepareCapabilities(runtimeRoles) {
       recording: Boolean(recorder && (!listener || listener.trustedLan)),
     };
     if (listener?.trustedLan && lanPicoCdc) actions.picoCdc = true;
-    const descriptor = { version: 1, release: bundle.release, instance, roles, autoBind, actions };
+    if (!listener && fmJoin) actions.join = true;
+    const descriptor = { version: 1, release: bundle.release, instance: runtimeInstance, roles, autoBind, actions };
     const body = Buffer.from(JSON.stringify(descriptor));
     if (body.length > 2048) throw new Error("Browser capability descriptor exceeds its bound");
     capabilityBodies.set(listener, body);
@@ -190,6 +193,11 @@ function matchesHeader(request, name, expected) {
 function serve(request, response, listener) {
   const host = listener?.host ?? `${address}:${request.socket.localPort}`;
   const identity = listener?.identity(request.socket);
+  if (request.url === "/ui-join") {
+    if (listener || !fmJoin) response.writeHead(404).end();
+    else fmJoin.serve(request, response, host, `http://${host}`);
+    return;
+  }
   if (listener && (!identity || !matchesHeader(request, "host", host))) {
     response.writeHead(403).end();
     return;
@@ -261,7 +269,7 @@ function serve(request, response, listener) {
   response.writeHead(200, headers);
   response.end(request.method === "HEAD" ? undefined : body);
 }
-const websockets = new WebSocketServer({
+const webSocketOptions = {
   noServer: true,
   maxPayload: maxSerialChunk,
   maxFragments: 256,
@@ -269,6 +277,11 @@ const websockets = new WebSocketServer({
   maxPendingAutoPongs: 16,
   closeTimeout: 1000,
   perMessageDeflate: false,
+};
+const websockets = new WebSocketServer(webSocketOptions);
+const fmWebSockets = new WebSocketServer({
+  ...webSocketOptions,
+  handleProtocols: () => fmJoinProtocol,
 });
 
 const peers = new Map();
@@ -277,6 +290,8 @@ let forwardingEnabled = false;
 let forwarding = { revision: 1n, running: true };
 let midiPeerLimit;
 let busy;
+const fmQueue = [];
+let preferFm = true;
 let shuttingDown = false;
 
 function reject(socket, status) {
@@ -319,6 +334,11 @@ function retire(peer, { code = 1011, reason = "Binding closed", graceful = false
   }
   if (peer.socket?.readyState === WebSocket.OPEN) peer.socket.close(code, reason);
   else if (!peer.socket) reject(peer.raw, "503 Service Unavailable");
+
+  if (peer.fmLease) {
+    fmJoin.close(peer.fmLease, retired);
+    return;
+  }
 
   // The runner fault already retired this exact generation.
   if (retired || (!peer.bound && busy !== peer)) removePeer(peer);
@@ -420,7 +440,7 @@ function handleRecord(record) {
   }
   if (!peer || peer.generation !== record.generation) return;
   if (record.kind === "fault") {
-    generations.set(peer.key, peer.generation);
+    if (!peer.fmLease) generations.set(peer.key, peer.generation);
     retire(peer, { retired: true, reason: "Router retired the binding" });
     return;
   }
@@ -437,12 +457,20 @@ function handleRecord(record) {
 
 function completeUpgrade(peer) {
   clearTimeout(peer.handshakeTimer);
-  if (peer.closing || peer.raw.destroyed) {
+  if (peer.closing || peer.raw.destroyed || (peer.fmLease && peer.raw.readableEnded)) {
     retire(peer);
     return;
   }
 
-  websockets.handleUpgrade(peer.request, peer.raw, peer.head, (socket) => {
+  // A join receive socket does not acquire authority for any opening bytes.
+  if (peer.fmLease) {
+    peer.raw.pause();
+    peer.raw.removeListener("data", discardOpeningFmBytes);
+    peer.raw.removeListener("end", peer.rawClosed);
+    peer.raw.read();
+  }
+  const upgrader = peer.fmLease ? fmWebSockets : websockets;
+  upgrader.handleUpgrade(peer.request, peer.raw, peer.head, (socket) => {
     peer.raw.removeListener("close", peer.rawClosed);
     peer.socket = socket;
     socket.on("message", (data, binary) => {
@@ -488,9 +516,35 @@ function completeUpgrade(peer) {
   });
 }
 
+function enqueueFm(start, complete, onRecord) {
+  fmQueue.push({ start, complete, onRecord });
+  queueMicrotask(pump);
+}
+
+function pumpFm() {
+  while (fmQueue.length) {
+    const job = fmQueue.shift();
+    const line = job.start();
+    if (!line) {
+      job.complete("SKIPPED");
+      continue;
+    }
+    preferFm = false;
+    busy = job;
+    pipe.dispatch(line, error => {
+      busy = undefined;
+      job.complete(error);
+      queueMicrotask(pump);
+    }, job.onRecord);
+    return true;
+  }
+  return false;
+}
+
 function pump() {
-  if (shuttingDown || busy) return;
+  if (shuttingDown || busy || (preferFm && pumpFm())) return;
   for (const peer of peers.values()) {
+    if (peer.fmLease) continue;
     const { port, generation } = peer;
     let line;
     let complete;
@@ -538,6 +592,7 @@ function pump() {
     // Rotate each dispatched peer behind its peers while preserving its own FIFO.
     peers.delete(peer.key);
     peers.set(peer.key, peer);
+    preferFm = true;
     busy = peer;
     pipe.dispatch(line, (code) => {
       busy = undefined;
@@ -546,6 +601,7 @@ function pump() {
     });
     return;
   }
+  pumpFm();
 }
 
 function acceptUpgrade(request, raw, head, listener) {
@@ -574,6 +630,7 @@ function acceptUpgrade(request, raw, head, listener) {
     reject(raw, "404 Not Found");
     return;
   }
+  if (!listener && fmJoin?.upgrade(request, raw, port, expectedHost, expectedOrigin)) return;
   if (recorder && port === recorderPort && (listener || !recorder.claim(raw))) {
     reject(raw, "404 Not Found");
     return;
@@ -591,7 +648,7 @@ function acceptUpgrade(request, raw, head, listener) {
   }
   const key = port ?? "serial";
   const generation = (generations.get(key) ?? (port === undefined ? 0 : 1)) + 1;
-  const midiPeers = peers.size - Number(peers.has("serial"));
+  const midiPeers = peers.size - Number(peers.has("serial")) + (fmJoin?.pendingCount() ?? 0);
   if (shuttingDown || peers.has(key) || generation > maxGeneration ||
       (port !== undefined && midiPeers >= midiPeerLimit)) {
     reject(raw, "503 Service Unavailable");
@@ -636,6 +693,7 @@ async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   clearInterval(lanWatch);
+  fmJoin?.stop();
   lanPicoCdc?.close();
   await recorder?.shutdown();
   server.close();
@@ -646,6 +704,29 @@ async function shutdown() {
   lan?.server.closeAllConnections();
   for (const peer of peers.values()) retire(peer, { code: 1001, reason: "Local router stopped" });
   pipe.stop(); // Runtime EOF retires inputs before outputs and drains accepted cleanup.
+}
+
+function discardOpeningFmBytes() {
+  // Only frames received after the committed upgrade belong to this peer.
+}
+
+function createFmPeer(lease, request, raw) {
+  if (peers.has(lease.port)) throw new Error("Router FM allocation collides with a peer");
+  raw.pause();
+  const peer = {
+    key: lease.port, port: lease.port, generation: lease.generation, fmLease: lease,
+    request, raw, head: Buffer.alloc(0), expectedDirection: "out", direction: "out",
+    managed: true, limit: 64, bound: false, closing: false, input: [], inputBytes: 0,
+    beforeUpgrade: [], outputFrames: 0, outputBytes: 0,
+  };
+  peer.rawClosed = () => retire(peer);
+  raw.once("close", peer.rawClosed);
+  raw.once("end", peer.rawClosed);
+  raw.once("error", () => retire(peer));
+  raw.on("data", discardOpeningFmBytes);
+  peers.set(peer.key, peer);
+  raw.resume();
+  return peer;
 }
 
 function listen(peerLimit, runtimeRoles) {
@@ -672,9 +753,19 @@ function listen(peerLimit, runtimeRoles) {
   });
 }
 
+let fmEpoch;
+if (uiDescriptor && webUi && profile && !recorder) {
+  do { fmEpoch = randomBytes(8).readBigUInt64BE(); } while (fmEpoch === 0n);
+}
 const pipe = startLocalPipe(runnerPath, {
-  onReady(peerLimit, runtimeRoles, qualifiedForwarding) {
+  onReady(peerLimit, runtimeRoles, qualifiedForwarding, qualifiedFmJoin) {
     forwardingEnabled = qualifiedForwarding;
+    if (qualifiedFmJoin) {
+      fmJoin = createLocalFmJoin({
+        epoch: fmEpoch, runtime: runtimeInstance, limit: peerLimit, matchesHeader, enqueue: enqueueFm,
+        createPeer: createFmPeer, closePeer: retire, removePeer, finishUpgrade: completeUpgrade, reject,
+      });
+    }
     listen(peerLimit, runtimeRoles);
   },
   onRecord: handleRecord,
@@ -685,7 +776,7 @@ const pipe = startLocalPipe(runnerPath, {
   },
 }, [...(webUi ? ["--web-ui"] : []), ...(profile ? ["--profile", profile] : []),
   ...(recorder ? ["--recorder"] : []), ...(uiDescriptor ? ["--ui-descriptor"] : [])],
-{ expectUiRoles: uiDescriptor, probeForwarding: uiDescriptor && !recorder });
+{ expectUiRoles: uiDescriptor, probeForwarding: uiDescriptor && !recorder, fmEpoch });
 
 server.on("error", (error) => {
   console.error(error.message);

@@ -58,6 +58,28 @@ typedef struct {
 } local_forwarding_barrier;
 
 typedef struct {
+    uint64_t runtime_epoch;
+    gridpico_device_id device;
+    gridpico_connection output;
+} local_fm_lease;
+
+typedef enum {
+    LOCAL_FM_FREE,
+    LOCAL_FM_PENDING,
+    LOCAL_FM_ATTACHED,
+    LOCAL_FM_FENCED,
+} local_fm_state;
+
+typedef struct {
+    local_fm_lease lease;
+    const void *reservation_owner;
+    const void *socket_owner;
+    uint64_t deadline_ms;
+    char name[GRIDPICO_PATCH_NAME_BYTES];
+    local_fm_state state;
+} local_fm_allocation;
+
+typedef struct {
     gridpico_patch_graph graph;
     gridpico_patch_session session;
     gridpico_apc_patch apc;
@@ -77,6 +99,10 @@ typedef struct {
     local_forwarding_barrier forwarding_barriers[LOCAL_FORWARDING_BARRIERS];
     size_t forwarding_barrier_count;
     local_binding bindings[GRIDPICO_PATCH_MAX_PORTS];
+    uint64_t fm_runtime_epoch;
+    uint32_t next_fm_device;
+    uint32_t next_fm_port;
+    local_fm_allocation fm_allocations[GRIDPICO_PATCH_MAX_DEVICES];
     local_binding serial;
     gridpico_panic_stage_report panic_report;
     gridpico_panic_stage_report panic_scratch;
@@ -103,6 +129,25 @@ typedef struct {
 gridpico_result local_runtime_init(local_runtime *runtime);
 /* A configured profile remains valid for the lifetime of the runtime. */
 gridpico_result local_runtime_init_profile(local_runtime *runtime, const local_router_profile *profile);
+/* Private entry for a qualified portable join owner. The caller supplies the
+ * runtime lifetime epoch and serializes all operations with ordinary dispatch.
+ * Owner tokens identify already verified claims and are never dereferenced. */
+gridpico_result local_runtime_init_fm_profile(local_runtime *runtime, const local_router_profile *profile,
+                                             uint64_t runtime_epoch);
+/* Prepare Graph backing at startup. An eligible runner arms the epoch once
+ * after its private negotiation, without restarting Graph or Session. */
+gridpico_result local_runtime_prepare_fm_profile(local_runtime *runtime, const local_router_profile *profile);
+uint64_t local_runtime_fm_deadline(const local_runtime *runtime);
+local_fm_state local_runtime_fm_lease_state(local_runtime *runtime, local_fm_lease lease,
+                                          const void *reservation_owner);
+gridpico_result local_runtime_reserve_fm(local_runtime *runtime, const char *name, uint64_t deadline_ms,
+                                       const void *reservation_owner, local_fm_lease *out);
+gridpico_result local_runtime_publish_fm(local_runtime *runtime, local_fm_lease lease,
+                                       const void *reservation_owner, const void *socket_owner);
+/* A pending reservation is cancelled with a null socket owner. A published
+ * lease must supply its exact socket owner after fencing the host side. */
+gridpico_result local_runtime_retire_fm(local_runtime *runtime, local_fm_lease lease,
+                                      const void *reservation_owner, const void *socket_owner);
 gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime);
 gridpico_result local_runtime_enable_recorder_route(local_runtime *runtime);
 /* Desktop assembly checks the validated profile before serial ingress. */

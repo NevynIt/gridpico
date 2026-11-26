@@ -103,13 +103,17 @@ function uiRolesFrom(line) {
   return roles;
 }
 
-function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false, probeForwarding = false } = {}) {
+function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false, probeForwarding = false, fmEpoch } = {}) {
   const runner = spawn(executable, args, { stdio: ["pipe", "pipe", "inherit"], detached: process.platform !== "win32" });
   let ready = false;
   let startupComplete = false;
   let forwardingEnabled = false;
   let forwardingProbeLimit;
   let forwardingInitialState = false;
+  let fmProbeLimit;
+  let fmInitialState = false;
+  let fmJoinEnabled = false;
+  let fmRecord;
   let uiRoles;
   let stopped = false;
   let response;
@@ -138,7 +142,21 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
       if (stopped) return;
       if (partial) return fail("Unexpected partial router startup record");
       startupComplete = true;
-      try { handlers.onReady(limit, uiRoles, forwardingEnabled); } catch (error) { fail(error.message); }
+      try { handlers.onReady(limit, uiRoles, forwardingEnabled, fmJoinEnabled); } catch (error) { fail(error.message); }
+    });
+  }
+
+  function finishForwarding(limit) {
+    if (fmEpoch === undefined) {
+      announceReady(limit);
+      return;
+    }
+    setImmediate(() => {
+      if (stopped) return;
+      if (partial) return fail("Unexpected partial router startup record");
+      fmProbeLimit = limit;
+      timer = setTimeout(() => fail("Router FM join negotiation timed out"), deadlineMs);
+      runner.stdin.write(`fm-join-bind fm-v1 ${fmEpoch}\n`);
     });
   }
 
@@ -167,7 +185,7 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
           timer = setTimeout(() => fail("Router forwarding negotiation timed out"), deadlineMs);
           runner.stdin.write("forwarding-bind forwarding-v1\n");
         });
-      } else if (expectUiRoles) announceReady(limit);
+      } else if (expectUiRoles) finishForwarding(limit);
       else {
         startupComplete = true;
         handlers.onReady(limit, undefined, forwardingEnabled);
@@ -186,6 +204,21 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
       const limit = forwardingProbeLimit;
       forwardingProbeLimit = undefined;
       forwardingEnabled = line === "ok";
+      finishForwarding(limit);
+      return;
+    }
+    if (fmProbeLimit !== undefined) {
+      if (!fmInitialState && line === `fm-join-ready fm-v1 ${fmEpoch}`) {
+        fmInitialState = true;
+        return;
+      }
+      if (fmInitialState ? line !== "ok" : line !== "err INVALID") {
+        throw new Error("Router FM join negotiation failed");
+      }
+      clearTimeout(timer);
+      const limit = fmProbeLimit;
+      fmProbeLimit = undefined;
+      fmJoinEnabled = line === "ok";
       announceReady(limit);
       return;
     }
@@ -204,12 +237,18 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
       if (code !== undefined && !errorCodes.has(code)) throw new Error("Invalid router result");
       const finish = response;
       response = undefined;
+      fmRecord = undefined;
       replyStarted = false;
       clearTimeout(timer);
       finish(code);
       return;
     }
     if (!inEvent) replyStarted = true;
+    if (line.startsWith("fm-")) {
+      if (!fmJoinEnabled || inEvent || !fmRecord) throw new Error("Unexpected router FM metadata");
+      fmRecord(line);
+      return;
+    }
     handlers.onRecord(recordFrom(line, forwardingEnabled));
   }
 
@@ -237,9 +276,10 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
   });
 
   return {
-    dispatch(line, complete) {
+    dispatch(line, complete, onFmRecord) {
       if (stopped || !ready || response) throw new Error("Router dispatch is unavailable");
       response = complete;
+      fmRecord = onFmRecord;
       timer = setTimeout(() => fail("Router dispatch timed out"), deadlineMs);
       runner.stdin.write(line + "\n");
     },

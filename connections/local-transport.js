@@ -59,6 +59,7 @@
       autoBind.every(role => typeof role === "string" && role !== "sequence" && Object.hasOwn(roles, role)));
     const actionNames = ["cli", "ledTest", "recording"];
     if (actions && Object.hasOwn(actions, "picoCdc")) actionNames.push("picoCdc");
+    if (actions && Object.hasOwn(actions, "join")) actionNames.push("join");
     requireValid(keysOf(actions, actionNames) &&
       Object.values(actions).every(available => typeof available === "boolean"));
     Object.freeze(roles);
@@ -101,16 +102,15 @@
     }
   }
 
-  async function verifySameOriginFm(description) {
-    if (!loopback || !description?.roles.fm || description !== capabilities) return false;
+  async function verifyFmRelease(description, signal) {
+    if (!loopback || !description || description !== capabilities) return false;
     try {
-      const signal = AbortSignal.timeout(5000);
       const [current, response] = await Promise.all([
         readCapabilities(documentOrigin, signal),
         fetch("/web-ui/SHA256SUMS", { cache: "no-store", mode: "same-origin", redirect: "error", signal }),
       ]);
       if (!response.ok || !current || current.instance !== description.instance || current.release !== description.release ||
-          current.roles.fm?.port !== description.roles.fm?.port) {
+          current.roles.fm?.port !== description.roles.fm?.port || current.actions.join !== description.actions.join) {
         void response.body?.cancel().catch(() => {});
         return false;
       }
@@ -121,6 +121,70 @@
     } catch {
       return false;
     }
+  }
+
+  function verifySameOriginFm(description) {
+    return description?.roles.fm ? verifyFmRelease(description, AbortSignal.timeout(5000)) : false;
+  }
+
+  function joinError(message, kind) {
+    return Object.assign(new Error(message), { kind });
+  }
+
+  async function joinFm(options, signal) {
+    const owner = target;
+    const description = owner.capabilities;
+    if (!loopback || location.pathname !== "/fm/" || owner.origin !== documentOrigin ||
+        description?.actions.join !== true) throw joinError("FM join is unavailable on this connection.");
+    const deadline = AbortSignal.any([signal, AbortSignal.timeout(5000)]);
+    if (!(await verifyFmRelease(description, deadline))) {
+      deadline.throwIfAborted();
+      throw joinError("The selected router could not be verified. Reopen FM Instrument on this router.", "stale");
+    }
+    deadline.throwIfAborted();
+    if (target !== owner) throw joinError("The selected router changed.", "stale");
+
+    const name = "FM Instrument";
+    const role = { role: "fm", direction: "receive", capability: "managed" };
+    const response = await fetch("/ui-join", {
+      method: "POST", mode: "same-origin", credentials: "same-origin", redirect: "error", cache: "no-store",
+      headers: { "Content-Type": "application/json" }, signal: deadline,
+      body: JSON.stringify({ version: 1, runtime: description.instance, tool: "fm", name, roles: [role] }),
+    });
+    if (!/^application\/json(?:\s*;|$)/i.test(response.headers.get("Content-Type") ?? "")) {
+      void response.body?.cancel().catch(() => {});
+      throw joinError("Couldn’t join FM Instrument.");
+    }
+    const bytes = await readBounded(response, 2048);
+    const result = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+    deadline.throwIfAborted();
+    if (target !== owner) throw joinError("The selected router changed.", "stale");
+    if (response.status === 409 && keysOf(result, ["error"]) && result.error === "CAPACITY") {
+      throw joinError("Capacity full.", "capacity");
+    }
+    if (!response.ok) throw joinError("Couldn’t join FM Instrument.");
+    if (!keysOf(result, ["version", "runtime", "pageInstance", "name", "cue", "roles", "ticket"]) ||
+        result.version !== 1 || result.name !== name ||
+        typeof result.pageInstance !== "string" || !/^[0-9a-f]{32}$/.test(result.pageInstance) ||
+        typeof result.ticket !== "string" || !/^[0-9a-f]{64}$/.test(result.ticket) ||
+        result.pageInstance === result.runtime || !Array.isArray(result.roles) || result.roles.length !== 1) {
+      throw joinError("Couldn’t verify the FM Instrument allocation.");
+    }
+    if (result.runtime !== description.instance) throw joinError("The selected router changed.", "stale");
+    const [binding] = result.roles;
+    if (!keysOf(binding, ["role", "port", "direction", "capability"]) ||
+        binding.role !== role.role || binding.direction !== role.direction || binding.capability !== role.capability ||
+        !Number.isInteger(binding.port) || binding.port < 1 || binding.port > 65535 || result.cue !== `ID ${binding.port}`) {
+      throw joinError("Couldn’t verify the FM Instrument receive role.");
+    }
+    const midiProtocol = "gridpico-midi-v1";
+    const handle = track({ ...options, direction: "receive" }, callbacks =>
+      openBytes(`/midi/${binding.port}`, callbacks, length => length === 3, 128 * 3,
+        ({ opened, requestedClose }) => {
+          if (requestedClose) return;
+          return opened ? "FM connection stale. Rejoin to reconnect." : "Couldn’t join FM Instrument.";
+        }, owner.origin, undefined, [midiProtocol, "gridpico-join." + result.ticket]));
+    return Object.freeze({ handle, runtime: result.runtime, pageInstance: result.pageInstance, cue: result.cue });
   }
 
   function initialPorts(description) {
@@ -277,10 +341,10 @@
   }
 
   function openBytes(path, { direction, onData, onState }, frameLimit, bufferLimit, onClosed,
-      origin = location.origin, sendChunkSize) {
+      origin = location.origin, sendChunkSize, protocols) {
     const url = new URL(path, origin);
     url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(url);
+    const socket = new WebSocket(url, protocols);
     socket.binaryType = "arraybuffer";
     let closing = false;
     let opened = false;
@@ -294,6 +358,10 @@
     queueMicrotask(() => { if (!closing) onState?.("connecting"); });
     socket.addEventListener("open", () => {
       if (closing) return;
+      if (protocols && socket.protocol !== protocols[0]) {
+        close(4000, "Unexpected Gridpico MIDI protocol");
+        return;
+      }
       opened = true;
       onState?.("connected");
     });
@@ -659,6 +727,7 @@
     requestMidiAccess,
     listMidiPorts,
     verifySameOriginFm,
+    joinFm,
     mountServerSelection,
     openMidi(portId, options) {
       if (options?.direction !== "send" && options?.direction !== "receive") {

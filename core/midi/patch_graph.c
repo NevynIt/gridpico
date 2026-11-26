@@ -6,6 +6,7 @@ enum {
     NO_DEVICE = GRIDPICO_PATCH_MAX_DEVICES,
     NO_PORT = GRIDPICO_PATCH_MAX_PORTS,
     NO_BRANCH = GRIDPICO_PATCH_MAX_BRANCHES,
+    DORMANT_GENERATION = 1,
     LOCAL_MANAGED_BRANCHES = 2,
     LOCAL_RAW_BRANCHES = 1,
 };
@@ -285,7 +286,7 @@ static gridpico_result init_graph(gridpico_patch_graph *graph, const gridpico_pa
         .branch_limit = limits.branches,
     };
     for (size_t i = 0; i < graph->inventory.port_count; ++i) {
-        graph->ports[i].generation = 1;
+        graph->ports[i].generation = DORMANT_GENERATION;
     }
     aggregate_devices(&graph->inventory);
     return GRIDPICO_OK;
@@ -398,9 +399,9 @@ gridpico_result gridpico_patch_graph_init_local_profile(
     return init_local_graph(graph, registry, *profile, deliver_note, deliver_raw, delivery_context, true);
 }
 
-gridpico_result gridpico_patch_graph_append_managed_device(
+static gridpico_result append_managed_device(
     gridpico_patch_graph *graph, const gridpico_patch_device *device,
-    const gridpico_patch_port *ports, size_t port_count)
+    const gridpico_patch_port *ports, size_t port_count, uint32_t generation)
 {
     if (graph == NULL) {
         return GRIDPICO_INVALID;
@@ -415,6 +416,10 @@ gridpico_result gridpico_patch_graph_append_managed_device(
 
     gridpico_patch_inventory *inventory = &graph->inventory;
     const size_t first_port = inventory->port_count;
+    const bool ephemeral = generation != DORMANT_GENERATION;
+    if (!ephemeral && first_port != 0 && graph->ports[first_port - 1].ephemeral_managed_output) {
+        return GRIDPICO_UNAVAILABLE;
+    }
     if (inventory->device_count >= profile->dynamic_device_limit ||
         port_count > profile->dynamic_port_limit - first_port || graph->revision == UINT64_MAX) {
         return GRIDPICO_CAPACITY;
@@ -437,13 +442,93 @@ gridpico_result gridpico_patch_graph_append_managed_device(
         }
     }
 
-    inventory->devices[inventory->device_count++] = *device;
+    const gridpico_patch_connection_state state =
+        ephemeral ? GRIDPICO_PATCH_CONNECTED : GRIDPICO_PATCH_DISCONNECTED;
+    inventory->devices[inventory->device_count] = *device;
+    inventory->devices[inventory->device_count++].state = state;
     memmove(&inventory->ports[first_port], ports, port_count * sizeof ports[0]);
     for (size_t i = first_port; i < first_port + port_count; ++i) {
+        inventory->ports[i].state = state;
         graph->port_capabilities[i] = GRIDPICO_LOCAL_PORT_MANAGED;
-        graph->ports[i] = (gridpico_patch_port_runtime){.generation = 1};
+        graph->ports[i] = (gridpico_patch_port_runtime){
+            .generation = generation, .ephemeral_managed_output = ephemeral,
+        };
     }
     inventory->port_count += port_count;
+    ++graph->revision;
+    return GRIDPICO_OK;
+}
+
+gridpico_result gridpico_patch_graph_append_managed_device(
+    gridpico_patch_graph *graph, const gridpico_patch_device *device,
+    const gridpico_patch_port *ports, size_t port_count)
+{
+    return append_managed_device(graph, device, ports, port_count, DORMANT_GENERATION);
+}
+
+gridpico_result gridpico_patch_graph_publish_ephemeral_managed_output(
+    gridpico_patch_graph *graph, const gridpico_patch_device *device,
+    const gridpico_patch_port *port, gridpico_connection owner)
+{
+    if (port == NULL || port->direction != GRIDPICO_PATCH_OUTPUT ||
+        owner.endpoint != port->id || owner.generation <= DORMANT_GENERATION) {
+        return GRIDPICO_INVALID;
+    }
+    return append_managed_device(graph, device, port, 1, owner.generation);
+}
+
+static void remove_port_branches(gridpico_patch_graph *graph, size_t port)
+{
+    for (size_t i = 0; i < graph->branch_limit; ++i) {
+        gridpico_patch_graph_branch *branch = &graph->branches[i];
+        if (branch->source == port || branch->destination == port) {
+            *branch = (gridpico_patch_graph_branch){0};
+            continue;
+        }
+        if (branch->source > port) {
+            --branch->source;
+        }
+        if (branch->destination > port) {
+            --branch->destination;
+        }
+    }
+}
+
+gridpico_result gridpico_patch_graph_retire_ephemeral_managed_output(
+    gridpico_patch_graph *graph, gridpico_connection owner)
+{
+    if (graph == NULL || owner.endpoint == 0 || owner.generation <= DORMANT_GENERATION) {
+        return GRIDPICO_INVALID;
+    }
+    gridpico_patch_inventory *inventory = &graph->inventory;
+    const size_t port = port_index(inventory, owner.endpoint);
+    if (port == NO_PORT || !graph->ports[port].ephemeral_managed_output ||
+        graph->ports[port].generation != owner.generation) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    if (graph->revision == UINT64_MAX) {
+        return GRIDPICO_CAPACITY;
+    }
+
+    const size_t device = device_index(inventory, inventory->ports[port].device);
+    remove_port_branches(graph, port);
+
+    const size_t last_device = --inventory->device_count;
+    memmove(&inventory->devices[device], &inventory->devices[device + 1],
+            (last_device - device) * sizeof inventory->devices[0]);
+    inventory->devices[last_device] = (gridpico_patch_device){0};
+
+    const size_t last_port = --inventory->port_count;
+    const size_t moved_ports = last_port - port;
+    memmove(&inventory->ports[port], &inventory->ports[port + 1],
+            moved_ports * sizeof inventory->ports[0]);
+    memmove(&graph->ports[port], &graph->ports[port + 1], moved_ports * sizeof graph->ports[0]);
+    memmove(&graph->port_capabilities[port], &graph->port_capabilities[port + 1],
+            moved_ports * sizeof graph->port_capabilities[0]);
+    inventory->ports[last_port] = (gridpico_patch_port){0};
+    graph->ports[last_port] = (gridpico_patch_port_runtime){0};
+    graph->port_capabilities[last_port] = GRIDPICO_LOCAL_PORT_MANAGED;
+
     ++graph->revision;
     return GRIDPICO_OK;
 }
@@ -467,6 +552,10 @@ gridpico_result gridpico_patch_graph_update_port(void *context,
     gridpico_patch_port *port = &graph->inventory.ports[index];
     gridpico_patch_port_runtime *runtime = &graph->ports[index];
     const uint32_t generation = update->connection.generation;
+    if (runtime->ephemeral_managed_output &&
+        (port->state != update->state || runtime->generation != generation)) {
+        return GRIDPICO_UNAVAILABLE;
+    }
     if (update->state == GRIDPICO_PATCH_CONNECTED && port->state != GRIDPICO_PATCH_CONNECTED) {
         if (generation <= runtime->generation) {
             return GRIDPICO_UNAVAILABLE;

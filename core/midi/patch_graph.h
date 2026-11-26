@@ -7,6 +7,7 @@ typedef struct {
     uint32_t generation;
     bool apc_led_reserved;
     bool apc_panel_reserved;
+    bool ephemeral_managed_output;
 } gridpico_patch_port_runtime;
 
 typedef struct {
@@ -59,6 +60,14 @@ gridpico_result gridpico_patch_graph_init_local_profile(
 gridpico_result gridpico_patch_graph_append_managed_device(
     gridpico_patch_graph *graph, const gridpico_patch_device *device,
     const gridpico_patch_port *ports, size_t port_count);
+/* Serialized portable lease transaction. The caller reserves resources before
+ * publication and fences the exact owner before retirement. Ephemeral outputs
+ * form a dense suffix after any permanent registrations. */
+gridpico_result gridpico_patch_graph_publish_ephemeral_managed_output(
+    gridpico_patch_graph *graph, const gridpico_patch_device *device,
+    const gridpico_patch_port *port, gridpico_connection owner);
+gridpico_result gridpico_patch_graph_retire_ephemeral_managed_output(
+    gridpico_patch_graph *graph, gridpico_connection owner);
 gridpico_result gridpico_patch_graph_update_port(void *context,
                                                 const gridpico_patch_port_update *update);
 gridpico_result gridpico_patch_graph_set_route(void *context,

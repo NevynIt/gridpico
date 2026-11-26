@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
@@ -12,13 +13,37 @@
 #include <time.h>
 #include <unistd.h>
 
-enum { MAX_LINE_BYTES = 544, MAX_FIELDS = 6, SERVICE_BATCH = 16 };
+enum { MAX_LINE_BYTES = 544, MAX_FIELDS = 6, SERVICE_BATCH = 16, FM_RESERVATION_MS = 5000 };
+
+typedef struct {
+    uint64_t rid;
+    uint64_t sid;
+    local_fm_lease lease;
+} fm_pipe_owner;
+
+typedef struct {
+    bool prepared;
+    bool probe_open;
+    uint64_t last_rid;
+    uint64_t last_sid;
+    /* Row addresses are owner references. Graph compaction never moves them. */
+    fm_pipe_owner owners[GRIDPICO_PATCH_MAX_DEVICES];
+} fm_pipe;
+
+typedef enum {
+    FM_REPLY_NONE,
+    FM_REPLY_READY,
+    FM_REPLY_RESERVED,
+    FM_REPLY_PUBLISHED,
+} fm_reply_kind;
 
 typedef struct {
     gridpico_connection connection;
     gridpico_patch_direction direction;
     unsigned limit;
     bool bound;
+    fm_reply_kind fm_kind;
+    fm_pipe_owner *fm_owner;
 } reply;
 
 static bool monotonic_ms(uint64_t *now)
@@ -102,11 +127,111 @@ static size_t split_fields(char *line, char *fields[MAX_FIELDS])
     }
 }
 
-static gridpico_result dispatch(local_runtime *runtime, char *line, reply *response)
+static bool fm_decimal(const char *text, uint64_t maximum, uint64_t *out)
+{
+    return text[0] != '0' && decimal(text, maximum, out);
+}
+
+static void release_unused_fm_owners(local_runtime *runtime, fm_pipe *fm)
+{
+    for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+        fm_pipe_owner *owner = &fm->owners[i];
+        if (owner->rid != 0 &&
+            local_runtime_fm_lease_state(runtime, owner->lease, &owner->rid) == LOCAL_FM_FREE) {
+            *owner = (fm_pipe_owner){0};
+        }
+    }
+}
+
+static gridpico_result reserve_fm(local_runtime *runtime, fm_pipe *fm, uint64_t epoch,
+                                  uint64_t rid, const char *hex, reply *response)
+{
+    uint8_t name[GRIDPICO_PATCH_NAME_BYTES] = {0};
+    const size_t length = decode_hex(hex, name, sizeof name - 1);
+    if (length == 0 || strspn(hex, "0123456789ABCDEF") != length * 2 ||
+        memchr(name, '\0', length) != NULL) return GRIDPICO_INVALID;
+    if (epoch != runtime->fm_runtime_epoch || rid <= fm->last_rid) return GRIDPICO_UNAVAILABLE;
+    if (runtime->now_ms > UINT64_MAX - FM_RESERVATION_MS) return GRIDPICO_CAPACITY;
+
+    for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+        fm_pipe_owner *owner = &fm->owners[i];
+        if (owner->rid != 0) continue;
+        const gridpico_result result = local_runtime_reserve_fm(
+            runtime, (const char *)name, runtime->now_ms + FM_RESERVATION_MS, &owner->rid, &owner->lease);
+        if (result != GRIDPICO_INVALID) fm->last_rid = rid;
+        if (result == GRIDPICO_OK) {
+            owner->rid = rid;
+            response->fm_kind = FM_REPLY_RESERVED;
+            response->fm_owner = owner;
+        }
+        return result;
+    }
+    fm->last_rid = rid;
+    return GRIDPICO_CAPACITY;
+}
+
+static gridpico_result dispatch_fm(local_runtime *runtime, fm_pipe *fm, char *fields[MAX_FIELDS],
+                                   size_t count, reply *response)
+{
+    const bool probe_open = fm->probe_open;
+    fm->probe_open = false;
+    if (!fm->prepared) return GRIDPICO_INVALID;
+    uint64_t epoch;
+    if (strcmp(fields[0], "fm-join-bind") == 0) {
+        if (count != 3 || strcmp(fields[1], "fm-v1") != 0 ||
+            !fm_decimal(fields[2], UINT64_MAX, &epoch)) return GRIDPICO_INVALID;
+        if (!probe_open || runtime->fm_runtime_epoch != 0) return GRIDPICO_UNAVAILABLE;
+        runtime->fm_runtime_epoch = epoch;
+        response->fm_kind = FM_REPLY_READY;
+        return GRIDPICO_OK;
+    }
+    if (runtime->fm_runtime_epoch == 0) return GRIDPICO_INVALID;
+
+    uint64_t rid;
+    if (count < 4 || !fm_decimal(fields[1], UINT64_MAX, &epoch) ||
+        !fm_decimal(fields[2], UINT64_MAX, &rid)) return GRIDPICO_INVALID;
+    if (strcmp(fields[0], "fm-reserve") == 0) {
+        return count == 4 ? reserve_fm(runtime, fm, epoch, rid, fields[3], response) : GRIDPICO_INVALID;
+    }
+
+    const bool publish = strcmp(fields[0], "fm-publish") == 0;
+    const bool retire = strcmp(fields[0], "fm-retire") == 0;
+    uint64_t port, generation, sid = 0;
+    if ((!publish && !retire) || count != 6 || !fm_decimal(fields[3], UINT16_MAX, &port) ||
+        !fm_decimal(fields[4], UINT32_MAX, &generation) || generation <= 1 ||
+        (!(retire && strcmp(fields[5], "-") == 0) &&
+         !fm_decimal(fields[5], UINT64_MAX, &sid))) return GRIDPICO_INVALID;
+    if (epoch != runtime->fm_runtime_epoch) return GRIDPICO_UNAVAILABLE;
+
+    for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+        fm_pipe_owner *owner = &fm->owners[i];
+        if (owner->rid != rid || owner->lease.output.endpoint != port ||
+            owner->lease.output.generation != generation) continue;
+        if (retire) {
+            if (owner->sid != sid) return GRIDPICO_UNAVAILABLE;
+            return local_runtime_retire_fm(runtime, owner->lease, &owner->rid,
+                                            sid == 0 ? NULL : &owner->sid);
+        }
+        if (owner->sid != 0 || sid <= fm->last_sid) return GRIDPICO_UNAVAILABLE;
+        fm->last_sid = sid;
+        const gridpico_result result =
+            local_runtime_publish_fm(runtime, owner->lease, &owner->rid, &owner->sid);
+        if (result == GRIDPICO_OK) {
+            owner->sid = sid;
+            response->fm_kind = FM_REPLY_PUBLISHED;
+            response->fm_owner = owner;
+        }
+        return result;
+    }
+    return GRIDPICO_UNAVAILABLE;
+}
+
+static gridpico_result dispatch(local_runtime *runtime, fm_pipe *fm, char *line, reply *response)
 {
     char *fields[MAX_FIELDS] = {0};
     const size_t count = split_fields(line, fields);
     if (count < 2) {
+        fm->probe_open = false;
         return GRIDPICO_INVALID;
     }
     const char *command = fields[0];
@@ -114,6 +239,8 @@ static gridpico_result dispatch(local_runtime *runtime, char *line, reply *respo
         if (count != 2 || strcmp(fields[1], "forwarding-v1") != 0) return GRIDPICO_INVALID;
         return local_runtime_bind_forwarding_transport(runtime);
     }
+    if (strncmp(command, "fm-", 3) == 0) return dispatch_fm(runtime, fm, fields, count, response);
+    fm->probe_open = false;
     uint64_t generation;
     if (strncmp(command, "serial", sizeof("serial") - 1u) == 0) {
         if (!decimal(fields[1], UINT32_MAX, &generation)) {
@@ -247,29 +374,76 @@ static bool write_event(const local_runtime *runtime)
            fflush(stdout) == 0;
 }
 
-static bool expire(local_runtime *runtime, uint64_t now)
+static uint64_t next_deadline(const local_runtime *runtime)
 {
-    if (runtime->raw_deadline_ms == 0 || now < runtime->raw_deadline_ms) {
-        return true;
-    }
-    local_runtime_begin(runtime, now);
-    if (local_runtime_finish(runtime, local_runtime_expire(runtime)) != GRIDPICO_OK) {
-        fputs("Local router could not restore feedback after Raw expiry\n", stderr);
-    }
-    return write_event(runtime);
+    const uint64_t raw = runtime->raw_deadline_ms;
+    const uint64_t fm = local_runtime_fm_deadline(runtime);
+    return fm != 0 && (raw == 0 || fm < raw) ? fm : raw;
 }
 
-static bool handle_line(local_runtime *runtime, char *line, bool malformed)
+static bool expire(local_runtime *runtime, fm_pipe *fm, uint64_t now)
+{
+    const uint64_t deadline = next_deadline(runtime);
+    if (deadline == 0 || now < deadline) return true;
+    const bool raw_due = runtime->raw_deadline_ms != 0 && now >= runtime->raw_deadline_ms;
+    local_runtime_begin(runtime, now);
+    const gridpico_result expired = local_runtime_expire(runtime);
+    if (raw_due && local_runtime_finish(runtime, expired) != GRIDPICO_OK) {
+        fputs("Local router could not restore feedback after Raw expiry\n", stderr);
+    }
+    release_unused_fm_owners(runtime, fm);
+    return !raw_due || write_event(runtime);
+}
+
+static bool settle_fm_reply(local_runtime *runtime, const reply *response, gridpico_result *result)
+{
+    const fm_pipe_owner *owner = response->fm_owner;
+    if (owner == NULL) return response->fm_kind != FM_REPLY_READY || *result == GRIDPICO_OK;
+    const local_fm_state state = local_runtime_fm_lease_state(runtime, owner->lease, &owner->rid);
+    const bool published = response->fm_kind == FM_REPLY_PUBLISHED;
+    if (*result == GRIDPICO_OK && state == (published ? LOCAL_FM_ATTACHED : LOCAL_FM_PENDING)) return true;
+
+    /* An error must never leave this command's allocation in service. */
+    if (*result == GRIDPICO_OK) *result = GRIDPICO_UNAVAILABLE;
+    return state == LOCAL_FM_FREE ||
+        local_runtime_retire_fm(runtime, owner->lease, &owner->rid, published ? &owner->sid : NULL) == GRIDPICO_OK;
+}
+
+static bool write_fm_reply(const local_runtime *runtime, const reply *response)
+{
+    const fm_pipe_owner *owner = response->fm_owner;
+    switch (response->fm_kind) {
+    case FM_REPLY_READY:
+        return printf("fm-join-ready fm-v1 %" PRIu64 "\n", runtime->fm_runtime_epoch) >= 0;
+    case FM_REPLY_RESERVED:
+        return printf("fm-reserved %" PRIu64 " %" PRIu64 " %u %u %" PRIu32 " %d\n",
+                      owner->lease.runtime_epoch, owner->rid, (unsigned)owner->lease.device,
+                      (unsigned)owner->lease.output.endpoint, owner->lease.output.generation,
+                      FM_RESERVATION_MS) >= 0;
+    case FM_REPLY_PUBLISHED:
+        return printf("fm-published %" PRIu64 " %" PRIu64 " %u %" PRIu32 " %" PRIu64 " %d\n",
+                      owner->lease.runtime_epoch, owner->rid, (unsigned)owner->lease.output.endpoint,
+                      owner->lease.output.generation, owner->sid, LOCAL_MIDI_QUEUE) >= 0;
+    case FM_REPLY_NONE:
+        return true;
+    }
+    return false;
+}
+
+static bool handle_line(local_runtime *runtime, fm_pipe *fm, char *line, bool malformed)
 {
     uint64_t now;
-    if (!monotonic_ms(&now) || !expire(runtime, now)) {
+    if (!monotonic_ms(&now) || !expire(runtime, fm, now)) {
         return false;
     }
     local_runtime_begin(runtime, now);
     reply response = {0};
+    if (malformed) fm->probe_open = false;
     const gridpico_result dispatched = malformed ? GRIDPICO_INVALID
-                                                  : dispatch(runtime, line, &response);
-    const gridpico_result result = local_runtime_finish(runtime, dispatched);
+                                                  : dispatch(runtime, fm, line, &response);
+    gridpico_result result = local_runtime_finish(runtime, dispatched);
+    if (!settle_fm_reply(runtime, &response, &result)) return false;
+    if (result == GRIDPICO_OK && !write_fm_reply(runtime, &response)) return false;
     if (response.bound && result == GRIDPICO_OK) {
         const char *classification = "";
         if (runtime->forwarding_enabled) {
@@ -282,6 +456,7 @@ static bool handle_line(local_runtime *runtime, char *line, bool malformed)
                    response.direction == GRIDPICO_PATCH_INPUT ? "in" : "out",
                    response.limit, classification) < 0) return false;
     }
+    if (runtime->fm_runtime_epoch != 0) release_unused_fm_owners(runtime, fm);
     return write_records(runtime) && puts(result_line(result)) != EOF && fflush(stdout) == 0;
 }
 
@@ -311,19 +486,20 @@ static bool service_panic(local_runtime *runtime, uint64_t now)
     return runtime->output_count == 0 || write_event(runtime);
 }
 
-static bool serve(local_runtime *runtime, const local_router_service *service)
+static bool serve(local_runtime *runtime, const local_router_service *service, fm_pipe *fm)
 {
     char line[MAX_LINE_BYTES + 1];
     size_t position = 0;
     bool malformed = false;
     for (;;) {
         uint64_t now;
-        if (!monotonic_ms(&now) || !expire(runtime, now) ||
+        if (!monotonic_ms(&now) || !expire(runtime, fm, now) ||
             !service_adapter(runtime, service, now)) {
             return false;
         }
-        int wait = runtime->raw_deadline_ms == 0 ? -1 :
-            (int)(runtime->raw_deadline_ms - now);
+        const uint64_t deadline = next_deadline(runtime);
+        const uint64_t remaining = deadline > now ? deadline - now : 0;
+        int wait = deadline == 0 ? -1 : remaining > INT_MAX ? INT_MAX : (int)remaining;
         if (service != NULL && (wait < 0 || wait > service->interval_ms)) {
             wait = service->interval_ms;
         }
@@ -349,7 +525,7 @@ static bool serve(local_runtime *runtime, const local_router_service *service)
             const unsigned char byte = bytes[i];
             if (byte == '\n') {
                 line[position] = '\0';
-                if (!handle_line(runtime, line, malformed)) {
+                if (!handle_line(runtime, fm, line, malformed)) {
                     return false;
                 }
                 position = 0;
@@ -382,15 +558,17 @@ static bool write_ui_roles(const local_runtime *runtime)
     return putchar('\n') != EOF;
 }
 
-int local_router_run(local_runtime *runtime, const local_router_service *service, bool ui_descriptor)
+static int run(local_runtime *runtime, const local_router_service *service, bool ui_descriptor,
+               bool fm_prepared)
 {
+    fm_pipe fm = {.prepared = fm_prepared, .probe_open = fm_prepared};
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR || (ui_descriptor && !write_ui_roles(runtime))) {
         return EXIT_FAILURE;
     }
     const int ready = runtime->configured
         ? printf("ready %zu\n", runtime->profile->limits.midi_peer_limit) : puts("ready");
     const bool complete = ready >= 0 && fflush(stdout) == 0 &&
-        (runtime->output_count == 0 || write_event(runtime)) && serve(runtime, service);
+        (runtime->output_count == 0 || write_event(runtime)) && serve(runtime, service, &fm);
     local_runtime_begin(runtime, 0);
     const gridpico_result retired = local_runtime_retire(runtime);
     const bool flushed = complete && (runtime->output_count == 0 || write_event(runtime));
@@ -399,6 +577,11 @@ int local_router_run(local_runtime *runtime, const local_router_service *service
         return EXIT_FAILURE;
     }
     return EXIT_SUCCESS;
+}
+
+int local_router_run(local_runtime *runtime, const local_router_service *service, bool ui_descriptor)
+{
+    return run(runtime, service, ui_descriptor, false);
 }
 
 #ifndef GRIDPICO_LOCAL_ROUTER_RUNNER_ONLY
@@ -434,7 +617,11 @@ int main(int argc, char **argv)
         }
     }
     local_runtime runtime;
-    if (local_runtime_init_profile(&runtime, path != NULL ? &profile : NULL) != GRIDPICO_OK) {
+    const bool fm_prepared = path != NULL && web_ui && ui_descriptor && !recorder && profile.passive_surface;
+    const gridpico_result initialized = fm_prepared
+        ? local_runtime_prepare_fm_profile(&runtime, &profile)
+        : local_runtime_init_profile(&runtime, path != NULL ? &profile : NULL);
+    if (initialized != GRIDPICO_OK) {
         fputs("Local router could not initialize the production graph\n", stderr);
         return EXIT_FAILURE;
     }
@@ -448,6 +635,6 @@ int main(int argc, char **argv)
     }
     local_runtime_enable_desktop_note_transform(&runtime);
     runtime.forwarding_transport = ui_descriptor && !recorder;
-    return local_router_run(&runtime, NULL, ui_descriptor);
+    return run(&runtime, NULL, ui_descriptor, fm_prepared);
 }
 #endif
