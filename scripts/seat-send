@@ -209,8 +209,8 @@ def append_jill(sender, topic, reply_needed, body):
             headers = (JILL_HEADER.search(record) for record in records)
             number = 1 + max((int(header[1]) for header in headers if header), default=0)
             header = jill_header(number, sender, topic, reply_needed, datetime.now(timezone.utc))
-            body = body.rstrip("\r\n")
-            entry = f"\n{header}\n{body}\n\n{JILL_SEPARATOR}\n"
+            prefix = "\n" if previous else ""
+            entry = f"{prefix}{header}\n{body}\n\n{JILL_SEPARATOR}\n"
             inbox.write(entry.encode("utf-8"))
     except (OSError, ValueError):
         raise SendError("could not append to Jill's local inbox") from None

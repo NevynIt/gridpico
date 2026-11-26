@@ -153,7 +153,7 @@ class SeatSendTests(unittest.TestCase):
         entry = self.inbox.read_bytes()[len(previous):].decode()
         self.assertRegex(entry, r"^\n\[J004\] \d{4}-\d\d-\d\d \d\d:\d\d (?:CET|CEST) "
                                 r"\| Strategist \| Überblick \| Reply needed\n")
-        self.assertEqual(entry.split("\n", 2)[2], "Grüße\n\nSecond line\n\n------------\n")
+        self.assertEqual(entry.split("\n", 2)[2], body.decode() + "\n\n------------\n")
         self.assertTrue(self.inbox.read_bytes().startswith(previous))
         self.assertEqual(self.native_calls("herdr"), [])
         self.assertEqual(self.native_calls("codex"), [])
@@ -200,7 +200,7 @@ class SeatSendTests(unittest.TestCase):
                 r"\| Strategist \| ([^|]+) \| No reply needed", header,
             )
             self.assertIsNotNone(match, header)
-            self.assertEqual(body, bodies.pop(match[1]))
+            self.assertEqual(body, bodies.pop(match[1]) + "\n")
         self.assertEqual(bodies, {})
         self.assertEqual(self.native_calls("herdr"), [])
         self.assertEqual(self.native_calls("codex"), [])
@@ -210,8 +210,7 @@ class SeatSendTests(unittest.TestCase):
         result = self.jill("Initial", "jill", "Body without newline")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, b"Appended J001 to Jill's local inbox.\n")
-        leading, header, body = self.inbox.read_text(encoding="utf-8").split("\n", 2)
-        self.assertEqual(leading, "")
+        header, body = self.inbox.read_text(encoding="utf-8").split("\n", 1)
         self.assertTrue(header.startswith("[J001] "))
         self.assertTrue(header.endswith(" | Strategist | Initial | No reply needed"))
         self.assertEqual(body, "Body without newline\n\n------------\n")
