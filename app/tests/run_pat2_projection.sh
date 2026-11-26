@@ -30,7 +30,7 @@ build = Path(sys.argv[1])
 PY
 extra=()
 if [[ ${1:-} == --apply ]]; then
-    extra=(-O0 -DGRIDPICO_PAT2_APPLY_HOST app/rp2040_pat2_apply.c app/rp2040_auto_routes.c
+    extra=(-O0 -DGRIDPICO_PAT2_APPLY_HOST app/rp2040_pat2_apply.c app/rp2040_pat2_capture.c app/rp2040_auto_routes.c app/rp2040_snapshot.c
            frontends/cli/cli_frontend.c)
 fi
 cc -std=c11 -Wall -Wextra -Wpedantic -Werror -g -O1 -ffunction-sections -fdata-sections \

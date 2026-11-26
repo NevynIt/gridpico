@@ -72,7 +72,8 @@ static size_t pair_bit(const gridpico_patch_inventory *inventory, const gridpico
 #ifdef GRIDPICO_PAT2_APPLY_HOST
 void gridpico_pico_pat2_own_pair(gridpico_pico_router *router, const gridpico_local_route *route)
 {
-    if (router->pat2_apply == NULL || router->pat2_apply->intent == NULL ||
+    if (router->pat2_apply == NULL ||
+        (router->pat2_apply->intent == NULL && !router->pat2_apply->capture_lifetime) ||
         route->mode != GRIDPICO_LOCAL_MANAGED) return;
     const size_t bit = pair_bit(&router->graph.inventory, route);
     if (bit != SIZE_MAX) {
@@ -262,6 +263,18 @@ gridpico_result gridpico_pico_pat2_commit(gridpico_pico_router *router, gridpico
     router->session.apc_layout_revision = apply->layout_revision;
     router->manual_routes = apply->off;
     memcpy(&apply->progress, &apply->next, sizeof(apply->progress));
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+    for (size_t i = 0; i < apply->plan.pair_count; ++i) {
+        const gridpico_pico_pat2_planned_pair *pair = &apply->plan.pairs[i];
+        if (pair->saved.enabled || apply->before.progress.pair_outcomes[i] != GRIDPICO_PAT2_DUE ||
+            apply->progress.pair_outcomes[i] != GRIDPICO_PAT2_APPLIED) continue;
+        const gridpico_local_route route = {pair->source.endpoint, pair->destination.endpoint, GRIDPICO_LOCAL_MANAGED};
+        /* Stage_pairs already validated both endpoints in this registry. */
+        apply->committed_off[i] = (uint16_t)(pair_bit(&router->graph.inventory, &route) + 1u);
+    }
+    apply->progress_intent = apply->intent;
+    apply->progress_generation = apply->plan.generation;
+#endif
     if (refresh) gridpico_pico_pat2_refresh_panels(router);
     return GRIDPICO_OK;
 }

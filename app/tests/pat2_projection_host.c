@@ -1,6 +1,6 @@
 #include "app/rp2040_pat2_projection.h"
 #ifdef GRIDPICO_PAT2_APPLY_HOST
-#include "app/rp2040_pat2_apply.h"
+#include "app/rp2040_pat2_capture.h"
 #include "app/rp2040_auto_routes.h"
 #include "frontends/cli/cli_frontend.h"
 #include <inttypes.h>

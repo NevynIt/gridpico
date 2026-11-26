@@ -28,6 +28,13 @@ typedef struct gridpico_pico_pat2_apply {
     /* The fixture loans one immutable record before first admission. */
     const gridpico_pico_pat2_intent *intent;
     gridpico_pico_pat2_progress progress;
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+    bool capture_lifetime;
+    const gridpico_pico_pat2_intent *progress_intent;
+    uint32_t progress_generation;
+    /* One-based stable registry bit for each committed prior Off. */
+    uint16_t committed_off[GRIDPICO_PICO_PAT2_PAIRS];
+#endif
     gridpico_pico_pat2_projection projection;
     gridpico_pico_pat2_plan plan, current_plan;
     gridpico_patch_graph shadow_graph;

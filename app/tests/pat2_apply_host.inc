@@ -92,7 +92,7 @@ static void setup(void)
         };
     }
     apply.intent = &record;
-    router.pat2_apply = &apply;
+    assert(gridpico_pico_pat2_bind_capture(&router, &apply) == GRIDPICO_OK);
 
     admit_fixture(0, 0, a_peer);
     admit_fixture(1, 1, (gridpico_pico_peer)(a_peer + 2));
@@ -205,6 +205,8 @@ static void verify_clear_with_two_arrivals(void)
     verify_no_midi();
 }
 
+#include "pat2_capture_host.inc"
+
 int main(void)
 {
     setup();
@@ -280,6 +282,7 @@ int main(void)
     gridpico_auto_route_summary summary;
     assert(gridpico_pico_auto_routes_read(&automatic_routes, &summary) == GRIDPICO_OK);
     assert(summary.user_off >= 2);
+    verify_prior_capture(0);
     assert(router.panels[GRIDPICO_PICO_APC].latest_valid &&
            router.panels[GRIDPICO_PICO_APC].latest_version.layout_revision == router.session.apc_layout_revision);
     verify_no_midi();
@@ -291,6 +294,7 @@ int main(void)
     assert(panel->assign(panel->session_context, guarded_layout, GRIDPICO_PATCH_INPUT, 0, 0) == GRIDPICO_OK);
     assert(router.session.apc_layout_revision == guarded_layout + 1 && apply.progress.reservations[0] == 0 &&
            apply.progress.cancelled[0] == 9);
+    verify_prior_capture(1);
 
     mounted[4] = true;
     const gridpico_pico_peer c_peer = (gridpico_pico_peer)(a_peer + C0);
@@ -311,6 +315,7 @@ int main(void)
     project();
     assert(gridpico_pico_pat2_commit(&router, physical_roles.revision) == GRIDPICO_UNAVAILABLE);
     assert(!desired(leave_off.route));
+    verify_prior_capture(2);
 
     advance_policy();
     assert(layout->rows[0] == 0 && layout->columns[0] == router.discovered[C0].output);
@@ -344,6 +349,8 @@ int main(void)
            router.session.apc_layout.rows[0] == router.discovered[0].input &&
            router.session.apc_layout.columns[0] == router.discovered[0].output);
     verify_no_midi();
+    verify_first_capture();
+    verify_capture_overflow();
     puts("PASS guarded PAT2 transaction, placement and Auto ordering, exact late ownership and fresh MIDI");
     return 0;
 }
