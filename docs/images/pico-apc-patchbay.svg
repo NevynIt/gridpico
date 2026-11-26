@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1100" height="690" viewBox="0 0 1100 690" role="img" aria-labelledby="title desc">
   <title id="title">Physical APC Key 25 mk2 Patchbay control map</title>
-  <desc id="desc">Schematic front view. An 8-column by 5-row pad grid has Track buttons below for destination columns and Scene Launch buttons to the right for source rows. Stop All Clips below the Scene Launch buttons toggles Arrange. In Arrange, the top-left four grid pads are Assign, Move, Learn, and Audition. Pad 07 at bottom-right confirms a preview. Firmware route LED meanings are Active green, Pending alternating amber, routable Off dim, and empty or incompatible dark. Current gen122 placements are empty.</desc>
+  <desc id="desc">Schematic front view pinned to installed gen122. An 8-column by 5-row pad grid has Clip Stop (Track) buttons below for destination columns and Scene Launch buttons to the right for source rows. Stop All Clips below Scene 5 toggles Arrange; this firmware does not drive a lamp for that button. In Arrange, the top-left four grid pads are Assign, Move, Learn, and Audition. Pad 07 at bottom-right confirms a preview. Expected firmware route LEDs: Active steady green, Pending alternating amber on a 500 ms phase, compatible available Off dim, and empty, incompatible or unavailable Off dark. The 13:41 UTC gen122 readback showed all placement slots empty; the expected projection was 40 route pads Off/dark, not an optical measurement. Jill later rebuilt the matrix and freed CDC. Strategist obtained a read-only gen123 Routing revision 98 result with 3 Active and 0 Pending, then closed normally. It placed USB MIDI Interface In (1) at row 2 and Arturia MicroFreak Out (7) at column 3; 1→7 was Off, while 2→7, 2→9 and 8→4 were Active. The gen122 empty layout and 1→7 Active state are historical. Read current mapping and route state before a sight check; claim green only if the exact current pair reads Active. No pad press or MIDI is part of that check. Exact live Assign presses, LED optics, and saved restoration remain unverified.</desc>
   <defs>
     <style>
       text { font-family: Arial, Helvetica, sans-serif; fill: #edf2f7; }
@@ -18,9 +18,9 @@
   </defs>
   <rect width="1100" height="690" rx="18" fill="#101820"/>
   <text x="36" y="42" font-size="25" font-weight="700">APC Key 25 mk2 · physical Patchbay map</text>
-  <text x="36" y="67" class="small">Front-view schematic · button positions and pad IDs follow the current firmware mapping</text>
+  <text x="36" y="67" class="small">Front view · button positions and IDs follow installed gen122</text>
 
-  <rect x="30" y="92" width="760" height="548" rx="16" fill="#17222c" stroke="#364654" stroke-width="2"/>
+  <rect x="30" y="92" width="760" height="566" rx="16" fill="#17222c" stroke="#364654" stroke-width="2"/>
   <text x="54" y="122" class="small">Pad grid · 5 rows × 8 columns</text>
   <text x="56" y="145" class="small">Scene/source rows ↓</text>
   <text x="300" y="145" class="small">Destination columns →</text>
@@ -55,42 +55,46 @@
     <rect class="control" x="702" y="326" width="62" height="48" rx="7"/><text x="733" y="346">Scene 4</text><text x="733" y="364" class="small">row 4</text>
     <rect class="control" x="702" y="382" width="62" height="48" rx="7"/><text x="733" y="402">Scene 5</text><text x="733" y="420" class="small">row 5</text>
     <text x="702" y="447" class="small">Utility button</text>
-    <rect class="control" x="702" y="455" width="62" height="48" rx="7"/><text x="733" y="475">Stop All</text><text x="733" y="493" class="small">Clips</text>
+    <rect class="control" x="702" y="480" width="62" height="39" rx="7"/><text x="733" y="498">Stop All</text><text x="733" y="516" class="small">Clips</text>
   </g>
 
-  <!-- Track/destination edge -->
+  <!-- Clip Stop (Track) / destination edge -->
+  <text x="170" y="468" class="small">Clip Stop (Track) · destination columns</text>
   <g text-anchor="middle" font-size="12">
     <rect class="control" x="170" y="480" width="58" height="39" rx="6"/><text x="199" y="505">Track 1</text>
     <rect class="control" x="234" y="480" width="58" height="39" rx="6"/><text x="263" y="505">Track 2</text>
-    <rect class="control" x="298" y="480" width="58" height="39" rx="6"/><text x="327" y="505">Track 3</text>
-    <rect class="control" x="362" y="480" width="58" height="39" rx="6"/><text x="391" y="505">Track 4</text>
+    <rect class="control" x="298" y="480" width="58" height="39" rx="6"/><text x="327" y="505">Track 3 ←</text>
+    <rect class="control" x="362" y="480" width="58" height="39" rx="6"/><text x="391" y="505">Track 4 →</text>
     <rect class="control" x="426" y="480" width="58" height="39" rx="6"/><text x="455" y="505">Track 5</text>
     <rect class="control" x="490" y="480" width="58" height="39" rx="6"/><text x="519" y="505">Track 6</text>
     <rect class="control" x="554" y="480" width="58" height="39" rx="6"/><text x="583" y="505">Track 7</text>
     <rect class="control" x="618" y="480" width="58" height="39" rx="6"/><text x="647" y="505">Track 8</text>
   </g>
-  <text x="170" y="542" class="small">Track edge selects destination columns. In Assign, buttons 3 and 4 browse previous / next eligible ports.</text>
-  <rect x="54" y="563" width="710" height="52" rx="9" fill="#202f3b"/>
+  <text x="170" y="542" class="small">Track edge highlights destination columns. In Assign, 3 ← / 4 → browse eligible ports.</text>
+  <rect x="54" y="563" width="710" height="92" rx="9" fill="#202f3b"/>
   <text x="70" y="585" class="small">Keyboard section (not drawn) · physical keybed input is separate from these Patchbay controls.</text>
-  <text x="70" y="604" class="small">Current gen122: all source/destination placements are empty; the route grid is configured dark.</text>
+  <text x="70" y="604" class="small">13:41 UTC gen122 readback (historical): empty slots; 40 pads expected Off/dark.</text>
+  <text x="70" y="623" class="small">Gen123 rev98: In 1 row 2; Out 7 column 3; 1→7 Off. Active: 2-to-7, 2-to-9, 8-to-4.</text>
+  <text x="70" y="642" class="small">Reread mapping/state before sight check; green only if current pair is Active. No press/MIDI.</text>
 
   <!-- Legend and state notes -->
   <rect x="812" y="92" width="258" height="548" rx="16" fill="#17222c" stroke="#364654" stroke-width="2"/>
   <text x="834" y="128" class="label">Route pad feedback</text>
-  <rect class="active" x="834" y="150" width="26" height="26" rx="5"/><text x="874" y="169" class="small">Active · green</text>
-  <rect class="pending" x="834" y="188" width="26" height="26" rx="5"/><text x="874" y="207" class="small">Pending · alternating amber</text>
-  <rect class="off" x="834" y="226" width="26" height="26" rx="5"/><text x="874" y="245" class="small">Routable Off · dim</text>
-  <rect class="empty" stroke="#708090" x="834" y="264" width="26" height="26" rx="5"/><text x="874" y="283" class="small">Empty / incompatible · dark</text>
+  <rect class="active" x="834" y="150" width="26" height="26" rx="5"/><text x="874" y="169" class="small">Active · steady green</text>
+  <rect class="pending" x="834" y="188" width="26" height="26" rx="5"/><text x="874" y="207" class="small">Pending · amber, 500 ms phase</text>
+  <rect class="off" x="834" y="226" width="26" height="26" rx="5"/><text x="874" y="245" class="small">Compatible, available Off · dim</text>
+  <rect class="empty" stroke="#708090" x="834" y="264" width="26" height="26" rx="5"/><text x="874" y="280" class="small">Empty / incompatible · dark</text><text x="874" y="297" font-size="11" fill="#bfccd8">Compatible Off, endpoint unavailable · dark</text>
   <text x="834" y="324" class="label">Arrange pad roles</text>
   <text x="834" y="350" class="small">Top row, left to right:</text>
   <text x="834" y="374" class="small">20 Assign · 21 Move</text>
   <text x="834" y="396" class="small">22 Learn · 23 Audition</text>
   <text x="834" y="434" class="label">Preview feedback</text>
-  <text x="834" y="460" class="small">Pad 07 confirms a valid preview.</text>
-  <text x="834" y="482" class="small">Blue marks the current preview.</text>
-  <text x="834" y="504" class="small">Red marks error / ambiguity.</text>
+  <text x="834" y="460" class="small">Empty layout: Arrange strip is dim.</text>
+  <text x="834" y="482" class="small">Blue = selected action / candidate.</text>
+  <text x="834" y="504" class="small">Pad 07: green ready, dim idle.</text>
+  <text x="834" y="521" class="small">Red = error / ambiguity.</text>
   <line x1="834" y1="530" x2="1048" y2="530" stroke="#536475"/>
-  <text x="834" y="555" class="small">Colors describe firmware output.</text>
-  <text x="834" y="577" class="small">Current hardware optics are not</text>
-  <text x="834" y="599" class="small">verified by the gen122 receipt.</text>
+  <text x="834" y="555" class="small">Stop toggles Arrange; firmware</text>
+  <text x="834" y="577" class="small">drives no lamp for this button.</text>
+  <text x="834" y="599" class="small">Expected colors only; optics unverified.</text>
 </svg>

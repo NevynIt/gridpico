@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="920" viewBox="0 0 1100 920" role="img" aria-labelledby="title desc">
+  <title id="title">APC Assign quick card · current firmware</title>
+  <desc id="desc">Source-reviewed quick card for Assign on the physical APC Key 25 mk2 gen122. Read current state, open Arrange, select a Scene row or Track column, read the indicator-only candidate strip, browse only if needed, confirm, then inspect the refreshed Patch grid. The exact live operator sequence remains unverified. Direct tapping a lit candidate is a proposal, not current behavior.</desc>
+  <defs>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #eef4fb; }
+      .muted { fill: #b9c7d6; }
+      .tiny { font-size: 15px; }
+      .body { font-size: 19px; }
+      .heading { font-size: 23px; font-weight: 700; }
+      .panel { fill: #142233; stroke: #3a5068; stroke-width: 2; }
+      .key { fill: #26384b; stroke: #91a5bb; stroke-width: 2; }
+      .green { fill: #22c55e; }
+      .blue { fill: #38bdf8; }
+      .amber { fill: #f59e0b; }
+      .dark { fill: #64748b; }
+      .flow { stroke: #b9c7d6; stroke-width: 3; fill: none; }
+    </style>
+  </defs>
+  <rect width="1100" height="920" rx="20" fill="#0b1220"/>
+  <text x="36" y="48" font-size="31" font-weight="700">PATCHBAY · ASSIGN QUICK CARD</text>
+  <text x="38" y="80" class="body muted">Physical APC Key 25 mk2 · installed gen122 · button IDs are hexadecimal</text>
+
+  <rect x="36" y="102" width="1028" height="72" rx="12" fill="#302617" stroke="#f59e0b" stroke-width="2"/>
+  <text x="56" y="132" class="heading" fill="#fbbf24">CHECK CURRENT READBACK</text>
+  <text x="56" y="158" class="body">No current post-press layout is confirmed. Check endpoints and placements before acting.</text>
+
+  <rect class="panel" x="36" y="192" width="1028" height="100" rx="14"/>
+  <text x="58" y="226" class="heading">1 · OPEN ARRANGE AND CHOOSE A SLOT</text>
+  <rect class="key" x="58" y="242" width="230" height="40" rx="9"/><text x="173" y="269" text-anchor="middle" class="body">Stop All Clips</text>
+  <path class="flow" d="M304 262 H340 M332 254 L340 262 L332 270"/>
+  <rect class="key" x="354" y="242" width="200" height="40" rx="9"/><text x="454" y="269" text-anchor="middle" class="body">Assign · 20</text>
+  <path class="flow" d="M570 262 H606 M598 254 L606 262 L598 270"/>
+  <text x="622" y="269" class="body">Scene row 52–56 or Track column 40–47</text>
+
+  <rect class="panel" x="36" y="310" width="1028" height="156" rx="14"/>
+  <text x="58" y="344" class="heading">2 · READ THE MIDDLE THREE ROWS · INDICATORS ONLY</text>
+  <circle cx="78" cy="382" r="11" fill="#cbd5e1"/><text x="100" y="389" class="body">Dim · eligible for this slot</text>
+  <circle cx="378" cy="382" r="11" class="blue"/><text x="400" y="389" class="body">Blue · current port preview</text>
+  <circle cx="718" cy="382" r="11" class="dark"/><text x="740" y="389" class="body">Dark · no eligible choice</text>
+  <text x="58" y="430" class="body">Occupied slot starts at its assigned port. Empty slot starts at the first eligible port.</text>
+  <text x="58" y="454" class="tiny muted">The middle pads only show positions. Pressing a lit candidate does nothing.</text>
+
+  <rect class="panel" x="36" y="484" width="1028" height="122" rx="14"/>
+  <text x="58" y="518" class="heading">3 · BROWSE ONLY IF BLUE ISN’T YOUR CHOICE</text>
+  <rect class="key" x="58" y="538" width="220" height="50" rx="9"/><text x="168" y="570" text-anchor="middle" class="body">Track 3 · Left</text>
+  <text x="294" y="570" class="body">/</text>
+  <rect class="key" x="322" y="538" width="220" height="50" rx="9"/><text x="432" y="570" text-anchor="middle" class="body">Track 4 · Right</text>
+  <text x="564" y="558" class="body">To clear a slot, browse to</text>
+  <text x="564" y="584" class="body">Unassigned · pad 06.</text>
+  <text x="810" y="570" class="tiny muted">Direct candidate tap</text>
+  <text x="810" y="590" class="tiny muted">is proposed, not installed.</text>
+
+  <rect class="panel" x="36" y="624" width="1028" height="106" rx="14"/>
+  <text x="58" y="658" class="heading">4 · CONFIRM THE PREVIEW</text>
+  <rect class="key" x="58" y="676" width="240" height="42" rx="9"/><text x="178" y="705" text-anchor="middle" class="body">Confirm · bottom-right · 07</text>
+  <text x="322" y="694" class="body">Press when bright. It commits, clears preview and refreshes.</text>
+  <text x="322" y="718" class="tiny muted">Arrange stays open. Placement alone does not prove MIDI delivery.</text>
+
+  <rect class="panel" x="36" y="748" width="1028" height="116" rx="14"/>
+  <text x="58" y="782" class="heading">BACK TO PATCH</text>
+  <rect class="key" x="58" y="800" width="230" height="46" rx="9"/><text x="173" y="830" text-anchor="middle" class="body">Stop All Clips</text>
+  <text x="310" y="818" class="body">Exit Arrange to see the refreshed Patch grid.</text>
+  <text x="310" y="844" class="tiny muted">Scene/Track lights in Patch mark edge selection only. Amber means enabled Pending.</text>
+
+  <text x="38" y="895" class="tiny muted">Move 21 swaps occupied slots on the same edge. Exact live Assign button sequence remains unverified.</text>
+</svg>
