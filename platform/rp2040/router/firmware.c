@@ -20,6 +20,7 @@
 #endif
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
 #include "hardware/structs/usb.h"
+#include "frontends/apc/apc_chooser.h"
 #endif
 #if defined(GRIDPICO_RP2040_FLASH_ROUTER) || defined(GRIDPICO_RP2040_PATCHBAY_BENCH)
 #include "hardware/sync.h"
@@ -1071,6 +1072,185 @@ static bool panel_graph_input(gridpico_port_id id, uint32_t generation, bool res
     return false;
 }
 
+enum { KEYS_LED_QUEUE = 16, KEYS_PAD_FIRST = 0x20 };
+static struct {
+    gridpico_apc_chooser chooser;
+    usb_midi_lane panel, led;
+    gridpico_port_id led_id;
+    uint32_t panel_lifetime, led_lifetime;
+    uint32_t panel_generation, keybed_generation, led_generation, native_generation;
+    gridpico_apc_chooser_mode requested;
+    gridpico_pico_packet led_queue[KEYS_LED_QUEUE], cue[2], last_pad[2];
+    uint8_t led_head, led_count, cue_cursor, known_pads;
+} keys;
+
+static uint8_t keys_voice_length(const gridpico_pico_packet *packet)
+{
+    const uint8_t kind = packet->bytes[1] >> 4;
+    if (kind < 8 || kind > 14 || (packet->bytes[0] & 15u) != kind || packet->bytes[2] > 127) return 0;
+    if (kind == 12 || kind == 13) return packet->bytes[3] == 0 ? 2u : 0u;
+    return packet->bytes[3] <= 127 ? 3u : 0u;
+}
+
+static bool keys_attachment_current(void)
+{
+    if (keys.chooser.attachment.endpoint == 0 || physical_roles.retiring ||
+        keys.chooser.attachment.endpoint != physical_roles.panel || keys.led_id != physical_roles.led ||
+        keys.chooser.attachment.generation != router.generation[GRIDPICO_PICO_APC] ||
+        !router.attached[GRIDPICO_PICO_APC] || keys.panel_generation != physical_roles.panel_generation ||
+        keys.led_generation != physical_roles.led_generation || !router.attached[keys.led.peer] ||
+        router.generation[keys.led.peer] != keys.led_generation) return false;
+    const discovered_device *panel = mounted_binding(keys.panel.index);
+    const discovered_device *led = mounted_binding(keys.led.index);
+    return panel != NULL && led != NULL && !panel->ambiguous && !led->ambiguous &&
+        panel->lifetime == keys.panel_lifetime && led->lifetime == keys.led_lifetime &&
+        eligible_interface(keys.panel.index) && eligible_interface(keys.led.index) &&
+        panel_lane_generation(&keys.panel) == keys.panel_generation &&
+        led->identity.output_endpoint == host_endpoints_out[keys.led.index] &&
+        router.attached[panel->first_peer] &&
+        router.discovered[panel->first_peer - GRIDPICO_PICO_DISCOVERED].input_generation == keys.keybed_generation &&
+        router.discovered[keys.panel.peer - GRIDPICO_PICO_DISCOVERED].input_generation == keys.panel_generation;
+}
+
+static bool keys_native_current(void)
+{
+    return native_epoch_current() && router.native_output_ready && !tud_suspended();
+}
+
+static void refresh_keys_attachment(void)
+{
+    const bool current = keys_attachment_current();
+    if (router.keys_mode || router.keys_cutover) {
+        if (!current || !keys_native_current() || keys.native_generation != router.generation[GRIDPICO_PICO_WEB]) {
+            keys.requested = GRIDPICO_APC_CHOOSER_PATCHBAY;
+            router.keys_cutover = true;
+        }
+        return;
+    }
+    if (current) return;
+    gridpico_apc_chooser_detach(&keys.chooser, keys.chooser.attachment);
+    keys.cue_cursor = 2;
+    usb_midi_lane panel, led;
+    if (physical_roles.retiring || physical_roles.panel_generation == 0 || physical_roles.led_generation == 0 ||
+        lookup_lane(physical_roles.panel, false, &panel) != GRIDPICO_OK ||
+        lookup_lane(physical_roles.led, true, &led) != GRIDPICO_OK ||
+        panel_lane_generation(&panel) != physical_roles.panel_generation) return;
+    const discovered_device *binding = mounted_binding(panel.index);
+    const gridpico_pico_peer keybed = binding->first_peer;
+    const size_t slot = keybed - GRIDPICO_PICO_DISCOVERED;
+    if ((binding->identity.inputs & 1u) == 0 || !router.attached[keybed] ||
+        !panel_graph_input(router.discovered[slot].input, router.discovered[slot].input_generation, false)) return;
+
+    keys.panel = panel;
+    keys.led = led;
+    keys.led_id = physical_roles.led;
+    keys.panel_lifetime = binding->lifetime;
+    keys.led_lifetime = observations[led.index].lifetime;
+    keys.panel_generation = physical_roles.panel_generation;
+    keys.keybed_generation = router.discovered[slot].input_generation;
+    keys.led_generation = physical_roles.led_generation;
+    gridpico_apc_chooser_init(&keys.chooser,
+        (gridpico_connection){physical_roles.panel, router.generation[GRIDPICO_PICO_APC]});
+}
+
+static gridpico_pico_packet keys_pad(unsigned pad, uint8_t color)
+{
+    return (gridpico_pico_packet){{0x19, 0x96, (uint8_t)(KEYS_PAD_FIRST + pad), color}};
+}
+
+static void keys_cue(bool show)
+{
+    for (unsigned pad = 0; pad < 2; ++pad) {
+        const bool active = (pad == 1) == router.keys_mode;
+        keys.cue[pad] = keys_pad(pad, show ? (active ? 0x15 : 0x01) : 0);
+        if (show) continue;
+        if (router.keys_mode) {
+            if (keys.known_pads & (1u << pad)) keys.cue[pad] = keys.last_pad[pad];
+        } else {
+            const gridpico_pico_patch_panel *panel = &router.panels[GRIDPICO_PICO_APC];
+            if (!panel->latest_valid) continue;
+            for (size_t i = 0; i < GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES; ++i) {
+                const gridpico_pico_packet *packet = &panel->latest[i];
+                if (packet->bytes[1] == 0x96 && packet->bytes[2] == KEYS_PAD_FIRST + pad) {
+                    keys.cue[pad] = *packet;
+                    break;
+                }
+            }
+        }
+    }
+    keys.cue_cursor = 0;
+}
+
+static bool dispatch_keys_host(uint8_t index, const gridpico_pico_packet *packet)
+{
+    if (keys.chooser.attachment.endpoint == 0 || index != keys.panel.index ||
+        observations[index].lifetime != keys.panel_lifetime) return false;
+    const uint8_t cable = packet->bytes[0] >> 4;
+    const uint8_t length = keys_voice_length(packet);
+    if (cable > 1 || length == 0) return router.keys_mode || router.keys_cutover;
+    if (keys_attachment_current()) {
+        const bool open = keys.chooser.open;
+        const gridpico_apc_chooser_result action = gridpico_apc_chooser_receive(
+            &keys.chooser, keys.chooser.attachment, cable, &packet->bytes[1], length);
+        if (open != keys.chooser.open) keys_cue(keys.chooser.open);
+        if (action.requested_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST &&
+            (action.requested_mode == GRIDPICO_APC_CHOOSER_KEYS) != router.keys_mode &&
+            !router.keys_cutover && keys_native_current()) {
+            keys.native_generation = router.generation[GRIDPICO_PICO_WEB];
+            keys.requested = action.requested_mode;
+            router.keys_cutover = true;
+        }
+        if (action.consumed) return true;
+    }
+    if (router.keys_cutover) return true;
+    if (router.keys_mode) {
+        (void)gridpico_pico_router_queue_keys_packet(&router, packet);
+        return true;
+    }
+    return false;
+}
+
+static void offer_keys_led(const gridpico_pico_packet *packet)
+{
+    if (packet->bytes[0] >> 4 != 1 || keys_voice_length(packet) == 0 ||
+        keys.led_count == KEYS_LED_QUEUE) return;
+    keys.led_queue[(keys.led_head + keys.led_count) % KEYS_LED_QUEUE] = *packet;
+    ++keys.led_count;
+    const uint8_t kind = packet->bytes[1] >> 4;
+    if ((kind == 8 || kind == 9) && packet->bytes[2] >= KEYS_PAD_FIRST && packet->bytes[2] < KEYS_PAD_FIRST + 2) {
+        const unsigned pad = packet->bytes[2] - KEYS_PAD_FIRST;
+        keys.known_pads |= (uint8_t)(1u << pad);
+        keys.last_pad[pad] = *packet;
+    }
+}
+
+static void service_keys_cutover(void)
+{
+    if (!router.keys_cutover || native_out.kind != NATIVE_OUT_IDLE ||
+        physical_roles.led_flight_lifetime != 0) return;
+    const bool enter_keys = keys.requested == GRIDPICO_APC_CHOOSER_KEYS;
+    const bool physical_live = observations[keys.panel.index].lifetime == keys.panel_lifetime &&
+                               tuh_midi_mounted(keys.panel.index);
+    const uint32_t irq = save_and_disable_interrupts();
+    const bool native_live = native_epoch_current();
+    const bool native_quiet = !native_live || (router.native_output_ready && !tud_task_event_ready() && tud_midi_available() == 0 &&
+        native_endpoint_quiet() && (usb_hw->buf_status & USB_BUFF_STATUS_EP3_OUT_BITS) == 0);
+    const bool quiet = !tuh_task_event_ready() && (!physical_live || tuh_midi_read_available(keys.panel.index) == 0) &&
+        native_quiet && (!enter_keys || (native_live && router.native_output_ready && !tud_suspended() &&
+        keys.native_generation == router.generation[GRIDPICO_PICO_WEB]));
+    restore_interrupts(irq);
+    if (!quiet) return;
+
+    const bool current = keys_attachment_current();
+    if (enter_keys && !current) return;
+    keys.led_head = keys.led_count = keys.known_pads = 0;
+    keys.cue_cursor = 2;
+    keys.requested = GRIDPICO_APC_CHOOSER_NO_REQUEST;
+    gridpico_pico_router_commit_keys_mode(&router, enter_keys);
+    if (enter_keys) keys_cue(false);
+    if (!current) gridpico_apc_chooser_detach(&keys.chooser, keys.chooser.attachment);
+}
+
 static gridpico_result sync_apc_roles(apc_roles *roles)
 {
     usb_midi_lane panel_lane;
@@ -1243,7 +1423,7 @@ static gridpico_result apply_apc_role(void *context, const gridpico_apc_role_req
     }
     gridpico_result result = sync_apc_roles(roles);
     if (result != GRIDPICO_OK) return result;
-    if (roles->revision != request->expected_revision) return GRIDPICO_UNAVAILABLE;
+    if (roles->revision != request->expected_revision || router.keys_mode || router.keys_cutover) return GRIDPICO_UNAVAILABLE;
     const bool panel = request->action == GRIDPICO_APC_ROLE_SET_PANEL;
     bool *explicit_owner = panel ? &roles->panel_explicit : &roles->led_explicit;
     if (!*explicit_owner && !role_has_revision_space(roles, roles->retiring ? 2 : 1)) return GRIDPICO_CAPACITY;
@@ -2086,18 +2266,36 @@ static bool service_musical_out(uint8_t index, const discovered_device *binding)
 static void service_apc_led_out(uint8_t index)
 {
     apc_roles *roles = &physical_roles;
-    if (roles->led_generation == 0 || roles->retiring || roles->led_flight_lifetime != 0) return;
+    if (router.keys_cutover || roles->led_generation == 0 || roles->retiring || roles->led_flight_lifetime != 0) return;
     usb_midi_lane lane;
     if (lookup_lane(roles->led, true, &lane) != GRIDPICO_OK || lane.index != index ||
         roles->led_generation != router.generation[lane.peer]) return;
-    const gridpico_pico_packet *packet = gridpico_pico_router_led(&router, GRIDPICO_PICO_APC);
-    if (packet != NULL && submit_host_packet(index, GRIDPICO_PICO_APC, packet, lane.cable)) {
-        roles->led_flight_interface = index;
-        roles->led_flight_lifetime = observations[index].lifetime;
+    const bool keys_led = keys.chooser.attachment.endpoint != 0 &&
+                          keys.led.index == index && keys.led_generation == roles->led_generation;
+    const bool cue = keys_led && keys.cue_cursor < 2;
+    const gridpico_pico_packet *packet = NULL;
+    if (cue) {
+        packet = &keys.cue[keys.cue_cursor];
+    } else if (router.keys_mode && keys_led && keys.led_count != 0) {
+        packet = &keys.led_queue[keys.led_head];
+    } else if (!router.keys_mode && !keys.chooser.open) {
+        packet = gridpico_pico_router_led(&router, GRIDPICO_PICO_APC);
+    }
+    if (packet == NULL || !submit_host_packet(index, GRIDPICO_PICO_APC, packet, lane.cable)) return;
+    roles->led_flight_interface = index;
+    roles->led_flight_lifetime = observations[index].lifetime;
+    roles->flight_feedback_generation = 0;
+    if (cue) {
+        ++keys.cue_cursor;
+    } else if (router.keys_mode) {
+        keys.led_head = (uint8_t)((keys.led_head + 1u) % KEYS_LED_QUEUE);
+        --keys.led_count;
+    } else {
         roles->flight_feedback_generation = router.physical_feedback_generation;
         gridpico_pico_router_led_sent(&router, GRIDPICO_PICO_APC);
     }
 }
+
 #else
 void tuh_midi_tx_cb(uint8_t index, uint32_t transferred)
 {
@@ -2168,6 +2366,7 @@ static void receive(gridpico_pico_peer peer, const gridpico_pico_packet *packet)
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
 static void service_host(void)
 {
+    refresh_keys_attachment();
     for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
         host_interface *itf = &interfaces[index];
         if (!itf->present || !tuh_midi_mounted(index) || itf->faulted) continue;
@@ -2179,6 +2378,7 @@ static void service_host(void)
         const discovered_device *binding = mounted_binding(index);
         gridpico_pico_packet packet;
         for (unsigned i = 0; i < RX_BATCH && tuh_midi_packet_read(index, packet.bytes); ++i) {
+            if (dispatch_keys_host(index, &packet)) continue;
             const uint8_t cable = packet.bytes[0] >> 4;
             if (binding != NULL && cable < GRIDPICO_PICO_USB_CABLES &&
                 (binding->identity.inputs & (1u << cable)) != 0) {
@@ -2200,6 +2400,8 @@ static void service_host(void)
     }
     service_discovery();
     service_apc_roles();
+    refresh_keys_attachment();
+    service_keys_cutover();
     for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
         if (interfaces[index].busy) continue;
         const discovered_device *binding = mounted_binding(index);
@@ -2320,20 +2522,25 @@ static bool submit_native_packet(const gridpico_pico_packet *packet, native_out_
 static void service_native_midi(void)
 {
     service_native_epoch();
+    refresh_keys_attachment();
     if (!native_epoch_current() || !router.attached[GRIDPICO_PICO_WEB]) return;
     const uint64_t now = time_us_64();
     if (native_out.kind != NATIVE_OUT_IDLE && now >= native_out.deadline) {
         native_event_state = NATIVE_EVENT_IDLE;
         native_out.kind = NATIVE_OUT_IDLE;
         gridpico_pico_router_retire_native_output(&router);
+        refresh_keys_attachment();
     }
     if (tud_suspended()) return;
     gridpico_pico_packet packet;
     for (unsigned i = 0; i < RX_BATCH && tud_midi_packet_read(packet.bytes); ++i) {
         if (!native_epoch_current()) return;
-        if (packet.bytes[0] >> 4 == 0 || router.native_output_ready) receive(GRIDPICO_PICO_WEB, &packet);
+        if (router.keys_cutover) continue;
+        if (router.keys_mode) offer_keys_led(&packet);
+        else if (packet.bytes[0] >> 4 == 0 || router.native_output_ready) receive(GRIDPICO_PICO_WEB, &packet);
     }
-    if (!router.native_output_ready || native_out.kind != NATIVE_OUT_IDLE) return;
+    service_keys_cutover();
+    if (router.keys_cutover || !router.native_output_ready || native_out.kind != NATIVE_OUT_IDLE) return;
 
     const gridpico_pico_packet *note = gridpico_pico_router_note(&router, GRIDPICO_PICO_WEB);
     if (note != NULL) {
@@ -2342,6 +2549,7 @@ static void service_native_midi(void)
         }
         return;
     }
+    if (router.keys_mode) return;
     const gridpico_pico_packet *led = gridpico_pico_router_led(&router, GRIDPICO_PICO_WEB);
     if (led != NULL) {
         if (submit_native_packet(led, NATIVE_OUT_PANEL)) gridpico_pico_router_led_sent(&router, GRIDPICO_PICO_WEB);

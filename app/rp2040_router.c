@@ -149,6 +149,9 @@ static gridpico_result deliver_note(void *context, const gridpico_note_delivery 
         router->generation[peer] != destination.generation) {
         return GRIDPICO_UNAVAILABLE;
     }
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (peer == GRIDPICO_PICO_WEB && (router->keys_mode || router->keys_cutover)) return GRIDPICO_UNAVAILABLE;
+#endif
     gridpico_pico_queue *queue = &router->notes[note_queue_index(peer)];
     const gridpico_note note = delivery->note;
     const bool attack = note.kind == GRIDPICO_NOTE_ON;
@@ -410,6 +413,9 @@ static void reset_panel(gridpico_pico_router *router, gridpico_pico_peer peer)
 
 static void refresh_panels(gridpico_pico_router *router)
 {
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (router->keys_mode || router->keys_cutover) return;
+#endif
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
     if (router->keys.mode != GRIDPICO_APC_CHOOSER_PATCHBAY || router->keys.next_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST) return;
 #endif
@@ -420,10 +426,39 @@ static void refresh_panels(gridpico_pico_router *router)
     }
 }
 
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+void gridpico_pico_router_commit_keys_mode(gridpico_pico_router *router, bool keys_mode)
+{
+    gridpico_pico_queue *queue = &router->notes[note_queue_index(GRIDPICO_PICO_WEB)];
+    queue->head = queue->count = 0;
+    for (gridpico_pico_peer peer = GRIDPICO_PICO_APC; peer <= GRIDPICO_PICO_WEB; ++peer) {
+        (void)gridpico_apc_physical_detach(&router->panels[peer].frontend);
+        reset_panel(router, peer);
+    }
+    router->keys_mode = keys_mode;
+    router->keys_cutover = false;
+    refresh_panels(router);
+}
+
+bool gridpico_pico_router_queue_keys_packet(gridpico_pico_router *router, const gridpico_pico_packet *packet)
+{
+    if (!router->keys_mode || router->keys_cutover || !router->native_output_ready) return false;
+    gridpico_pico_queue *queue = &router->notes[note_queue_index(GRIDPICO_PICO_WEB)];
+    if (queue->count == GRIDPICO_PICO_QUEUE_SIZE) return false;
+    const size_t tail = (queue->head + queue->count) % GRIDPICO_PICO_QUEUE_SIZE;
+    queue->packets[tail] = *packet;
+    ++queue->count;
+    return true;
+}
+#endif
+
 void gridpico_pico_router_tick(gridpico_pico_router *router, uint64_t now_us)
 {
     router->now_us = now_us;
-    advance_audition(router);
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (!router->keys_cutover && !router->keys_mode)
+#endif
+        advance_audition(router);
     if (now_us >= router->next_refresh_us) {
         router->next_refresh_us = now_us + 50000;
         refresh_panels(router);

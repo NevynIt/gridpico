@@ -108,6 +108,7 @@ if(GRIDPICO_RP2040_PATCHBAY_BENCH)
         target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_MATRIX_CLI PICO_PRINTF_SUPPORT_FLOAT=0)
         if(NOT GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
             target_link_options(gridpico_rp2040_router PRIVATE "LINKER:--wrap=dcd_event_handler")
+            target_sources(gridpico_rp2040_router PRIVATE "${root}/frontends/apc/apc_chooser.c")
         endif()
         target_sources(gridpico_rp2040_router PRIVATE cdc_cli.c "${root}/frontends/cli/cli_frontend.c"
             "${root}/app/rp2040_auto_routes.c")
