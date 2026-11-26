@@ -1798,8 +1798,8 @@ static void nominate_controller(apc_roles *roles)
 
 static void service_automatic_policy(void)
 {
-    const bool coherent = !discovery_dirty && (discovery.index == NO_INTERFACE || discovery.expired) &&
-                          sync_apc_roles(&physical_roles) == GRIDPICO_OK;
+    bool coherent = !discovery_dirty && (discovery.index == NO_INTERFACE || discovery.expired) &&
+                    sync_apc_roles(&physical_roles) == GRIDPICO_OK;
     apc_roles *roles = &physical_roles;
     uint32_t blocked_inputs = 0;
     uint32_t blocked_outputs = 0;
@@ -1821,6 +1821,14 @@ static void service_automatic_policy(void)
             if (released != 0 && released == router.generation[GRIDPICO_PICO_DISCOVERED + slot]) {
                 blocked_outputs |= UINT32_C(1) << slot;
             }
+        }
+        const gridpico_result placement = gridpico_pico_router_place_discovered(
+            &router, router.graph.revision, router.session.apc_layout_revision,
+            blocked_inputs, blocked_outputs);
+        if (placement != GRIDPICO_OK) {
+            const uint8_t cause = (uint8_t)placement;
+            add_trace('E', NO_INTERFACE, &cause, sizeof(cause));
+            coherent = placement == GRIDPICO_CAPACITY;
         }
     }
     gridpico_pico_auto_routes_service(&automatic_routes, coherent, blocked_inputs, blocked_outputs);

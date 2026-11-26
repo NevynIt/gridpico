@@ -101,6 +101,7 @@ struct gridpico_pico_router {
     gridpico_revision physical_feedback_generation;
     bool native_output_ready;
     bool keys_mode, keys_cutover;
+    uint8_t apc_placement_first, apc_placement_end;
     gridpico_patch_manual_routes manual_routes;
     struct {
         gridpico_port_id input, output;
@@ -145,6 +146,10 @@ gridpico_result gridpico_pico_router_init_snapshot(gridpico_pico_router *router,
 gridpico_result gridpico_pico_router_register_device(gridpico_pico_router *router,
                                                     gridpico_pico_peer first_peer, const char *name,
                                                     uint8_t inputs, uint8_t outputs);
+/* Consume first admission after role nomination. Masks index discovered cable groups. */
+gridpico_result gridpico_pico_router_place_discovered(
+    gridpico_pico_router *router, gridpico_revision graph_revision, gridpico_revision layout_revision,
+    uint32_t blocked_inputs, uint32_t blocked_outputs);
 /* Commit an admitted route change, silently cancelling Audition on its edited OUT. */
 gridpico_result gridpico_pico_router_commit_local_route(
     gridpico_pico_router *router, const gridpico_local_route_request *request);

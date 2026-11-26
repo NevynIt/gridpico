@@ -358,6 +358,9 @@ void gridpico_pico_router_set_physical_feedback(gridpico_pico_router *router, gr
 
 static void start_led_page(gridpico_pico_patch_panel *panel)
 {
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (panel->router->apc_placement_end != 0) return;
+#endif
     if (panel->pending && !panel->awaiting_completion && panel->cursor == GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES) {
         memcpy(panel->sending, panel->latest, sizeof(panel->sending));
         panel->sending_version = panel->latest_version;
@@ -385,6 +388,9 @@ static gridpico_result publish_led_page(void *context, const gridpico_apc_surfac
     gridpico_pico_patch_panel *panel = context;
     if (count != GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES) return GRIDPICO_INVALID;
     if (feedback_generation(panel->router, panel->peer) == 0) return GRIDPICO_UNAVAILABLE;
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (panel->router->apc_placement_end != 0) return GRIDPICO_OK;
+#endif
 
     bool changed = !panel->latest_valid || panel->latest_version.route_page != version->route_page ||
                    panel->latest_version.layout_revision != version->layout_revision ||
@@ -492,6 +498,8 @@ static void reset_panel(gridpico_pico_router *router, gridpico_pico_peer peer)
 #endif
 
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
+_Static_assert(GRIDPICO_PATCH_MAX_PORTS <= UINT8_MAX, "placement intervals fit byte indices");
+
 gridpico_result gridpico_pico_router_register_device(gridpico_pico_router *router,
                                                     gridpico_pico_peer first_peer, const char *name,
                                                     uint8_t inputs, uint8_t outputs)
@@ -568,7 +576,77 @@ gridpico_result gridpico_pico_router_register_device(gridpico_pico_router *route
             router->discovered[slot].output = ports[i].id;
         }
     }
+    if (router->apc_placement_end == 0) router->apc_placement_first = (uint8_t)first_port;
+    router->apc_placement_end = (uint8_t)(first_port + count);
     return GRIDPICO_OK;
+}
+
+static bool placement_withheld(const gridpico_pico_router *router, const gridpico_patch_port *port,
+                               uint32_t mask)
+{
+    for (size_t slot = 0; mask != 0 && slot < GRIDPICO_PICO_USB_CABLE_GROUPS; ++slot, mask >>= 1) {
+        const gridpico_port_id id = port->direction == GRIDPICO_PATCH_INPUT
+            ? router->discovered[slot].input : router->discovered[slot].output;
+        if ((mask & 1u) != 0 && id == port->id) return true;
+    }
+    return false;
+}
+
+static bool place_in_first_free(gridpico_port_id *positions, size_t count, gridpico_port_id port)
+{
+    size_t free = count;
+    for (size_t slot = 0; slot < count; ++slot) {
+        if (positions[slot] == port) return false;
+        if (positions[slot] == 0 && free == count) free = slot;
+    }
+    if (free == count) return false;
+    positions[free] = port;
+    return true;
+}
+
+gridpico_result gridpico_pico_router_place_discovered(
+    gridpico_pico_router *router, gridpico_revision graph_revision, gridpico_revision layout_revision,
+    uint32_t blocked_inputs, uint32_t blocked_outputs)
+{
+    if (router->apc_placement_end == 0) return GRIDPICO_OK;
+    gridpico_patch_session *session = &router->session;
+    if (layout_revision == 0 || layout_revision != session->apc_layout_revision ||
+        graph_revision != router->graph.revision) return GRIDPICO_UNAVAILABLE;
+
+    gridpico_apc_patch_layout layout = session->apc_layout;
+    size_t edits = 0;
+    for (size_t slot = router->apc_placement_first; slot < router->apc_placement_end; ++slot) {
+        const gridpico_patch_port *port = &router->graph.inventory.ports[slot];
+        if (port->state != GRIDPICO_PATCH_CONNECTED || !port->patch_eligible ||
+            router->graph.port_capabilities[slot] != GRIDPICO_LOCAL_PORT_MANAGED) continue;
+        const bool input = port->direction == GRIDPICO_PATCH_INPUT;
+        if (placement_withheld(router, port, input ? blocked_inputs : blocked_outputs)) continue;
+        edits += input ? place_in_first_free(layout.rows, GRIDPICO_PATCH_SOURCE_ROWS, port->id)
+                       : place_in_first_free(layout.columns, GRIDPICO_PATCH_DESTINATION_COLUMNS, port->id);
+    }
+
+    /* Preflight both axes and revision room before the first serialized Assign. */
+    gridpico_result result = GRIDPICO_OK;
+    if (edits > UINT64_MAX - layout_revision) {
+        result = GRIDPICO_CAPACITY;
+    } else {
+        for (uint8_t slot = 0; slot < GRIDPICO_PATCH_SOURCE_ROWS; ++slot) {
+            if (layout.rows[slot] == session->apc_layout.rows[slot]) continue;
+            result = gridpico_patch_session_assign_apc_patch(session, layout_revision++,
+                         GRIDPICO_PATCH_INPUT, slot, layout.rows[slot]);
+            if (result != GRIDPICO_OK) return result;
+        }
+        for (uint8_t slot = 0; slot < GRIDPICO_PATCH_DESTINATION_COLUMNS; ++slot) {
+            if (layout.columns[slot] == session->apc_layout.columns[slot]) continue;
+            result = gridpico_patch_session_assign_apc_patch(session, layout_revision++,
+                         GRIDPICO_PATCH_OUTPUT, slot, layout.columns[slot]);
+            if (result != GRIDPICO_OK) return result;
+        }
+    }
+    /* Withheld control lanes and overflow remain outside the first window. */
+    router->apc_placement_end = 0;
+    refresh_panels(router);
+    return result;
 }
 #endif
 
