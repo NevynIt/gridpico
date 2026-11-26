@@ -22,6 +22,7 @@ PM_THREAD = "00000000-0000-0000-0000-000000000003"
 
 FAKE_HERDR = f"""#!{sys.executable}
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -34,6 +35,13 @@ if args == ["agent", "list"]:
         {{"agent": "codex", "agent_status": "idle",
           "agent_session": {{"kind": "id", "value": "{ARCHITECT_THREAD}"}}}}
     ]}}}}))
+elif args == ["pane", "current", "--current"]:
+    pane_id = os.environ["HERDR_PANE_ID"]
+    thread = {{"w:p1": "{STRATEGIST_THREAD}", "w:p3": "{PM_THREAD}"}}[pane_id]
+    print(json.dumps({{"result": {{"pane": {{
+        "pane_id": pane_id, "agent": "codex", "agent_status": "idle",
+        "agent_session": {{"kind": "id", "value": os.environ.get("FAKE_CURRENT_THREAD", thread)}}
+    }}}}}}))
 else:
     sys.exit(2)
 """
@@ -76,6 +84,7 @@ class SeatSendTests(unittest.TestCase):
             path.chmod(0o755)
         self.env = {**os.environ, "PATH": str(self.bin) + os.pathsep + os.environ["PATH"]}
         self.env.pop("HERDR_PANE_ID", None)
+        self.env.pop("FAKE_CURRENT_THREAD", None)
 
     def invoke(self, *args, stdin=None):
         return subprocess.run([sys.executable, str(self.script), *args], cwd=self.root,
@@ -169,6 +178,32 @@ class SeatSendTests(unittest.TestCase):
         self.assertEqual(result.stdout, b"")
         self.assertEqual(self.inbox.read_bytes(), b"")
         self.assertEqual(self.native_calls("herdr"), [])
+        self.assertEqual(self.native_calls("codex"), [])
+
+    def test_verified_strategist_inference_only(self):
+        previous = self.seed_inbox()
+        self.env["HERDR_PANE_ID"] = "w:p3"
+        result = self.invoke("--topic", "Inferred", "jill", "body")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, b"")
+        self.assertEqual(self.inbox.read_bytes(), previous)
+
+        self.env["HERDR_PANE_ID"] = "w:p1"
+        self.env["FAKE_CURRENT_THREAD"] = PM_THREAD
+        result = self.invoke("--topic", "Inferred", "jill", "body")
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, b"")
+        self.assertEqual(self.inbox.read_bytes(), previous)
+
+        del self.env["FAKE_CURRENT_THREAD"]
+        result = self.invoke("--topic", "Inferred", "jill", "body")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, b"Appended J004 to Jill's local inbox.\n")
+        self.assertTrue(self.inbox.read_bytes().startswith(previous))
+        self.assertTrue(self.inbox.read_bytes().endswith(
+            b" | Strategist | Inferred | No reply needed\nbody\n\n------------\n"
+        ))
+        self.assertEqual(self.native_calls("herdr"), [["pane", "current", "--current"]] * 3)
         self.assertEqual(self.native_calls("codex"), [])
 
     def test_parallel_multiline_appends(self):

@@ -238,10 +238,13 @@ def main():
         if not body or "\0" in body:
             raise SendError("provide a nonempty message without NUL bytes")
         if args.recipient == "jill":
-            if args.sender is None or asserted_sender(read_roster(), args.sender) != "strategist@dev":
-                raise SendError("use --from strategist@dev for Jill's local inbox")
             if not args.topic or not args.topic.strip() or not args.topic.isprintable() or "|" in args.topic:
                 raise SendError("jill requires a nonempty one-line --topic without |")
+            seats = read_roster()
+            sender = (asserted_sender(seats, args.sender) if args.sender is not None
+                      else infer_sender(seats, current_pane()))
+            if sender != "strategist@dev":
+                raise SendError("only the Strategist workflow can append to Jill's local inbox")
             append_jill("Strategist", args.topic, args.reply_needed, body)
             return
         if args.topic is not None or args.reply_needed:
