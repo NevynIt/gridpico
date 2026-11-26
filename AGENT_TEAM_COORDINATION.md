@@ -137,6 +137,8 @@ Project Manager accepts completed work and coordinates integration. All agents c
 
 Product Owner keeps the approved delivery backlog in `ROADMAP.md`, with the owner, current state and next acceptance check for each active outcome. Project Manager marks a user-facing result ready after independent evidence covers its supported launch path and deployed target. Report source, fixture and rollout progress at their actual stage. At each delivery close, or when approved work is blocked or the team has no runnable task, Project Manager reports the state to Product Owner. Product Owner points to the next approved outcome or raises a product decision through Strategist.
 
+Jill approved a development reminder that queues a short stall check for Project Manager every 30 minutes by default. The timer re-arms on its own after each interval, regardless of message acknowledgement or queue outcome. Project Manager checks whether approved work is moving, has a named next owner, or has a specific blocker. The reminder leaves task assignments, session operations and pacing with their existing owners. Jill can turn it off, and Project Manager can turn it off once Product Owner confirms the backlog is clear.
+
 Other agents do not stage, commit, reset, switch branches, rebase or push unless explicitly assigned that operation. Project Manager stages specific paths and reviews the staged diff, avoiding unfinished work and shared-index races. No automatic commits occur on task completion or session pause.
 
 End with a compact result/blocker report to Project Manager, then wait. A technical escalation does not replace that completion report. No agent generates more work merely to remain busy.
