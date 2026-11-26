@@ -135,6 +135,7 @@ static void verify_first_capture(void)
     assert(a != b && serial_for(a) == 'A' && serial_for(b) == 'B');
     assert(strcmp(captured.directions[a - 1u].label, captured.directions[b - 1u].label) == 0);
     capture_roundtrip();
+    verify_ram_commit(&captured);
     record = captured;
     record.pair_count = 1;
     memset(record.slots, 0, sizeof(record.slots));

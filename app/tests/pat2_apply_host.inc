@@ -205,6 +205,7 @@ static void verify_clear_with_two_arrivals(void)
     verify_no_midi();
 }
 
+#include "pat2_ram_commit_host.inc"
 #include "pat2_capture_host.inc"
 
 int main(void)
