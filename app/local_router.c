@@ -110,6 +110,10 @@ static gridpico_result dispatch(local_runtime *runtime, char *line, reply *respo
         return GRIDPICO_INVALID;
     }
     const char *command = fields[0];
+    if (strcmp(command, "forwarding-bind") == 0) {
+        if (count != 2 || strcmp(fields[1], "forwarding-v1") != 0) return GRIDPICO_INVALID;
+        return local_runtime_bind_forwarding_transport(runtime);
+    }
     uint64_t generation;
     if (strncmp(command, "serial", sizeof("serial") - 1u) == 0) {
         if (!decimal(fields[1], UINT32_MAX, &generation)) {
@@ -369,9 +373,8 @@ int local_router_run(local_runtime *runtime, const local_router_service *service
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR || (ui_descriptor && !write_ui_roles(runtime))) {
         return EXIT_FAILURE;
     }
-    const int ready = runtime->forwarding_enabled || runtime->configured
-        ? printf("ready %zu%s\n", runtime->profile->limits.midi_peer_limit,
-                 runtime->forwarding_enabled ? " forwarding-v1" : "") : puts("ready");
+    const int ready = runtime->configured
+        ? printf("ready %zu\n", runtime->profile->limits.midi_peer_limit) : puts("ready");
     const bool complete = ready >= 0 && fflush(stdout) == 0 &&
         (runtime->output_count == 0 || write_event(runtime)) && serve(runtime, service);
     local_runtime_begin(runtime, 0);
@@ -430,7 +433,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     local_runtime_enable_desktop_note_transform(&runtime);
-    runtime.forwarding_enabled = ui_descriptor && !recorder;
+    runtime.forwarding_transport = ui_descriptor && !recorder;
     return local_router_run(&runtime, NULL, ui_descriptor);
 }
 #endif

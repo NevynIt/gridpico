@@ -65,12 +65,23 @@ async function check({ hostPath, fixturePath, WebSocket }, scenario) {
 
   const failures = {
     "bad-init": /Invalid router readiness/,
+    "probe-capacity": /Router forwarding negotiation failed/,
+    "probe-bare-ok": /Router forwarding negotiation failed/,
+    "probe-wrong-state": /Router forwarding negotiation failed/,
+    "probe-duplicate-state": /Router forwarding negotiation failed/,
+    "probe-state-invalid": /Router forwarding negotiation failed/,
+    "probe-record": /Router forwarding negotiation failed/,
+    "probe-event": /Router forwarding negotiation failed/,
+    "probe-early-ok": /Unexpected router record before startup completion/,
+    "probe-extra-ok": /Unexpected router record before startup completion/,
+    "probe-trailing-event": /Unexpected router record before startup completion/,
+    "probe-trailing-partial": /Unexpected partial router startup record/,
     "missing-class": /Unknown runner record/,
     "missing-epoch": /Unknown runner record/,
     "future-epoch": /preceded its forwarding barrier/,
   };
   try {
-    if (scenario === "bad-init") {
+    if (scenario === "bad-init" || scenario?.startsWith("probe-")) {
       await waitFor(() => host.exitCode !== null, "startup rejection");
       assert.equal(origin, undefined);
       return;
@@ -88,12 +99,13 @@ async function check({ hostPath, fixturePath, WebSocket }, scenario) {
       assert.deepEqual(monitor.received, []);
       return;
     }
-    if (scenario === "legacy") {
+    if (scenario === "legacy" || scenario === "legacy-bare") {
       const keybed = await open("/midi/1");
       await submit(keybed, bytes("903C60", "803C00"));
       await waitFor(() => monitor.received.length === 2, "legacy delivery");
       assert.deepEqual(hex(monitor), ["903C60", "803C00"]);
-      assert.match(await trace(), /midi 1 [0-9]+ 903C60/);
+      assert.match(await trace(), /^midi 1 [0-9]+ 903C60$/m);
+      assert.equal((await trace()).split("\n")[0], "forwarding-bind forwarding-v1");
       return;
     }
     if (scenario === "pending-out") {
@@ -149,6 +161,8 @@ async function check({ hostPath, fixturePath, WebSocket }, scenario) {
     await waitFor(() => monitor.received.length === 7, "fresh post-Resume notes");
     assert.deepEqual(hex(monitor), [...issued, "924562", "824520"]);
     const log = await trace();
+    if (scenario === "qualified") assert.doesNotMatch(log, /forwarding-bind/);
+    else assert.equal(log.split("\n")[0], "forwarding-bind forwarding-v1");
     assert(!/904060|804000|924462|824402|905460|925560/.test(log), log);
     assert(log.includes("90007F") && log.includes("960015"));
 
@@ -190,15 +204,34 @@ async function fixture(scratch) {
   async function stopPoint(name) {
     await waitFor(() => existsSync(join(scratch, "release-" + name)), name + " release");
   }
-  const legacy = scenario === "legacy";
-  const ready = legacy ? "ready 6" : scenario === "bad-init" ? "ready 6 forwarding-v2" : "ready 6 forwarding-v1";
+  const legacy = scenario === "legacy" || scenario === "legacy-bare";
+  let ready = scenario === "legacy-bare" ? "ready" : "ready 6";
+  if (scenario === "qualified") ready += " forwarding-v1";
+  if (scenario === "bad-init") ready += " forwarding-v2";
+  if (scenario === "probe-early-ok") ready += "\nok";
   emit("ui-roles keybed 1 in panel 2 in led 3 out sequence 4 in monitor 5 out", ready);
   const input = createInterface({ input: process.stdin });
   for await (const line of input) {
     appendFileSync(join(scratch, "private.log"), line + "\n");
     const [action, portText, generation, tag, interval, payload] = line.split(" ");
     const port = Number(portText);
-    if (action === "bind") {
+    if (action === "forwarding-bind") {
+      assert.equal(line, "forwarding-bind forwarding-v1");
+      assert.notEqual(scenario, "qualified");
+      assert.equal(bound.size, 0);
+      if (scenario === "probe-capacity") emit("err CAPACITY");
+      else if (scenario === "probe-record") emit("serial 1 41", "err INVALID");
+      else if (scenario === "probe-event") emit("event", "end", "err INVALID");
+      else if (scenario === "probe-bare-ok") emit("ok");
+      else if (scenario === "probe-wrong-state") emit("forwarding-state 1 paused", "ok");
+      else if (scenario === "probe-duplicate-state") emit("forwarding-state 1 running", "forwarding-state 1 running", "ok");
+      else if (scenario === "probe-state-invalid") emit("forwarding-state 1 running", "err INVALID");
+      else if (scenario === "probe-extra-ok") emit("forwarding-state 1 running", "ok", "ok");
+      else if (scenario === "probe-trailing-event") emit("forwarding-state 1 running", "ok", "event", "end");
+      else if (scenario === "probe-trailing-partial") process.stdout.write("forwarding-state 1 running\nok\nextra");
+      else if (legacy) emit("err INVALID");
+      else emit("forwarding-state 1 running", "ok");
+    } else if (action === "bind") {
       const [direction, classification] = roles.get(port);
       bound.set(port, generation);
       const suffix = legacy || scenario === "missing-class" ? "" : " " + classification;
@@ -304,11 +337,15 @@ async function main() {
     WebSocket: require("ws"),
   };
   await check(options);
-  for (const scenario of ["bad-init", "missing-class", "missing-epoch", "future-epoch", "pending-out", "legacy"]) {
+  for (const scenario of [
+    "bad-init", "probe-capacity", "probe-record", "probe-event", "probe-early-ok", "probe-extra-ok",
+    "probe-bare-ok", "probe-wrong-state", "probe-duplicate-state", "probe-state-invalid", "probe-trailing-partial", "probe-trailing-event",
+    "missing-class", "missing-epoch", "future-epoch", "pending-out", "legacy", "legacy-bare", "qualified",
+  ]) {
     await check(options, scenario);
   }
   await checkInvalidRecords();
-  console.log("PASS portable host forwarding fence, ordinary burst/drop, control and fresh delivery, malformed producer rejection");
+  console.log("PASS forwarding probe, legacy and published startup parity, queue fence and malformed producer rejection");
 }
 
 const task = main();

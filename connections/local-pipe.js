@@ -103,10 +103,13 @@ function uiRolesFrom(line) {
   return roles;
 }
 
-function startLocalPipe(executable, handlers, args = [], expectUiRoles = false) {
+function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false, probeForwarding = false } = {}) {
   const runner = spawn(executable, args, { stdio: ["pipe", "pipe", "inherit"], detached: process.platform !== "win32" });
   let ready = false;
+  let startupComplete = false;
   let forwardingEnabled = false;
+  let forwardingProbeLimit;
+  let forwardingInitialState = false;
   let uiRoles;
   let stopped = false;
   let response;
@@ -129,6 +132,16 @@ function startLocalPipe(executable, handlers, args = [], expectUiRoles = false) 
     handlers.onFailure(message);
   }
 
+  function announceReady(limit) {
+    // Reject extra records in the same stdout chunk before starting listeners.
+    setImmediate(() => {
+      if (stopped) return;
+      if (partial) return fail("Unexpected partial router startup record");
+      startupComplete = true;
+      try { handlers.onReady(limit, uiRoles, forwardingEnabled); } catch (error) { fail(error.message); }
+    });
+  }
+
   function readLine(line) {
     if (line.length > maxLineBytes) throw new Error("Router line too long");
     if (line === "ui-roles" || line.startsWith("ui-roles ")) {
@@ -146,15 +159,37 @@ function startLocalPipe(executable, handlers, args = [], expectUiRoles = false) 
       ready = true;
       clearTimeout(timer);
       const limit = match ? Number(match[1]) : defaultMidiPeers;
-      if (expectUiRoles) {
-        // Parse the entire startup chunk before accepting a listener, including any late metadata.
+      if (probeForwarding && !forwardingEnabled) {
         setImmediate(() => {
           if (stopped) return;
-          try { handlers.onReady(limit, uiRoles, forwardingEnabled); } catch (error) { fail(error.message); }
+          if (partial) return fail("Unexpected partial router startup record");
+          forwardingProbeLimit = limit;
+          timer = setTimeout(() => fail("Router forwarding negotiation timed out"), deadlineMs);
+          runner.stdin.write("forwarding-bind forwarding-v1\n");
         });
-      } else handlers.onReady(limit, undefined, forwardingEnabled);
+      } else if (expectUiRoles) announceReady(limit);
+      else {
+        startupComplete = true;
+        handlers.onReady(limit, undefined, forwardingEnabled);
+      }
       return;
     }
+    if (forwardingProbeLimit !== undefined) {
+      if (!forwardingInitialState && line === "forwarding-state 1 running") {
+        forwardingInitialState = true;
+        return;
+      }
+      if (forwardingInitialState ? line !== "ok" : line !== "err INVALID") {
+        throw new Error("Router forwarding negotiation failed");
+      }
+      clearTimeout(timer);
+      const limit = forwardingProbeLimit;
+      forwardingProbeLimit = undefined;
+      forwardingEnabled = line === "ok";
+      announceReady(limit);
+      return;
+    }
+    if (!startupComplete) throw new Error("Unexpected router record before startup completion");
     if (line === "event" && !inEvent && !replyStarted) {
       inEvent = true;
       return;

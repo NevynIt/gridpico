@@ -667,7 +667,8 @@ const pipe = startLocalPipe(runnerPath, {
     shutdown();
   },
 }, [...(webUi ? ["--web-ui"] : []), ...(profile ? ["--profile", profile] : []),
-  ...(recorder ? ["--recorder"] : []), ...(uiDescriptor ? ["--ui-descriptor"] : [])], uiDescriptor);
+  ...(recorder ? ["--recorder"] : []), ...(uiDescriptor ? ["--ui-descriptor"] : [])],
+{ expectUiRoles: uiDescriptor, probeForwarding: uiDescriptor && !recorder });
 
 server.on("error", (error) => {
   console.error(error.message);

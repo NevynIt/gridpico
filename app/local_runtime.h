@@ -69,6 +69,7 @@ typedef struct {
     bool routing_enabled;
     bool note_transform_enabled;
     bool recording_enabled;
+    bool forwarding_transport;
     bool forwarding_enabled;
     bool forwarding_running;
     gridpico_revision forwarding_revision;
@@ -100,6 +101,7 @@ gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime);
 gridpico_result local_runtime_enable_recorder_route(local_runtime *runtime);
 /* Desktop assembly checks the validated profile before serial ingress. */
 void local_runtime_enable_desktop_note_transform(local_runtime *runtime);
+gridpico_result local_runtime_bind_forwarding_transport(local_runtime *runtime);
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms);
 gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result result);
 gridpico_result local_runtime_bind(local_runtime *runtime, gridpico_connection connection,

@@ -568,6 +568,24 @@ gridpico_result local_runtime_enable_recorder_route(local_runtime *runtime)
     return result;
 }
 
+gridpico_result local_runtime_bind_forwarding_transport(local_runtime *runtime)
+{
+    if (!runtime->forwarding_transport) return GRIDPICO_INVALID;
+    if (runtime->forwarding_enabled || runtime->serial.generation != 0) return GRIDPICO_UNAVAILABLE;
+    for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
+        if (runtime->bindings[i].generation != 1 || runtime->bindings[i].adapter_owned) {
+            return GRIDPICO_UNAVAILABLE;
+        }
+    }
+    runtime->forwarding_enabled = true;
+    runtime->forwarding_barriers[0] = (local_forwarding_barrier){
+        .revision = runtime->forwarding_revision,
+        .running = runtime->forwarding_running,
+    };
+    runtime->forwarding_barrier_count = 1;
+    return GRIDPICO_OK;
+}
+
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms)
 {
     runtime->now_ms = now_ms;
