@@ -1,0 +1,231 @@
+#!/usr/bin/env python3
+"""Run the explicitly enabled, reminder-only local stall check."""
+
+import argparse
+from contextlib import contextmanager
+from datetime import datetime, timezone
+import fcntl
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+
+
+SCRIPT = Path(__file__).resolve()
+STATE_DIR = SCRIPT.parent.parent / ".team/local/stall-check"
+STATE_FILE = STATE_DIR / "state.json"
+DEFAULT_INTERVAL = 30 * 60
+POLL = 0.25
+SEND_TIMEOUT = 15
+LIFECYCLE_TIMEOUT = 3
+RECIPIENT = "project-manager"
+SENDER = "stall-check@dev"
+BODY = ("Stall check reminder. Review the project backlog when available. "
+        "After receiving this reminder, run ./scripts/seat-stall-check ack "
+        "to allow the next one.")
+MESSAGE_ID = re.compile(rb"(?m)^Queued message ([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}) for thread ")
+
+
+def utc_now():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+@contextmanager
+def lock(name, *, blocking=True):
+    with (STATE_DIR / name).open("a+b") as file:
+        flags = fcntl.LOCK_EX | (0 if blocking else fcntl.LOCK_NB)
+        fcntl.flock(file, flags)
+        yield file.fileno()
+
+
+def worker_running():
+    try:
+        with lock("worker.lock", blocking=False):
+            return False
+    except BlockingIOError:
+        return True
+
+
+def read_state():
+    try:
+        with STATE_FILE.open(encoding="utf-8") as file:
+            state = json.load(file)
+    except FileNotFoundError:
+        return {"enabled": False, "interval_seconds": DEFAULT_INTERVAL, "schedule": 0,
+                "outstanding": None, "last_attempt": None, "last_send": None}
+    if (not isinstance(state, dict) or type(state.get("enabled")) is not bool or
+            type(state.get("interval_seconds")) is not int or
+            not 1 <= state["interval_seconds"] <= sys.maxsize or
+            type(state.get("schedule")) is not int or state["schedule"] < 0 or
+            not {"outstanding", "last_attempt", "last_send"} <= state.keys()):
+        raise ValueError("invalid state file")
+    outstanding = state["outstanding"]
+    if outstanding is not None and (not isinstance(outstanding, dict) or
+            outstanding.get("state") not in ("attempting", "queued", "uncertain")):
+        raise ValueError("invalid outstanding reminder state")
+    return state
+
+
+def write_state(state):
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=STATE_DIR,
+                                     prefix="state.", delete=False) as file:
+        temporary = Path(file.name)
+        try:
+            json.dump(state, file)
+            file.write("\n")
+            file.flush()
+            os.fsync(file.fileno())
+            os.replace(temporary, STATE_FILE)
+            directory = os.open(STATE_DIR, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                os.fsync(directory)
+            finally:
+                os.close(directory)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def queue_once(state_lock):
+    command = ["timeout", "--kill-after=2s", f"{SEND_TIMEOUT}s",
+               str(SCRIPT.with_name("seat-send")), "--from", SENDER, RECIPIENT, BODY]
+    try:
+        # The timeout supervisor retains the lock if the worker dies mid-call.
+        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                 stderr=subprocess.DEVNULL, start_new_session=True,
+                                 pass_fds=(state_lock,))
+    except OSError:
+        return {"state": "uncertain", "reason": "seat-send could not start"}
+    try:
+        output, _ = child.communicate(timeout=SEND_TIMEOUT + 3)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(child.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        child.stdout.close()
+        try:
+            child.wait(timeout=1)
+        except subprocess.TimeoutExpired:
+            pass
+        return {"state": "uncertain", "reason": "seat-send timed out"}
+    if child.returncode in (124, 137):
+        return {"state": "uncertain", "reason": "seat-send timed out"}
+    message = MESSAGE_ID.search(output)
+    if child.returncode == 0 and message:
+        return {"state": "queued", "message_id": message[1].decode("ascii")}
+    return {"state": "uncertain", "reason": f"no queue receipt (exit {child.returncode})"}
+
+
+def serve():
+    schedule = None
+    deadline = 0.0
+    while True:
+        with lock("state.lock") as state_lock:
+            state = read_state()
+            if not state["enabled"]:
+                return
+            now = time.monotonic()
+            if schedule != state["schedule"]:
+                schedule = state["schedule"]
+                deadline = now + state["interval_seconds"]
+            outstanding = state["outstanding"]
+            if outstanding and outstanding["state"] == "attempting":
+                outstanding.update(state="uncertain", reason="worker ended before recording a queue result")
+                write_state(state)
+            if outstanding is None and now >= deadline:
+                attempted = utc_now()
+                state["last_attempt"] = attempted
+                state["outstanding"] = {"state": "attempting", "attempted_at": attempted}
+                write_state(state)
+                outcome = queue_once(state_lock)
+                state["outstanding"] = {**outcome, "attempted_at": attempted}
+                if outcome["state"] == "queued":
+                    state["last_send"] = {"queued_at": utc_now(), "message_id": outcome["message_id"]}
+                write_state(state)
+        time.sleep(POLL)
+
+
+def wait_worker(running, child=None):
+    deadline = time.monotonic() + LIFECYCLE_TIMEOUT
+    while time.monotonic() < deadline:
+        if worker_running() == running:
+            return
+        if child is not None and child.poll() is not None:
+            break
+        time.sleep(0.05)
+    action = "start" if running else "stop"
+    raise RuntimeError(f"worker did not {action}; use status to inspect it")
+
+
+def control(action, interval):
+    with lock("control.lock"):
+        child = None
+        with lock("state.lock"):
+            state = read_state()
+            if action == "enable":
+                running = worker_running()
+                interval = state["interval_seconds"] if interval is None else interval
+                if not state["enabled"] or not running or state["interval_seconds"] != interval:
+                    state.update(enabled=True, interval_seconds=interval,
+                                 schedule=state["schedule"] + 1)
+                    write_state(state)
+                if not running:
+                    with (STATE_DIR / "worker.log").open("ab") as log:
+                        child = subprocess.Popen([sys.executable, str(SCRIPT), "_worker"],
+                                                 cwd=SCRIPT.parent.parent, stdin=subprocess.DEVNULL,
+                                                 stdout=subprocess.DEVNULL, stderr=log,
+                                                 start_new_session=True)
+            elif action == "disable":
+                state["enabled"] = False
+                write_state(state)
+            elif state["outstanding"] is not None:
+                state["outstanding"] = None
+                state["schedule"] += 1
+                write_state(state)
+
+        if action in ("enable", "disable"):
+            wait_worker(action == "enable", child)
+
+
+def positive_interval(value):
+    seconds = int(value)
+    if not 1 <= seconds <= sys.maxsize:
+        raise argparse.ArgumentTypeError("interval must be a positive number of seconds")
+    return seconds
+
+
+def main():
+    if sys.argv[1:] == ["_worker"]:
+        try:
+            with lock("worker.lock", blocking=False):
+                serve()
+        except BlockingIOError:
+            pass
+        return
+    parser = argparse.ArgumentParser(description=__doc__)
+    commands = parser.add_subparsers(dest="action", required=True)
+    enable = commands.add_parser("enable", help="start the local reminder, default 30 minutes")
+    enable.add_argument("--interval", type=positive_interval, metavar="SECONDS")
+    commands.add_parser("disable", help="stop future reminders and wait for the worker to exit")
+    commands.add_parser("status", help="show configuration, worker liveness and queue history")
+    commands.add_parser("ack", help="clear one received or reconciled outstanding reminder")
+    args = parser.parse_args()
+    STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+    if args.action != "status":
+        control(args.action, getattr(args, "interval", None))
+    with lock("state.lock"):
+        state = read_state()
+        del state["schedule"]
+        print(json.dumps({**state, "worker_running": worker_running()}, sort_keys=True))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except (OSError, ValueError, RuntimeError) as error:
+        sys.exit(f"seat-stall-check: {error}")
