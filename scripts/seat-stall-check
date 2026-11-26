@@ -25,7 +25,11 @@ SEND_TIMEOUT = 15
 LIFECYCLE_TIMEOUT = 3
 RECIPIENT = "project-manager"
 SENDER = "stall-check@dev"
-BODY = "Stall check reminder. Review the project backlog when available."
+BODY = (
+    "Stall check reminder. Verify live seat activity and the current allowance. "
+    "If approved work is stalled, check blockers and start the next runnable task in order, "
+    "then confirm the owner has begun."
+)
 MESSAGE_ID = re.compile(rb"(?m)^Queued message ([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}) for thread ")
 
 
