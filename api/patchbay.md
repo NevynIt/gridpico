@@ -65,7 +65,19 @@ The initial Patch CLI commands are `inventory`, `color get <device-id>` and `col
 
 Computer connections owns the serial byte stream and the standalone Diagnostics Web Serial client. Diagnostics displays the same CLI terminal transcript and connection status. Both an ordinary serial terminal and Diagnostics use the same command service. Keep request lines and output bounded and serialize command processing. The CLI library may edit and tokenize terminal input. Diagnostics can submit complete command lines and display their replies. Initial Diagnostics uses terminal text and its scrollback for logs.
 
+### Reply format negotiation
+
+An authorized CLI session starts in human format. Show useful command outcomes, including named endpoints with their IDs, clear route or availability state and the actual refusal reason when the provider supplies one. Keep output and pagination bounded. Both formats use the same command grammar, provider availability, serialized typed operations, revisions and outcomes. Escape names and other user data in both formats.
+
+At an idle command boundary on the selected session, send `format machine` for terse structured replies or `format human` to return to human replies. In either format, a successful selection emits exactly `FORMAT MACHINE` or `FORMAT HUMAN` followed by `OK`, each with CRLF. Repeating the current selection succeeds with the same acknowledgement. A refused or malformed selection keeps the current format. Complete any outstanding command or trace before negotiation. The selection belongs to the exact authorized serial session and resets on retirement, replacement or restart. It changes no target, provider or access grant.
+
+A typed caller must obtain the matching complete acknowledgement on the current session before issuing its first parsed command, including a scripted help probe. A missing or unexpected acknowledgement leaves the machine format unconfirmed. Pause typed operations and let the terminal display the actual transcript. Confirm human formatting with `format human` if the preceding selection outcome is unknown. A client can use the published record behavior of an explicitly qualified legacy target under its existing compatibility path. A negotiation error alone does not prove legacy framing. Migrate each parser and its target together before changing that target's default. A terminal that only displays replies needs no negotiation. This contract introduces no change to current releases by itself.
+
+First qualify the normal portable same-origin CLI and its Routing caller together on the existing lease. Verify readable help, inventory and route outcomes, exact machine pagination and guarded edits, a refused or incomplete negotiation, and a fresh human default on a replacement lease. A display-only Diagnostics terminal keeps human replies. Verify unchanged trace and recovery framing separately before changing the Pico CDC default.
+
 ### Follow-on serial formatting
+
+The following record formatting defines machine replies. Preserve published typed reader records, ordering, pagination, escaping and errors, with no prompts, echo or extra prose in machine replies. BOOTSEL and the existing trace streams keep their platform framing. [Routing records](routing.md#routing-through-the-local-cli) · [Pico platform commands](pico-target.md#first-shared-cli-on-pico-and-pi)
 
 Send one command line at a time. Accept CR, LF or CRLF as one terminator. Diagnostics sends LF. IDs in command text and reply records are decimal. Accept six hexadecimal digits after `#` and render the stored value in uppercase. Command records are UTF-8 and end in CRLF. Quote names as JSON strings so a name cannot introduce a line break or terminal control. End each reply with `OK` or `ERR INVALID`, `ERR CAPACITY` or `ERR UNAVAILABLE`. Terminal prompts and line editing are presentation. Keep unrelated log records outside the reply.
 
@@ -75,7 +87,7 @@ Send one command line at a time. Accept CR, LF or CRLF as one terminator. Diagno
 | `color get <device-id>` | `COLOR <device-id> <color>` |
 | `color set <device-id> #RRGGBB` | `COLOR <device-id> <color>` with the committed value |
 
-State is `connected`, `disconnected` or `ambiguous`. Color is `#RRGGBB` or `unset`. Assignment is `row:1:<position>`, `col:1:<position>` or `-` for no slot. The middle field is the one-based Patch page. Diagnostics displays the same records as the terminal.
+State is `connected`, `disconnected` or `ambiguous`. Color is `#RRGGBB` or `unset`. Assignment is `row:1:<position>`, `col:1:<position>` or `-` for no slot. The middle field is the one-based Patch page. Diagnostics displays the replies of its selected session.
 
 Application Assembly packages Web APC and Diagnostics as separate offline entry points on the read-only `GRIDPICO` image. Diagnostics uses a user-initiated serial port chooser and reports access or availability errors within the page. Direct opening of the mounted file and access to the Pico's CDC CLI are a target browser/OS acceptance check. [Chrome Web Serial](https://developer.chrome.com/docs/capabilities/serial/) · [Secure Contexts](https://w3c.github.io/webappsec-secure-contexts/#is-origin-trustworthy)
 
