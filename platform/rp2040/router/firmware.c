@@ -20,6 +20,7 @@
 #endif
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
 #include "hardware/structs/usb.h"
+#include "app/rp2040_pat2_projection.h"
 #include "frontends/apc/apc_chooser.h"
 #endif
 #if defined(GRIDPICO_RP2040_FLASH_ROUTER) || defined(GRIDPICO_RP2040_PATCHBAY_BENCH)
@@ -816,8 +817,9 @@ static bool read_identity(uint8_t index, midi_identity *identity)
         .vid = itf->vid, .pid = itf->pid,
         .interface = itf->number, .input_endpoint = observations[index].input_endpoint,
         .output_endpoint = host_endpoints_out[index],
-        .inputs = (uint8_t)((1u << itf->rx_cables) - 1u),
-        .outputs = (uint8_t)((1u << itf->tx_cables) - 1u),
+        /* The validated class jack descriptors assign cables in ordinal order. */
+        .inputs = (uint8_t)((1u << observations[index].input_cables) - 1u),
+        .outputs = (uint8_t)((1u << observations[index].output_cables) - 1u),
     };
     tusb_desc_device_t descriptor;
     if (!tuh_descriptor_get_device_local(itf->device_address, &descriptor)) return false;
@@ -1796,6 +1798,160 @@ static void nominate_controller(apc_roles *roles)
     }
 }
 
+static void automatic_policy_blocks(const apc_roles *roles, uint32_t *inputs, uint32_t *outputs)
+{
+    /* Withhold a prospective control lane while its role is optional. */
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        const discovered_device *binding = mounted_binding(index);
+        if (binding == NULL || !recognizable_controller(index)) continue;
+        const unsigned slot = binding->first_peer - GRIDPICO_PICO_DISCOVERED + 1u;
+        if (!roles->panel_explicit) *inputs |= UINT32_C(1) << slot;
+        if (!roles->led_explicit) *outputs |= UINT32_C(1) << slot;
+    }
+    for (unsigned slot = 0; slot < GRIDPICO_PICO_USB_CABLE_GROUPS; ++slot) {
+        const uint32_t released = roles->released_led_generation[slot];
+        if (released != 0 && released == router.generation[GRIDPICO_PICO_DISCOVERED + slot]) {
+            *outputs |= UINT32_C(1) << slot;
+        }
+    }
+}
+
+static bool pat2_shape_known(uint8_t index)
+{
+    const midi_observation *observation = &observations[index];
+    const uint8_t rx = observation->input_cables, tx = observation->output_cables;
+    const uint8_t in = observation->input_endpoint, out = host_endpoints_out[index];
+    return interfaces[index].present && observation->lifetime != 0 && observation->supported &&
+           rx <= GRIDPICO_PICO_USB_CABLES && tx <= GRIDPICO_PICO_USB_CABLES &&
+           (rx != 0 || tx != 0) &&
+           (rx == 0 ? in == 0 : (in & 0xf0u) == 0x80u && (in & 0x0fu) != 0) &&
+           (tx == 0 ? out == 0 : (out & 0xf0u) == 0 && out != 0);
+}
+
+static void project_pat2_lane(gridpico_pico_pat2_projection *projection, size_t observation_index,
+                              unsigned peer, uint8_t cable, bool output, uint32_t blocked)
+{
+    const size_t slot = peer - GRIDPICO_PICO_DISCOVERED;
+    if (!router.attached[peer]) return;
+    const gridpico_port_id id = output ? router.discovered[slot].output : router.discovered[slot].input;
+    const uint32_t generation = output ? router.generation[peer] : router.discovered[slot].input_generation;
+    const gridpico_patch_direction direction = output ? GRIDPICO_PATCH_OUTPUT : GRIDPICO_PATCH_INPUT;
+    const gridpico_local_registry *registry = &projection->graph.registry;
+    if (id == 0 || generation == 0) return;
+
+    for (size_t i = 0; i < registry->inventory.port_count; ++i) {
+        const gridpico_patch_port *port = &registry->inventory.ports[i];
+        if (port->id != id || port->direction != direction || port->state != GRIDPICO_PATCH_CONNECTED ||
+            router.graph.ports[i].generation != generation) continue;
+        const gridpico_patch_port_runtime *state = &router.graph.ports[i];
+        const bool eligible = port->patch_eligible && registry->port_capabilities[i] == GRIDPICO_LOCAL_PORT_MANAGED &&
+            !state->apc_panel_reserved && !state->apc_led_reserved &&
+            id != (output ? physical_roles.led : physical_roles.panel) && !(blocked & (UINT32_C(1) << slot));
+        projection->bindings[projection->view.binding_count++] = (gridpico_pico_pat2_binding){
+            .observation_index = observation_index, .cable = cable, .direction = direction,
+            .binding = {id, generation}, .eligible = eligible,
+        };
+        return;
+    }
+}
+
+static void project_pat2_observation(gridpico_pico_pat2_projection *projection, uint8_t index,
+                                     uint32_t blocked_inputs, uint32_t blocked_outputs)
+{
+    const midi_observation *observation = &observations[index];
+    midi_identity shape;
+    bool revision_known = read_identity(index, &shape);
+    const bool observed = observed_interface(index);
+    size_t serial_length = 0;
+    if (observed && observation->verified) {
+        if (!revision_known) shape.revision = observation->identity.revision;
+        if (same_identity_shape(&shape, &observation->identity)) {
+            revision_known = true;
+            const char *serial = observation->identity.serial;
+            const char *end = memchr(serial, '\0', sizeof(observation->identity.serial));
+            if (end != NULL) serial_length = (size_t)(end - serial);
+        }
+    }
+
+    const size_t row = projection->view.observation_count++;
+    gridpico_pico_pat2_observation *item = &projection->observations[row];
+    *item = (gridpico_pico_pat2_observation){
+        .identity = {
+            .vid = shape.vid, .pid = shape.pid, .bcd_device = shape.revision,
+            .interface_number = shape.interface, .input_endpoint = shape.input_endpoint,
+            .output_endpoint = shape.output_endpoint, .input_cables = shape.inputs,
+            .output_cables = shape.outputs, .serial_length = (uint8_t)serial_length,
+        },
+        .revision_known = revision_known,
+    };
+    memcpy(item->identity.serial, observation->identity.serial, serial_length);
+
+    /* Other observations remain in the view so the planner tests uniqueness
+     * against the whole mounted set, including interfaces with no binding.
+     */
+    const discovered_device *binding = mounted_binding(index);
+    const unsigned span = cable_span(&shape);
+    midi_path path;
+    if (serial_length == 0 || !eligible_interface(index) || binding == NULL || binding->ambiguous ||
+        !observed_path(interfaces[index].device_address, &path) ||
+        !same_serial(&binding->identity, &observation->identity) ||
+        binding->first_peer < GRIDPICO_PICO_DISCOVERED || binding->first_peer > GRIDPICO_PICO_PEERS - span) return;
+
+    for (uint8_t cable = 0; cable < span; ++cable) {
+        const unsigned peer = binding->first_peer + cable;
+        if (shape.inputs & (1u << cable)) {
+            project_pat2_lane(projection, row, peer, cable, false, blocked_inputs);
+        }
+        if (shape.outputs & (1u << cable)) {
+            project_pat2_lane(projection, row, peer, cable, true, blocked_outputs);
+        }
+    }
+}
+
+gridpico_result gridpico_pico_project_pat2_view(gridpico_pico_pat2_projection *out)
+{
+    _Static_assert(CFG_TUH_MIDI <= GRIDPICO_PICO_PAT2_IDENTITIES && CFG_TUH_MIDI <= 32,
+                   "Projection covers every mounted interface");
+    _Static_assert(2 * GRIDPICO_PICO_USB_CABLE_GROUPS <= GRIDPICO_PICO_PAT2_DIRECTIONS,
+                   "Projection covers every admitted USB direction");
+
+    if (out == NULL) return GRIDPICO_INVALID;
+    out->view = (gridpico_pico_pat2_verified_view){0};
+    out->unknown_shape_interfaces = 0;
+    if (discovery_dirty || (discovery.index != NO_INTERFACE && !discovery.expired) ||
+        router.keys_mode || router.keys_cutover || physical_roles.graph_revision != router.graph.revision) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+
+    uint32_t mounted_interfaces = 0;
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        if (!tuh_midi_mounted(index)) continue;
+        const uint32_t bit = UINT32_C(1) << index;
+        if (pat2_shape_known(index)) mounted_interfaces |= bit;
+        else out->unknown_shape_interfaces |= bit;
+    }
+    /* A possible competitor with no exact shape cannot be expressed in the
+     * planner view. Withhold the view rather than assume uniqueness.
+     */
+    if (out->unknown_shape_interfaces != 0) return GRIDPICO_UNAVAILABLE;
+
+    gridpico_result result = gridpico_patch_graph_read_local_state(&router.graph, &out->graph);
+    if (result != GRIDPICO_OK) return result;
+    out->view = (gridpico_pico_pat2_verified_view){
+        .graph_revision = out->graph.revision, .layout_revision = router.session.apc_layout_revision,
+        .observations = out->observations, .bindings = out->bindings, .branches = out->graph.routes,
+        .branch_count = out->graph.route_count, .branch_limit = router.graph.branch_limit,
+    };
+    uint32_t blocked_inputs = 0, blocked_outputs = 0;
+    automatic_policy_blocks(&physical_roles, &blocked_inputs, &blocked_outputs);
+    for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
+        if (mounted_interfaces & (UINT32_C(1) << index)) {
+            project_pat2_observation(out, index, blocked_inputs, blocked_outputs);
+        }
+    }
+    return GRIDPICO_OK;
+}
+
 static void service_automatic_policy(void)
 {
     bool coherent = !discovery_dirty && (discovery.index == NO_INTERFACE || discovery.expired) &&
@@ -1805,23 +1961,7 @@ static void service_automatic_policy(void)
     uint32_t blocked_outputs = 0;
     if (coherent) {
         nominate_controller(roles);
-        /* An unresolved control lane is not automatically given a musical
-         * route while the candidate role is still optional. Explicit selection
-         * and explicit role release retain their own transport ownership.
-         */
-        for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
-            const discovered_device *binding = mounted_binding(index);
-            if (binding == NULL || !recognizable_controller(index)) continue;
-            const unsigned slot = binding->first_peer - GRIDPICO_PICO_DISCOVERED + 1u;
-            if (!roles->panel_explicit) blocked_inputs |= UINT32_C(1) << slot;
-            if (!roles->led_explicit) blocked_outputs |= UINT32_C(1) << slot;
-        }
-        for (unsigned slot = 0; slot < GRIDPICO_PICO_USB_CABLE_GROUPS; ++slot) {
-            const uint32_t released = roles->released_led_generation[slot];
-            if (released != 0 && released == router.generation[GRIDPICO_PICO_DISCOVERED + slot]) {
-                blocked_outputs |= UINT32_C(1) << slot;
-            }
-        }
+        automatic_policy_blocks(roles, &blocked_inputs, &blocked_outputs);
         const gridpico_result placement = gridpico_pico_router_place_discovered(
             &router, router.graph.revision, router.session.apc_layout_revision,
             blocked_inputs, blocked_outputs);
