@@ -139,6 +139,8 @@ Product Owner keeps the approved delivery backlog in `ROADMAP.md`, with the owne
 
 Jill approved a development reminder that queues a short stall check for Project Manager every 30 minutes by default. The timer re-arms on its own after each interval, regardless of message acknowledgement or queue outcome. On each reminder, Project Manager verifies whether work marked in progress is actually underway or complete. If current work has stalled, Project Manager checks the allowance and blockers and helps the current owner resume and finish it. Start the next approved task only once the current work is complete. The reminder leaves task assignments, session operations and pacing with their existing owners. Jill can turn it off, and Project Manager can turn it off once Product Owner confirms the backlog is clear.
 
+Jill grants standing permission to use the connected DEV rig for routine testing and updates. She disconnects it from DEV during personal use. Project Manager coordinates bench access and schedules local actions or observations when the work requires them.
+
 Other agents do not stage, commit, reset, switch branches, rebase or push unless explicitly assigned that operation. Project Manager stages specific paths and reviews the staged diff, avoiding unfinished work and shared-index races. No automatic commits occur on task completion or session pause.
 
 End with a compact result/blocker report to Project Manager, then wait. A technical escalation does not replace that completion report. No agent generates more work merely to remain busy.
