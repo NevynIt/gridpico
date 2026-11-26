@@ -3,7 +3,7 @@ set -euo pipefail
 cd -- "$(dirname -- "$0")/../.."
 build=$(mktemp -d)
 trap 'rm -rf -- "$build"' EXIT
-python3 - "$build/firmware.inc" <<'PY'
+python3 - "$build" <<'PY'
 from pathlib import Path
 import sys
 
@@ -12,7 +12,8 @@ def span(first, last):
     start = source.index(first)
     return source[start:source.index(last, start)]
 
-Path(sys.argv[1]).write_text("\n".join([
+build = Path(sys.argv[1])
+(build / "firmware.inc").write_text("\n".join([
     span("typedef struct {\n    bool present;", "static gridpico_pico_router router;"),
     "static host_interface interfaces[CFG_TUH_MIDI];",
     span("typedef struct {\n    uint16_t vid, pid, revision;", "static gridpico_pico_auto_routes automatic_routes;"),
@@ -23,7 +24,15 @@ Path(sys.argv[1]).write_text("\n".join([
     span("static bool same_serial(", "static bool identity_conflict("),
     span("static void automatic_policy_blocks(", "static void service_automatic_policy("),
 ]))
+(build / "policy.inc").write_text(
+    span("static void service_automatic_policy(", "static void retire_host_interface(")
+)
 PY
+extra=()
+if [[ ${1:-} == --apply ]]; then
+    extra=(-O0 -DGRIDPICO_PAT2_APPLY_HOST app/rp2040_pat2_apply.c app/rp2040_auto_routes.c
+           frontends/cli/cli_frontend.c)
+fi
 cc -std=c11 -Wall -Wextra -Wpedantic -Werror -g -O1 -ffunction-sections -fdata-sections \
     -fsanitize=address,undefined -fno-sanitize-recover=all -fno-pie -no-pie \
     -DPICO_ON_DEVICE=1 -DPICO_RP2040=1 -DGRIDPICO_RP2040_PATCHBAY_BENCH \
@@ -31,5 +40,5 @@ cc -std=c11 -Wall -Wextra -Wpedantic -Werror -g -O1 -ffunction-sections -fdata-s
     app/tests/pat2_projection_host.c app/rp2040_router.c app/rp2040_snapshot_pat2.c \
     core/midi/patch_graph.c core/session/patch_session.c \
     frontends/apc/apc_frontend.c frontends/apc/apc_protocol.c \
-    frontends/apc/apc_physical.c frontends/apc/apc_chooser.c -o "$build/projection"
+    frontends/apc/apc_physical.c frontends/apc/apc_chooser.c "${extra[@]}" -o "$build/projection"
 "$build/projection"

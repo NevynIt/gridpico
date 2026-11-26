@@ -1,4 +1,10 @@
 #include "app/rp2040_pat2_projection.h"
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+#include "app/rp2040_pat2_apply.h"
+#include "app/rp2040_auto_routes.h"
+#include "frontends/cli/cli_frontend.h"
+#include <inttypes.h>
+#endif
 
 #include <assert.h>
 #include <limits.h>
@@ -63,6 +69,7 @@ static void admit_fixture(uint8_t index, size_t device, gridpico_pico_peer first
     gridpico_pico_router_attach(&router, (gridpico_pico_peer)(first + 1), true);
 }
 
+#ifndef GRIDPICO_PAT2_APPLY_HOST
 static gridpico_pico_pat2_identity saved_identity(uint8_t serial)
 {
     return (gridpico_pico_pat2_identity){
@@ -188,3 +195,7 @@ int main(void)
     puts("PASS actual Pico PAT2 projection and planner: same labels, whole-set blockers, roles, and fresh generation");
     return 0;
 }
+
+#else
+#include "pat2_apply_host.inc"
+#endif

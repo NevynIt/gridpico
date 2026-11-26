@@ -103,6 +103,9 @@ struct gridpico_pico_router {
     bool keys_mode, keys_cutover;
     uint8_t apc_placement_first, apc_placement_end;
     gridpico_patch_manual_routes manual_routes;
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+    struct gridpico_pico_pat2_apply *pat2_apply;
+#endif
     struct {
         gridpico_port_id input, output;
         uint32_t input_generation;

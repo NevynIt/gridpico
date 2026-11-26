@@ -1,4 +1,7 @@
 #include "app/rp2040_router.h"
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+#include "app/rp2040_pat2_apply.h"
+#endif
 
 #include <string.h>
 
@@ -411,6 +414,78 @@ static gridpico_result publish_led_page(void *context, const gridpico_apc_surfac
     return GRIDPICO_OK;
 }
 
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+static gridpico_result read_pat2_panel(void *context, gridpico_apc_patch_snapshot *out)
+{
+    gridpico_pico_router *router = context;
+    return gridpico_patch_session_read_apc_patch(&router->session, out);
+}
+
+static gridpico_port_id pat2_panel_slot(const gridpico_pico_router *router, size_t slot)
+{
+    if (slot < GRIDPICO_PATCH_SOURCE_ROWS) return router->session.apc_layout.rows[slot];
+    return slot < GRIDPICO_PICO_PAT2_SLOTS
+        ? router->session.apc_layout.columns[slot - GRIDPICO_PATCH_SOURCE_ROWS] : 0;
+}
+
+static gridpico_result assign_pat2_panel(void *context, gridpico_revision revision,
+                                        gridpico_patch_direction axis, uint8_t slot, gridpico_port_id port)
+{
+    gridpico_pico_router *router = context;
+    const size_t position = gridpico_pico_pat2_slot_index(axis, slot);
+    const gridpico_port_id previous = pat2_panel_slot(router, position);
+    const bool reserved = gridpico_pico_pat2_has_reservation(router, position);
+    if (reserved && previous == port && revision == UINT64_MAX &&
+        router->session.apc_layout_revision == revision) return GRIDPICO_CAPACITY;
+
+    const gridpico_result result = gridpico_patch_session_assign_apc_patch(&router->session, revision,
+                                                                          axis, slot, port);
+    if (result == GRIDPICO_OK) {
+        if (reserved && router->session.apc_layout_revision == revision) ++router->session.apc_layout_revision;
+        gridpico_pico_pat2_own_slot(router, position, previous, port);
+    }
+    return result;
+}
+
+static gridpico_result move_pat2_panel(void *context, gridpico_revision revision,
+                                      gridpico_patch_direction axis, uint8_t from, uint8_t to)
+{
+    gridpico_pico_router *router = context;
+    const size_t left = gridpico_pico_pat2_slot_index(axis, from);
+    const size_t right = gridpico_pico_pat2_slot_index(axis, to);
+    const gridpico_port_id a = pat2_panel_slot(router, left), b = pat2_panel_slot(router, right);
+    const bool reserved = gridpico_pico_pat2_has_reservation(router, left) ||
+                          gridpico_pico_pat2_has_reservation(router, right);
+    if (left < GRIDPICO_PICO_PAT2_SLOTS && right < GRIDPICO_PICO_PAT2_SLOTS &&
+        reserved && a == b && revision == UINT64_MAX &&
+        router->session.apc_layout_revision == revision) return GRIDPICO_CAPACITY;
+
+    const gridpico_result result = gridpico_patch_session_move_apc_patch(&router->session, revision, axis, from, to);
+    if (result == GRIDPICO_OK) {
+        if (reserved && router->session.apc_layout_revision == revision) ++router->session.apc_layout_revision;
+        gridpico_pico_pat2_own_slot(router, left, a, b);
+        gridpico_pico_pat2_own_slot(router, right, b, a);
+    }
+    return result;
+}
+
+static gridpico_result set_pat2_panel_cell(void *context, gridpico_revision layout, gridpico_revision graph,
+                                          uint8_t row, uint8_t column, bool enabled)
+{
+    gridpico_pico_router *router = context;
+    const gridpico_result result = gridpico_patch_session_set_apc_patch_cell(&router->session, layout, graph,
+                                                                             row, column, enabled);
+    if (result == GRIDPICO_OK) {
+        const gridpico_local_route route = {
+            router->session.apc_layout.rows[row], router->session.apc_layout.columns[column],
+            GRIDPICO_LOCAL_MANAGED,
+        };
+        gridpico_pico_pat2_own_pair(router, &route);
+    }
+    return result;
+}
+#endif
+
 static void reset_panel(gridpico_pico_router *router, gridpico_pico_peer peer)
 {
     gridpico_pico_patch_panel *panel = &router->panels[peer];
@@ -418,10 +493,16 @@ static void reset_panel(gridpico_pico_router *router, gridpico_pico_peer peer)
     panel->router = router;
     panel->peer = peer;
     panel->cursor = GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES;
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+    gridpico_apc_physical_init(&panel->frontend, router, read_pat2_panel, set_pat2_panel_cell,
+                              assign_pat2_panel, move_pat2_panel, panel, audition_request,
+                              publish_led_page, &router->panel_scratch);
+#else
     gridpico_apc_physical_init(&panel->frontend, &router->session, gridpico_patch_session_read_apc_patch,
                               gridpico_patch_session_set_apc_patch_cell, gridpico_patch_session_assign_apc_patch,
                               gridpico_patch_session_move_apc_patch, panel, audition_request, publish_led_page,
                               &router->panel_scratch);
+#endif
 }
 
 static void refresh_panels(gridpico_pico_router *router)
@@ -438,6 +519,13 @@ static void refresh_panels(gridpico_pico_router *router)
         }
     }
 }
+
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+void gridpico_pico_pat2_refresh_panels(gridpico_pico_router *router)
+{
+    refresh_panels(router);
+}
+#endif
 
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
 void gridpico_pico_router_commit_keys_mode(gridpico_pico_router *router, bool keys_mode)
@@ -592,11 +680,19 @@ static bool placement_withheld(const gridpico_pico_router *router, const gridpic
     return false;
 }
 
-static bool place_in_first_free(gridpico_port_id *positions, size_t count, gridpico_port_id port)
+static bool place_in_first_free(const gridpico_pico_router *router, gridpico_port_id *positions,
+                                size_t count, size_t offset, gridpico_port_id port)
 {
+#ifndef GRIDPICO_PAT2_APPLY_HOST
+    (void)router;
+    (void)offset;
+#endif
     size_t free = count;
     for (size_t slot = 0; slot < count; ++slot) {
         if (positions[slot] == port) return false;
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+        if (gridpico_pico_pat2_placement_blocked(router, offset + slot)) continue;
+#endif
         if (positions[slot] == 0 && free == count) free = slot;
     }
     if (free == count) return false;
@@ -621,8 +717,9 @@ gridpico_result gridpico_pico_router_place_discovered(
             router->graph.port_capabilities[slot] != GRIDPICO_LOCAL_PORT_MANAGED) continue;
         const bool input = port->direction == GRIDPICO_PATCH_INPUT;
         if (placement_withheld(router, port, input ? blocked_inputs : blocked_outputs)) continue;
-        edits += input ? place_in_first_free(layout.rows, GRIDPICO_PATCH_SOURCE_ROWS, port->id)
-                       : place_in_first_free(layout.columns, GRIDPICO_PATCH_DESTINATION_COLUMNS, port->id);
+        edits += input ? place_in_first_free(router, layout.rows, GRIDPICO_PATCH_SOURCE_ROWS, 0, port->id)
+                       : place_in_first_free(router, layout.columns, GRIDPICO_PATCH_DESTINATION_COLUMNS,
+                                             GRIDPICO_PATCH_SOURCE_ROWS, port->id);
     }
 
     /* Preflight both axes and revision room before the first serialized Assign. */
@@ -723,7 +820,11 @@ gridpico_result gridpico_pico_router_set_managed_route(
 {
     gridpico_pico_router *router = context;
     if (router == NULL || request == NULL || !public_managed_route(&request->route)) return GRIDPICO_INVALID;
-    return gridpico_patch_session_set_local_route(&router->session, request);
+    const gridpico_result result = gridpico_patch_session_set_local_route(&router->session, request);
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+    if (result == GRIDPICO_OK) gridpico_pico_pat2_own_pair(router, &request->route);
+#endif
+    return result;
 }
 #endif
 

@@ -533,9 +533,13 @@ static bool valid_apc_axis(const gridpico_local_registry *registry, gridpico_por
     return true;
 }
 
-static bool valid_apc_layout(const gridpico_local_registry *registry, gridpico_port_id audition_source,
-                             const gridpico_apc_patch_layout *layout)
+bool gridpico_patch_session_validate_apc_layout(const gridpico_local_registry *registry,
+                                                gridpico_port_id audition_source,
+                                                const gridpico_apc_patch_layout *layout)
 {
+    if (registry == NULL || layout == NULL || registry->inventory.port_count > GRIDPICO_PATCH_MAX_PORTS) {
+        return false;
+    }
     return valid_apc_axis(registry, audition_source, GRIDPICO_PATCH_INPUT,
                           layout->rows, GRIDPICO_PATCH_SOURCE_ROWS) &&
            valid_apc_axis(registry, audition_source, GRIDPICO_PATCH_OUTPUT,
@@ -555,7 +559,7 @@ gridpico_result gridpico_patch_session_bind_apc_patch(gridpico_patch_session *se
     if (result != GRIDPICO_OK) {
         return result;
     }
-    if (!valid_apc_layout(&graph.registry, audition_source, layout)) {
+    if (!gridpico_patch_session_validate_apc_layout(&graph.registry, audition_source, layout)) {
         return GRIDPICO_INVALID;
     }
 
@@ -674,7 +678,8 @@ gridpico_result gridpico_patch_session_restore_apc_snapshot(gridpico_patch_sessi
     if (!fresh_apc_graph(&graph)) {
         return GRIDPICO_UNAVAILABLE;
     }
-    if (!valid_apc_layout(&graph.registry, session->apc_audition_source, &snapshot->layout) ||
+    if (!gridpico_patch_session_validate_apc_layout(&graph.registry, session->apc_audition_source,
+                                                    &snapshot->layout) ||
         !valid_apc_snapshot_routes(&graph.registry, session->apc_audition_source, snapshot)) {
         return GRIDPICO_INVALID;
     }

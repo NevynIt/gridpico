@@ -21,6 +21,9 @@
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
 #include "hardware/structs/usb.h"
 #include "app/rp2040_pat2_projection.h"
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+#include "app/rp2040_pat2_apply.h"
+#endif
 #include "frontends/apc/apc_chooser.h"
 #endif
 #if defined(GRIDPICO_RP2040_FLASH_ROUTER) || defined(GRIDPICO_RP2040_PATCHBAY_BENCH)
@@ -1962,6 +1965,19 @@ static void service_automatic_policy(void)
     if (coherent) {
         nominate_controller(roles);
         automatic_policy_blocks(roles, &blocked_inputs, &blocked_outputs);
+    }
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+    if (coherent && router.pat2_apply != NULL && router.pat2_apply->intent != NULL) {
+        gridpico_pico_pat2_apply *apply = router.pat2_apply;
+        gridpico_result result = gridpico_pico_project_pat2_view(&apply->projection);
+        if (result == GRIDPICO_OK) result = gridpico_pico_pat2_prepare(&router, roles->revision);
+        if (result == GRIDPICO_OK) result = gridpico_pico_project_pat2_view(&apply->projection);
+        if (result == GRIDPICO_OK) result = gridpico_pico_pat2_commit(&router, roles->revision);
+        if (result != GRIDPICO_OK) apply->prepared = false;
+        coherent = result == GRIDPICO_OK;
+    }
+#endif
+    if (coherent) {
         const gridpico_result placement = gridpico_pico_router_place_discovered(
             &router, router.graph.revision, router.session.apc_layout_revision,
             blocked_inputs, blocked_outputs);

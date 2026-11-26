@@ -80,6 +80,11 @@ void gridpico_patch_session_bind_manual_routes(gridpico_patch_session *session,
 bool gridpico_patch_session_manual_route_is_off(const gridpico_patch_session *session,
                                                 size_t source_slot, size_t destination_slot);
 
+/* Check both axes against a captured registry. The caller guards and commits edits. */
+bool gridpico_patch_session_validate_apc_layout(const gridpico_local_registry *registry,
+                                                gridpico_port_id audition_source,
+                                                const gridpico_apc_patch_layout *layout);
+
 /* Bind the editable layout once, after binding the local graph reader. */
 gridpico_result gridpico_patch_session_bind_apc_patch(gridpico_patch_session *session,
                                                     const gridpico_apc_patch_layout *layout,
