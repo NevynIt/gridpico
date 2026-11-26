@@ -93,10 +93,11 @@ window.addEventListener("DOMContentLoaded", async () => {
       "For Pi router commands or the LED test, use the router’s SSH loopback connection." :
       "The CLI and LED test are unavailable on this connection. Use the router’s SSH loopback connection.";
     if (adapter.openPicoCdc) status.hidden = false;
-    if (!capabilities.roles.monitor && !capabilities.roles.log) {
+    for (const [role, name] of [["monitor", "Monitor"], ["log", "MIDI Log"]]) {
+      if (capabilities.roles[role]) continue;
       const unavailable = document.createElement("p");
-      unavailable.textContent = "Monitor and MIDI Log are unavailable on this connection.";
-      status.after(unavailable);
+      unavailable.textContent = `${name} is not published by this router.`;
+      status.before(unavailable);
     }
     return;
   }
@@ -274,12 +275,17 @@ window.addEventListener("DOMContentLoaded", async () => {
     return { receive, silence, disable };
   }
 
-  function mountReceiver(role, receive, lost) {
+  function mountReceiver(role, title, receive, lost) {
     const root = document.querySelector(`#${role}-binding`);
     const select = root.querySelector(`#${role}-provider`);
     const field = root.querySelector(`#${role}-port`);
     const ports = root.querySelector(`#${role}-system-port`);
     const label = root.querySelector(`label[for="${role}-port"]`);
+    const published = root.querySelector("[data-published-port]");
+    const advertised = capabilities?.roles[role];
+    const namedPort = advertised?.direction === "receive" ? advertised.port : undefined;
+    const named = capabilities !== undefined;
+    const nameForPort = id => `${title} (port ${id})`;
     const bind = root.querySelector("[data-bind]");
     const unbind = root.querySelector("[data-disconnect]");
     const indicator = root.querySelector("[role=status]");
@@ -303,11 +309,18 @@ window.addEventListener("DOMContentLoaded", async () => {
         for (const { id, name } of inputs) ports.add(new Option(name, id));
         if (inputs.some(({ id }) => id === previous)) ports.value = previous;
       }
+      const namedSocket = named && !direct;
+      const unpublished = namedSocket && !namedPort;
+      label.hidden = namedSocket;
       label.htmlFor = direct ? ports.id : field.id;
-      field.hidden = direct;
+      field.hidden = direct || namedSocket;
       ports.hidden = !direct;
+      published.hidden = !namedSocket || unpublished || Boolean(currentBinding);
+      published.textContent = namedPort ? nameForPort(namedPort) : "";
       field.disabled = ports.disabled = Boolean(currentBinding);
-      bind.disabled = Boolean(currentBinding || (direct && (!ports.value || requesting)));
+      bind.disabled = Boolean(currentBinding || unpublished || (direct && (!ports.value || requesting)));
+      if (unpublished) report("unpublished", `${title} is not published by this router.`);
+      else if (indicator.dataset.state === "unpublished") report("disconnected", `${title} disconnected.`);
       unbind.disabled = !currentBinding;
     }
 
@@ -324,9 +337,11 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     function open() {
       const direct = isWebMidi();
-      if (currentBinding || (direct ? !ports.value : !field.reportValidity())) return;
-      const id = direct ? ports.value : field.valueAsNumber;
-      const name = direct ? ports.selectedOptions[0].text : `MIDI port ${id}`;
+      if (currentBinding || (!direct && !named && !field.reportValidity())) return;
+      const id = direct ? ports.value : namedPort ?? (named ? undefined : field.valueAsNumber);
+      if (!id) return;
+      const name = direct ? ports.selectedOptions[0].text :
+        named ? nameForPort(id) : `MIDI port ${id}`;
       const active = { ready: false, direct };
       currentBinding = active;
       report("connecting", `Connecting to ${name}…`);
@@ -334,6 +349,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         active.handle = adapter.openMidi(id, {
           provider: select.value,
           direction: "receive",
+          role,
           onData(bytes) {
             if (currentBinding === active && active.ready) receive(bytes, name);
           },
@@ -363,8 +379,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
     ports.addEventListener("change", () => { bind.disabled = !ports.value; });
     const defaultPort = adapter.startupPorts?.[role];
-    if (defaultPort) {
-      field.value = defaultPort;
+    if (defaultPort && (!named || defaultPort === namedPort) && !isWebMidi()) {
+      if (!named) field.value = defaultPort;
       open();
     }
     refresh();
@@ -374,10 +390,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   const monitor = mountMonitor();
   const log = document.querySelector("#log-rows");
   const receivers = [
-    mountReceiver("monitor", (bytes) => {
+    mountReceiver("monitor", "Monitor", (bytes) => {
       try { monitor.receive(bytes); } catch { monitor.disable("Audio unavailable."); }
     }, monitor.silence),
-    mountReceiver("log", (bytes, source) => {
+    mountReceiver("log", "MIDI Log", (bytes, source) => {
       const note = noteMessage(bytes);
       const summary = note ? `${note.on ? "Note On" : "Note Off"} · Ch ${note.channel} · ${note.note} · Vel ${note.velocity}` :
         (bytes[0] & 0xf0) === 0xb0 && bytes.length === 3 ? `CC ${bytes[1]} · Ch ${(bytes[0] & 0x0f) + 1} · ${bytes[2]}` : "MIDI";
