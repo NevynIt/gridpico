@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="690" viewBox="0 0 1100 690" role="img" aria-labelledby="title desc">
+  <title id="title">Physical APC Key 25 mk2 Patchbay control map</title>
+  <desc id="desc">Schematic front view. An 8-column by 5-row pad grid has Track buttons below for destination columns and Scene Launch buttons to the right for source rows. Stop All Clips below the Scene Launch buttons toggles Arrange. In Arrange, the top-left four grid pads are Assign, Move, Learn, and Audition. Pad 07 at bottom-right confirms a preview. Firmware route LED meanings are Active green, Pending alternating amber, routable Off dim, and empty or incompatible dark. Current gen122 placements are empty.</desc>
+  <defs>
+    <style>
+      text { font-family: Arial, Helvetica, sans-serif; fill: #edf2f7; }
+      .small { font-size: 13px; fill: #bfccd8; }
+      .label { font-size: 16px; font-weight: 700; }
+      .pad { fill: #18232e; stroke: #708090; stroke-width: 2; }
+      .action { stroke: #70c7ff; stroke-width: 3; }
+      .active { fill: #00a641; }
+      .pending { fill: #c58d16; }
+      .off { fill: #424b55; }
+      .empty { fill: #10151a; }
+      .control { fill: #2c3946; stroke: #90a4b7; stroke-width: 2; }
+      .confirm { stroke: #ffd166; stroke-width: 3; }
+    </style>
+  </defs>
+  <rect width="1100" height="690" rx="18" fill="#101820"/>
+  <text x="36" y="42" font-size="25" font-weight="700">APC Key 25 mk2 · physical Patchbay map</text>
+  <text x="36" y="67" class="small">Front-view schematic · button positions and pad IDs follow the current firmware mapping</text>
+
+  <rect x="30" y="92" width="760" height="548" rx="16" fill="#17222c" stroke="#364654" stroke-width="2"/>
+  <text x="54" y="122" class="small">Pad grid · 5 rows × 8 columns</text>
+  <text x="56" y="145" class="small">Scene/source rows ↓</text>
+  <text x="300" y="145" class="small">Destination columns →</text>
+
+  <!-- Grid uses APC protocol numbering: top row 20–27, bottom row 00–07. -->
+  <g font-size="12" text-anchor="middle">
+    <!-- row 1 -->
+    <rect class="pad action" x="170" y="158" width="58" height="48" rx="7"/><text x="199" y="177">20</text><text x="199" y="195" class="small">Assign</text>
+    <rect class="pad action" x="234" y="158" width="58" height="48" rx="7"/><text x="263" y="177">21</text><text x="263" y="195" class="small">Move</text>
+    <rect class="pad action" x="298" y="158" width="58" height="48" rx="7"/><text x="327" y="177">22</text><text x="327" y="195" class="small">Learn</text>
+    <rect class="pad action" x="362" y="158" width="58" height="48" rx="7"/><text x="391" y="177">23</text><text x="391" y="195" class="small">Audition</text>
+    <rect class="pad empty" x="426" y="158" width="58" height="48" rx="7"/><text x="455" y="187">24</text>
+    <rect class="pad empty" x="490" y="158" width="58" height="48" rx="7"/><text x="519" y="187">25</text>
+    <rect class="pad empty" x="554" y="158" width="58" height="48" rx="7"/><text x="583" y="187">26</text>
+    <rect class="pad empty" x="618" y="158" width="58" height="48" rx="7"/><text x="647" y="187">27</text>
+    <!-- row 2 -->
+    <g transform="translate(0 56)"><rect class="pad empty" x="170" y="158" width="58" height="48" rx="7"/><text x="199" y="187">18</text><rect class="pad empty" x="234" y="158" width="58" height="48" rx="7"/><text x="263" y="187">19</text><rect class="pad empty" x="298" y="158" width="58" height="48" rx="7"/><text x="327" y="187">1A</text><rect class="pad empty" x="362" y="158" width="58" height="48" rx="7"/><text x="391" y="187">1B</text><rect class="pad empty" x="426" y="158" width="58" height="48" rx="7"/><text x="455" y="187">1C</text><rect class="pad empty" x="490" y="158" width="58" height="48" rx="7"/><text x="519" y="187">1D</text><rect class="pad empty" x="554" y="158" width="58" height="48" rx="7"/><text x="583" y="187">1E</text><rect class="pad empty" x="618" y="158" width="58" height="48" rx="7"/><text x="647" y="187">1F</text></g>
+    <!-- row 3 -->
+    <g transform="translate(0 112)"><rect class="pad empty" x="170" y="158" width="58" height="48" rx="7"/><text x="199" y="187">10</text><rect class="pad empty" x="234" y="158" width="58" height="48" rx="7"/><text x="263" y="187">11</text><rect class="pad empty" x="298" y="158" width="58" height="48" rx="7"/><text x="327" y="187">12</text><rect class="pad empty" x="362" y="158" width="58" height="48" rx="7"/><text x="391" y="187">13</text><rect class="pad empty" x="426" y="158" width="58" height="48" rx="7"/><text x="455" y="187">14</text><rect class="pad empty" x="490" y="158" width="58" height="48" rx="7"/><text x="519" y="187">15</text><rect class="pad empty" x="554" y="158" width="58" height="48" rx="7"/><text x="583" y="187">16</text><rect class="pad empty" x="618" y="158" width="58" height="48" rx="7"/><text x="647" y="187">17</text></g>
+    <!-- row 4 -->
+    <g transform="translate(0 168)"><rect class="pad empty" x="170" y="158" width="58" height="48" rx="7"/><text x="199" y="187">08</text><rect class="pad empty" x="234" y="158" width="58" height="48" rx="7"/><text x="263" y="187">09</text><rect class="pad empty" x="298" y="158" width="58" height="48" rx="7"/><text x="327" y="187">0A</text><rect class="pad empty" x="362" y="158" width="58" height="48" rx="7"/><text x="391" y="187">0B</text><rect class="pad empty" x="426" y="158" width="58" height="48" rx="7"/><text x="455" y="187">0C</text><rect class="pad empty" x="490" y="158" width="58" height="48" rx="7"/><text x="519" y="187">0D</text><rect class="pad empty" x="554" y="158" width="58" height="48" rx="7"/><text x="583" y="187">0E</text><rect class="pad empty" x="618" y="158" width="58" height="48" rx="7"/><text x="647" y="187">0F</text></g>
+    <!-- row 5 -->
+    <g transform="translate(0 224)"><rect class="pad empty" x="170" y="158" width="58" height="48" rx="7"/><text x="199" y="187">00</text><rect class="pad empty" x="234" y="158" width="58" height="48" rx="7"/><text x="263" y="187">01</text><rect class="pad empty" x="298" y="158" width="58" height="48" rx="7"/><text x="327" y="187">02</text><rect class="pad empty" x="362" y="158" width="58" height="48" rx="7"/><text x="391" y="187">03</text><rect class="pad empty" x="426" y="158" width="58" height="48" rx="7"/><text x="455" y="187">04</text><rect class="pad empty" x="490" y="158" width="58" height="48" rx="7"/><text x="519" y="187">05</text><rect class="pad empty" x="554" y="158" width="58" height="48" rx="7"/><text x="583" y="187">06</text><rect class="pad confirm" x="618" y="158" width="58" height="48" rx="7"/><text x="647" y="177">07</text><text x="647" y="195" class="small">Confirm</text></g>
+  </g>
+
+  <!-- Scene/source edge -->
+  <text x="704" y="145" class="small">Scene · source row</text>
+  <g text-anchor="middle" font-size="12">
+    <rect class="control" x="702" y="158" width="62" height="48" rx="7"/><text x="733" y="178">Scene 1</text><text x="733" y="196" class="small">row 1</text>
+    <rect class="control" x="702" y="214" width="62" height="48" rx="7"/><text x="733" y="234">Scene 2</text><text x="733" y="252" class="small">row 2</text>
+    <rect class="control" x="702" y="270" width="62" height="48" rx="7"/><text x="733" y="290">Scene 3</text><text x="733" y="308" class="small">row 3</text>
+    <rect class="control" x="702" y="326" width="62" height="48" rx="7"/><text x="733" y="346">Scene 4</text><text x="733" y="364" class="small">row 4</text>
+    <rect class="control" x="702" y="382" width="62" height="48" rx="7"/><text x="733" y="402">Scene 5</text><text x="733" y="420" class="small">row 5</text>
+    <text x="702" y="447" class="small">Utility button</text>
+    <rect class="control" x="702" y="455" width="62" height="48" rx="7"/><text x="733" y="475">Stop All</text><text x="733" y="493" class="small">Clips</text>
+  </g>
+
+  <!-- Track/destination edge -->
+  <g text-anchor="middle" font-size="12">
+    <rect class="control" x="170" y="480" width="58" height="39" rx="6"/><text x="199" y="505">Track 1</text>
+    <rect class="control" x="234" y="480" width="58" height="39" rx="6"/><text x="263" y="505">Track 2</text>
+    <rect class="control" x="298" y="480" width="58" height="39" rx="6"/><text x="327" y="505">Track 3</text>
+    <rect class="control" x="362" y="480" width="58" height="39" rx="6"/><text x="391" y="505">Track 4</text>
+    <rect class="control" x="426" y="480" width="58" height="39" rx="6"/><text x="455" y="505">Track 5</text>
+    <rect class="control" x="490" y="480" width="58" height="39" rx="6"/><text x="519" y="505">Track 6</text>
+    <rect class="control" x="554" y="480" width="58" height="39" rx="6"/><text x="583" y="505">Track 7</text>
+    <rect class="control" x="618" y="480" width="58" height="39" rx="6"/><text x="647" y="505">Track 8</text>
+  </g>
+  <text x="170" y="542" class="small">Track edge selects destination columns. In Assign, buttons 3 and 4 browse previous / next eligible ports.</text>
+  <rect x="54" y="563" width="710" height="52" rx="9" fill="#202f3b"/>
+  <text x="70" y="585" class="small">Keyboard section (not drawn) · physical keybed input is separate from these Patchbay controls.</text>
+  <text x="70" y="604" class="small">Current gen122: all source/destination placements are empty; the route grid is configured dark.</text>
+
+  <!-- Legend and state notes -->
+  <rect x="812" y="92" width="258" height="548" rx="16" fill="#17222c" stroke="#364654" stroke-width="2"/>
+  <text x="834" y="128" class="label">Route pad feedback</text>
+  <rect class="active" x="834" y="150" width="26" height="26" rx="5"/><text x="874" y="169" class="small">Active · green</text>
+  <rect class="pending" x="834" y="188" width="26" height="26" rx="5"/><text x="874" y="207" class="small">Pending · alternating amber</text>
+  <rect class="off" x="834" y="226" width="26" height="26" rx="5"/><text x="874" y="245" class="small">Routable Off · dim</text>
+  <rect class="empty" stroke="#708090" x="834" y="264" width="26" height="26" rx="5"/><text x="874" y="283" class="small">Empty / incompatible · dark</text>
+  <text x="834" y="324" class="label">Arrange pad roles</text>
+  <text x="834" y="350" class="small">Top row, left to right:</text>
+  <text x="834" y="374" class="small">20 Assign · 21 Move</text>
+  <text x="834" y="396" class="small">22 Learn · 23 Audition</text>
+  <text x="834" y="434" class="label">Preview feedback</text>
+  <text x="834" y="460" class="small">Pad 07 confirms a valid preview.</text>
+  <text x="834" y="482" class="small">Blue marks the current preview.</text>
+  <text x="834" y="504" class="small">Red marks error / ambiguity.</text>
+  <line x1="834" y1="530" x2="1048" y2="530" stroke="#536475"/>
+  <text x="834" y="555" class="small">Colors describe firmware output.</text>
+  <text x="834" y="577" class="small">Current hardware optics are not</text>
+  <text x="834" y="599" class="small">verified by the gen122 receipt.</text>
+</svg>
