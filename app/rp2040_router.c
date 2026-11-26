@@ -643,10 +643,10 @@ gridpico_result gridpico_pico_router_set_managed_route(
 #endif
 
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
-static gridpico_result commit_managed_route(gridpico_patch_graph *graph,
-                                             const gridpico_local_route_request *request)
+gridpico_result gridpico_pico_router_commit_local_route(
+    gridpico_pico_router *router, const gridpico_local_route_request *request)
 {
-    gridpico_pico_router *router = graph->delivery_context;
+    gridpico_patch_graph *graph = &router->graph;
     const gridpico_revision previous = graph->revision;
     const gridpico_result result = gridpico_patch_graph_set_local_route(graph, request);
     if (result == GRIDPICO_OK && graph->revision != previous &&
@@ -660,11 +660,14 @@ static gridpico_result commit_managed_route(gridpico_patch_graph *graph,
 static gridpico_result set_route_with_audition_reserve(void *context, const gridpico_local_route_request *request)
 {
     gridpico_patch_graph *graph = context;
+    gridpico_pico_router *router = graph->delivery_context;
     if (request->enabled && request->route.mode == GRIDPICO_LOCAL_MANAGED &&
         request->route.source != AUDITION_KEYS) {
         gridpico_patch_managed_enable_decision decision;
         if (gridpico_patch_graph_check_managed_enable(graph, &request->route, &decision) != GRIDPICO_OK ||
-            decision != GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED) return commit_managed_route(graph, request);
+            decision != GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED) {
+            return gridpico_pico_router_commit_local_route(router, request);
+        }
         unsigned public_branches = 0;
         for (size_t i = 0; i < graph->branch_limit; ++i) {
             const gridpico_patch_graph_branch *branch = &graph->branches[i];
@@ -672,13 +675,13 @@ static gridpico_result set_route_with_audition_reserve(void *context, const grid
             const gridpico_port_id source = graph->inventory.ports[branch->source].id;
             const gridpico_port_id destination = graph->inventory.ports[branch->destination].id;
             if (source == request->route.source && destination == request->route.destination) {
-                return commit_managed_route(graph, request);
+                return gridpico_pico_router_commit_local_route(router, request);
             }
             if (source != AUDITION_KEYS) ++public_branches;
         }
         if (public_branches + 1u >= graph->local_profile.managed_branch_limit) return GRIDPICO_CAPACITY;
     }
-    return commit_managed_route(graph, request);
+    return gridpico_pico_router_commit_local_route(router, request);
 }
 #endif
 

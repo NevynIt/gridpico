@@ -145,6 +145,9 @@ gridpico_result gridpico_pico_router_init_snapshot(gridpico_pico_router *router,
 gridpico_result gridpico_pico_router_register_device(gridpico_pico_router *router,
                                                     gridpico_pico_peer first_peer, const char *name,
                                                     uint8_t inputs, uint8_t outputs);
+/* Commit an admitted route change, silently cancelling Audition on its edited OUT. */
+gridpico_result gridpico_pico_router_commit_local_route(
+    gridpico_pico_router *router, const gridpico_local_route_request *request);
 /* An independent physical LED owner supplies a nonzero target epoch; zero stops feedback. */
 void gridpico_pico_router_commit_keys_mode(gridpico_pico_router *router, bool keys_mode);
 bool gridpico_pico_router_queue_keys_packet(gridpico_pico_router *router, const gridpico_pico_packet *packet);

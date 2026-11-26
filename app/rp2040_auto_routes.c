@@ -146,14 +146,14 @@ static gridpico_auto_route_skip_reason evaluate_pair(gridpico_pico_auto_routes *
     if (reason != 0) return reason;
     if (!plan->enable) return GRIDPICO_AUTO_SKIP_UNAVAILABLE;
     const gridpico_local_route_request request = {route, true};
-    if (gridpico_patch_graph_set_local_route(&router->graph, &request) != GRIDPICO_OK) {
+    if (gridpico_pico_router_commit_local_route(router, &request) != GRIDPICO_OK) {
         return GRIDPICO_AUTO_SKIP_UNAVAILABLE;
     }
+    plan->graph_revision = router->graph.revision;
     gridpico_local_route_status committed;
     if (gridpico_patch_graph_read_local_route(&router->graph, &route, &committed) != GRIDPICO_OK) {
         return GRIDPICO_AUTO_SKIP_UNAVAILABLE;
     }
-    plan->graph_revision = router->graph.revision;
     if (committed.state == GRIDPICO_PATCH_ROUTE_ACTIVE) ++plan->summary.active;
     else ++plan->summary.pending;
     return 0;
