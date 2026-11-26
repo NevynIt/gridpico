@@ -57,6 +57,12 @@ gridpico_result gridpico_patch_graph_init_local_profile(
     gridpico_patch_graph *graph, const gridpico_local_registry *registry,
     const gridpico_local_profile *profile, gridpico_deliver_note_fn deliver_note,
     gridpico_local_deliver_raw_fn deliver_raw, void *delivery_context);
+/* Opt in to using every branch slot for Managed routing. The Raw limit must
+ * be zero. Graph derives the Managed branch and fan-out bounds from storage. */
+gridpico_result gridpico_patch_graph_init_local_managed_storage(
+    gridpico_patch_graph *graph, const gridpico_local_registry *registry,
+    const gridpico_local_profile *profile, gridpico_deliver_note_fn deliver_note,
+    gridpico_local_deliver_raw_fn deliver_raw, void *delivery_context);
 gridpico_result gridpico_patch_graph_append_managed_device(
     gridpico_patch_graph *graph, const gridpico_patch_device *device,
     const gridpico_patch_port *ports, size_t port_count);
@@ -97,14 +103,13 @@ gridpico_result gridpico_patch_graph_set_local_route(void *context,
                                                     const gridpico_local_route_request *request);
 typedef enum {
     GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED,
-    GRIDPICO_PATCH_MANAGED_ENABLE_CYCLE,
     GRIDPICO_PATCH_MANAGED_ENABLE_BRANCH_LIMIT,
     GRIDPICO_PATCH_MANAGED_ENABLE_FANOUT_LIMIT,
     GRIDPICO_PATCH_MANAGED_ENABLE_REVISION_EXHAUSTED,
 } gridpico_patch_managed_enable_decision;
 
-/* Read-only Graph admission for a valid managed pair in the same serialized turn.
- * The caller checks attachment, ownership and policy reserves. */
+/* Read-only Graph admission for a valid Managed pair in the same serialized turn.
+ * The caller checks attachment, ownership and discovery policy. */
 gridpico_result gridpico_patch_graph_check_managed_enable(
     const gridpico_patch_graph *graph, const gridpico_local_route *route,
     gridpico_patch_managed_enable_decision *out);

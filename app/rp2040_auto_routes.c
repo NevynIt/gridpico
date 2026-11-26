@@ -91,7 +91,6 @@ static bool lane_blocked(const gridpico_pico_router *router, gridpico_port_id id
 }
 
 static gridpico_auto_route_skip_reason admission_reason(const gridpico_pico_router *router,
-                                                        const gridpico_local_graph_state *state,
                                                         const gridpico_local_route *route)
 {
     gridpico_patch_managed_enable_decision decision;
@@ -99,21 +98,12 @@ static gridpico_auto_route_skip_reason admission_reason(const gridpico_pico_rout
         return GRIDPICO_AUTO_SKIP_UNAVAILABLE;
     }
     switch (decision) {
-    case GRIDPICO_PATCH_MANAGED_ENABLE_CYCLE: return GRIDPICO_AUTO_SKIP_CYCLE;
     case GRIDPICO_PATCH_MANAGED_ENABLE_BRANCH_LIMIT: return GRIDPICO_AUTO_SKIP_BRANCH_LIMIT;
     case GRIDPICO_PATCH_MANAGED_ENABLE_FANOUT_LIMIT: return GRIDPICO_AUTO_SKIP_FANOUT_LIMIT;
     case GRIDPICO_PATCH_MANAGED_ENABLE_REVISION_EXHAUSTED: return GRIDPICO_AUTO_SKIP_UNAVAILABLE;
     case GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED: break;
     }
-    size_t public_branches = 0;
-    for (size_t i = 0; i < state->route_count; ++i) {
-        const gridpico_local_route *existing = &state->routes[i].route;
-        if (existing->mode == GRIDPICO_LOCAL_MANAGED && existing->source != router->session.apc_audition_source) {
-            ++public_branches;
-        }
-    }
-    return public_branches + 1u >= router->graph.local_profile.managed_branch_limit ?
-        GRIDPICO_AUTO_SKIP_AUDITION_RESERVED : 0;
+    return 0;
 }
 
 static gridpico_auto_route_skip_reason evaluate_pair(gridpico_pico_auto_routes *plan,
@@ -132,9 +122,9 @@ static gridpico_auto_route_skip_reason evaluate_pair(gridpico_pico_auto_routes *
         else ++plan->summary.pending;
         return 0;
     }
-    if (source->device == destination->device) {
-        return gridpico_local_native_virtual_cable_matches(&state->registry.native_virtual_cable,
-            source->id, destination->id) ? GRIDPICO_AUTO_SKIP_COMPUTER_RETURN : GRIDPICO_AUTO_SKIP_SAME_PARENT;
+    if (gridpico_local_native_virtual_cable_matches(&state->registry.native_virtual_cable,
+                                                  source->id, destination->id)) {
+        return GRIDPICO_AUTO_SKIP_COMPUTER_RETURN;
     }
     if (gridpico_patch_session_manual_route_is_off(&router->session, source_slot, destination_slot)) {
         return GRIDPICO_AUTO_SKIP_USER_OFF;
@@ -142,7 +132,7 @@ static gridpico_auto_route_skip_reason evaluate_pair(gridpico_pico_auto_routes *
     if (source->state != GRIDPICO_PATCH_CONNECTED || destination->state != GRIDPICO_PATCH_CONNECTED ||
         lane_blocked(router, source->id, false, plan->blocked_inputs) ||
         lane_blocked(router, destination->id, true, plan->blocked_outputs)) return GRIDPICO_AUTO_SKIP_UNAVAILABLE;
-    const gridpico_auto_route_skip_reason reason = admission_reason(router, state, &route);
+    const gridpico_auto_route_skip_reason reason = admission_reason(router, &route);
     if (reason != 0) return reason;
     if (!plan->enable) return GRIDPICO_AUTO_SKIP_UNAVAILABLE;
     const gridpico_local_route_request request = {route, true};

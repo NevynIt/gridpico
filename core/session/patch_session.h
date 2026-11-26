@@ -38,6 +38,7 @@ typedef struct {
     gridpico_local_port_availability routing_availability[GRIDPICO_PATCH_MAX_PORTS];
     gridpico_apc_patch_layout apc_layout;
     gridpico_revision apc_layout_revision;
+    bool flat_managed_routes;
     gridpico_port_id apc_audition_source;
     gridpico_port_id apc_attack_sources[GRIDPICO_PATCH_MAX_PORTS];
     uint64_t apc_attack_sequence;
@@ -55,6 +56,9 @@ void gridpico_patch_session_init(gridpico_patch_session *session, void *graph_co
 void gridpico_patch_session_bind_local_routes(gridpico_patch_session *session,
                                              gridpico_local_set_route_fn set_route,
                                              gridpico_local_read_route_fn read_route);
+
+/* Match the live editable APC page to the flat Managed provider before publishing it. */
+void gridpico_patch_session_enable_flat_managed_routes(gridpico_patch_session *session);
 
 /* Opt into the configured routing projections and the first legacy window. */
 void gridpico_patch_session_bind_local_routing(gridpico_patch_session *session,

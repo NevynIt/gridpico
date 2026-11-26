@@ -107,7 +107,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   function compatible(source, destination, mode) {
     return source?.direction === "in" && destination?.direction === "out" &&
-      source.device !== destination.device && source.mode === mode && destination.mode === mode;
+      (mode === "managed" || source.device !== destination.device) && source.mode === mode && destination.mode === mode;
   }
 
   function stageRecord(projection, line) {
@@ -300,9 +300,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       portHeading(label, source, projection);
       row.append(label);
       for (const destination of destinations) {
-        const cell = row.insertCell();
-        if (compatible(source, destination, "managed")) addRouteCell(cell, projection, source, destination, "managed");
-        else cell.textContent = "Incompatible · same device";
+        addRouteCell(row.insertCell(), projection, source, destination, "managed");
       }
     }
     if (!sources.length || !destinations.length) {

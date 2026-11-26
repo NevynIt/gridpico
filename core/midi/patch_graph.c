@@ -326,13 +326,28 @@ gridpico_result gridpico_patch_graph_init_monitor(gridpico_patch_graph *graph,
     return init_graph(graph, inventory, deliver, delivery_context, limits);
 }
 
+typedef enum {
+    LOCAL_LEGACY_PROFILE,
+    LOCAL_CONFIGURED_PROFILE,
+    LOCAL_MANAGED_BRANCH_STORAGE,
+} local_profile_kind;
+
 static gridpico_result init_local_graph(gridpico_patch_graph *graph, const gridpico_local_registry *registry,
                                         gridpico_local_profile profile, gridpico_deliver_note_fn deliver_note,
                                         gridpico_local_deliver_raw_fn deliver_raw, void *delivery_context,
-                                        bool configured)
+                                        local_profile_kind kind)
 {
     if (graph == NULL || registry == NULL || deliver_note == NULL || deliver_raw == NULL) {
         return GRIDPICO_INVALID;
+    }
+    const bool configured = kind != LOCAL_LEGACY_PROFILE;
+    const bool managed_storage = kind == LOCAL_MANAGED_BRANCH_STORAGE;
+    if (managed_storage) {
+        if (profile.raw_branch_limit != 0) {
+            return GRIDPICO_INVALID;
+        }
+        profile.managed_branch_limit = GRIDPICO_PATCH_MAX_BRANCHES;
+        profile.managed_fanout_limit = GRIDPICO_PATCH_MAX_BRANCHES;
     }
     graph_limits limits = {
         .devices = configured ? GRIDPICO_PATCH_MAX_DEVICES : GRIDPICO_LOCAL_DEVICES,
@@ -345,11 +360,14 @@ static gridpico_result init_local_graph(gridpico_patch_graph *graph, const gridp
     if (dynamic != (profile.dynamic_port_limit != 0)) {
         return GRIDPICO_INVALID;
     }
+    if (!managed_storage &&
+        (profile.managed_branch_limit > GRIDPICO_LOCAL_MAX_MANAGED_BRANCHES ||
+         profile.raw_branch_limit > GRIDPICO_LOCAL_MAX_RAW_BRANCHES ||
+         profile.managed_fanout_limit > GRIDPICO_LOCAL_MAX_FANOUT)) {
+        return GRIDPICO_CAPACITY;
+    }
     if (registry->inventory.device_count > limits.devices || registry->inventory.port_count > limits.ports ||
-        (configured && profile.midi_peer_limit > registry->inventory.port_count) ||
-        profile.managed_branch_limit > GRIDPICO_LOCAL_MAX_MANAGED_BRANCHES ||
-        profile.raw_branch_limit > GRIDPICO_LOCAL_MAX_RAW_BRANCHES ||
-        profile.managed_fanout_limit > GRIDPICO_LOCAL_MAX_FANOUT) {
+        (configured && profile.midi_peer_limit > registry->inventory.port_count)) {
         return GRIDPICO_CAPACITY;
     }
     if (dynamic && (profile.dynamic_device_limit > limits.devices || profile.dynamic_port_limit > limits.ports ||
@@ -385,7 +403,8 @@ gridpico_result gridpico_patch_graph_init_local(gridpico_patch_graph *graph,
         .raw_branch_limit = LOCAL_RAW_BRANCHES,
         .managed_fanout_limit = LOCAL_MANAGED_BRANCHES,
     };
-    return init_local_graph(graph, registry, profile, deliver_note, deliver_raw, delivery_context, false);
+    return init_local_graph(graph, registry, profile, deliver_note, deliver_raw, delivery_context,
+                            LOCAL_LEGACY_PROFILE);
 }
 
 gridpico_result gridpico_patch_graph_init_local_profile(
@@ -396,7 +415,20 @@ gridpico_result gridpico_patch_graph_init_local_profile(
     if (profile == NULL) {
         return GRIDPICO_INVALID;
     }
-    return init_local_graph(graph, registry, *profile, deliver_note, deliver_raw, delivery_context, true);
+    return init_local_graph(graph, registry, *profile, deliver_note, deliver_raw, delivery_context,
+                            LOCAL_CONFIGURED_PROFILE);
+}
+
+gridpico_result gridpico_patch_graph_init_local_managed_storage(
+    gridpico_patch_graph *graph, const gridpico_local_registry *registry,
+    const gridpico_local_profile *profile, gridpico_deliver_note_fn deliver_note,
+    gridpico_local_deliver_raw_fn deliver_raw, void *delivery_context)
+{
+    if (profile == NULL) {
+        return GRIDPICO_INVALID;
+    }
+    return init_local_graph(graph, registry, *profile, deliver_note, deliver_raw, delivery_context,
+                            LOCAL_MANAGED_BRANCH_STORAGE);
 }
 
 static gridpico_result append_managed_device(
@@ -596,39 +628,11 @@ static size_t branch_index(const gridpico_patch_graph *graph, size_t source, siz
     return NO_BRANCH;
 }
 
-static size_t parent_device(const gridpico_patch_graph *graph, size_t port)
-{
-    return device_index(&graph->inventory, graph->inventory.ports[port].device);
-}
-
-static bool creates_device_cycle(const gridpico_patch_graph *graph, size_t source, size_t destination)
-{
-    bool reachable[GRIDPICO_PATCH_MAX_DEVICES] = {false};
-    reachable[parent_device(graph, destination)] = true;
-
-    /* Walk desired edges so an unavailable endpoint cannot hide a cycle. */
-    for (size_t pass = 0; pass < graph->inventory.device_count; ++pass) {
-        for (size_t i = 0; i < graph->branch_limit; ++i) {
-            const gridpico_patch_graph_branch *branch = &graph->branches[i];
-            if (branch->enabled && reachable[parent_device(graph, branch->source)]) {
-                reachable[parent_device(graph, branch->destination)] = true;
-            }
-        }
-    }
-    return reachable[parent_device(graph, source)];
-}
-
 static gridpico_patch_managed_enable_decision check_new_branch(
-    const gridpico_patch_graph *graph, size_t source, size_t destination,
-    gridpico_local_route_mode mode, size_t *slot)
+    const gridpico_patch_graph *graph, size_t source, gridpico_local_route_mode mode, size_t *slot)
 {
     if (graph->revision == UINT64_MAX) {
         return GRIDPICO_PATCH_MANAGED_ENABLE_REVISION_EXHAUSTED;
-    }
-    const bool terminal_cable = mode == GRIDPICO_LOCAL_MANAGED && gridpico_local_native_virtual_cable_matches(
-        &graph->native_virtual_cable, graph->inventory.ports[source].id, graph->inventory.ports[destination].id);
-    if (graph->deliver_raw != NULL && !terminal_cable && creates_device_cycle(graph, source, destination)) {
-        return GRIDPICO_PATCH_MANAGED_ENABLE_CYCLE;
     }
     size_t free_branch = NO_BRANCH;
     size_t mode_count = 0;
@@ -667,10 +671,7 @@ static gridpico_result enable_branch(gridpico_patch_graph *graph, size_t source,
                                      gridpico_local_route_mode mode)
 {
     size_t slot;
-    const gridpico_patch_managed_enable_decision decision = check_new_branch(graph, source, destination, mode, &slot);
-    if (decision == GRIDPICO_PATCH_MANAGED_ENABLE_CYCLE) {
-        return GRIDPICO_INVALID;
-    }
+    const gridpico_patch_managed_enable_decision decision = check_new_branch(graph, source, mode, &slot);
     if (decision != GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED) {
         return GRIDPICO_CAPACITY;
     }
@@ -803,7 +804,7 @@ gridpico_result gridpico_patch_graph_check_managed_enable(
     }
     size_t slot;
     *out = branch_index(graph, source, destination, route->mode) == NO_BRANCH
-               ? check_new_branch(graph, source, destination, route->mode, &slot)
+               ? check_new_branch(graph, source, route->mode, &slot)
                : GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED;
     return GRIDPICO_OK;
 }

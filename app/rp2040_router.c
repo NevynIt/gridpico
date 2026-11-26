@@ -282,12 +282,19 @@ static gridpico_result audition_request(void *context, gridpico_port_id destinat
     if (sink == GRIDPICO_PICO_PEERS) return GRIDPICO_INVALID;
     if (audition->destination != 0 || audition->source_generation == UINT32_MAX ||
         !router->attached[panel->peer] || !router->attached[sink]) return GRIDPICO_UNAVAILABLE;
+    const gridpico_local_route_request request = audition_route(destination, true);
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    gridpico_patch_managed_enable_decision decision;
+    const gridpico_result probe = gridpico_patch_graph_check_managed_enable(&router->graph, &request.route,
+                                                                            &decision);
+    if (probe != GRIDPICO_OK) return probe;
+    if (decision != GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED) return GRIDPICO_CAPACITY;
+#endif
     *audition = (gridpico_pico_audition){
         .destination = destination, .owner = panel->peer, .owner_generation = generation,
         .destination_generation = router->generation[sink],
         .source_generation = audition->source_generation + 1, .due_us = router->now_us,
     };
-    const gridpico_local_route_request request = audition_route(destination, true);
     gridpico_result result = set_audition_port(router, true);
     if (result == GRIDPICO_OK) result = gridpico_patch_graph_set_local_route(&router->graph, &request);
     if (result == GRIDPICO_OK && !audition_target_current(router)) result = GRIDPICO_UNAVAILABLE;
@@ -657,31 +664,10 @@ gridpico_result gridpico_pico_router_commit_local_route(
     return result;
 }
 
-static gridpico_result set_route_with_audition_reserve(void *context, const gridpico_local_route_request *request)
+static gridpico_result set_session_route(void *context, const gridpico_local_route_request *request)
 {
     gridpico_patch_graph *graph = context;
-    gridpico_pico_router *router = graph->delivery_context;
-    if (request->enabled && request->route.mode == GRIDPICO_LOCAL_MANAGED &&
-        request->route.source != AUDITION_KEYS) {
-        gridpico_patch_managed_enable_decision decision;
-        if (gridpico_patch_graph_check_managed_enable(graph, &request->route, &decision) != GRIDPICO_OK ||
-            decision != GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED) {
-            return gridpico_pico_router_commit_local_route(router, request);
-        }
-        unsigned public_branches = 0;
-        for (size_t i = 0; i < graph->branch_limit; ++i) {
-            const gridpico_patch_graph_branch *branch = &graph->branches[i];
-            if (!branch->enabled || branch->mode != GRIDPICO_LOCAL_MANAGED) continue;
-            const gridpico_port_id source = graph->inventory.ports[branch->source].id;
-            const gridpico_port_id destination = graph->inventory.ports[branch->destination].id;
-            if (source == request->route.source && destination == request->route.destination) {
-                return gridpico_pico_router_commit_local_route(router, request);
-            }
-            if (source != AUDITION_KEYS) ++public_branches;
-        }
-        if (public_branches + 1u >= graph->local_profile.managed_branch_limit) return GRIDPICO_CAPACITY;
-    }
-    return gridpico_pico_router_commit_local_route(router, request);
+    return gridpico_pico_router_commit_local_route(graph->delivery_context, request);
 }
 #endif
 
@@ -696,7 +682,7 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
         .midi_peer_limit = 7, .managed_branch_limit = 6, .managed_fanout_limit = 3,
 #elif defined(GRIDPICO_PICO_GENERIC_MIDI)
-        .midi_peer_limit = 3, .managed_branch_limit = 7, .managed_fanout_limit = 3,
+        .midi_peer_limit = 3,
         .dynamic_device_limit = 2 + GRIDPICO_PICO_USB_DEVICES,
         .dynamic_port_limit = 3 + 2 * GRIDPICO_PICO_USB_CABLE_GROUPS,
 #elif defined(GRIDPICO_RP2040_PATCHBAY_BENCH)
@@ -711,8 +697,13 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
     for (size_t i = 0; i < 3; ++i) router->keys.source_generation[i] = 1;
 #endif
     for (size_t i = 0; i < GRIDPICO_PICO_PEERS; ++i) router->generation[i] = 1;
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    const gridpico_result result = gridpico_patch_graph_init_local_managed_storage(
+        &router->graph, &registry, &profile, deliver_note, reject_raw, router);
+#else
     const gridpico_result result = gridpico_patch_graph_init_local_profile(
         &router->graph, &registry, &profile, deliver_note, reject_raw, router);
+#endif
     if (result != GRIDPICO_OK) return result;
     gridpico_patch_session_init(&router->session, &router->graph, gridpico_patch_graph_read_graph,
                               gridpico_patch_graph_set_route);
@@ -721,8 +712,9 @@ gridpico_result gridpico_pico_router_init(gridpico_pico_router *router)
 #endif
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
     gridpico_patch_session_bind_manual_routes(&router->session, &router->manual_routes);
-    gridpico_patch_session_bind_local_routes(&router->session, set_route_with_audition_reserve,
+    gridpico_patch_session_bind_local_routes(&router->session, set_session_route,
                                             gridpico_patch_graph_read_local_route);
+    gridpico_patch_session_enable_flat_managed_routes(&router->session);
 #else
     gridpico_patch_session_bind_local_routes(&router->session, gridpico_patch_graph_set_local_route,
                                             gridpico_patch_graph_read_local_route);

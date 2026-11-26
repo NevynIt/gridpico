@@ -27,6 +27,11 @@ void gridpico_patch_session_bind_local_routes(gridpico_patch_session *session,
     session->read_local_graph_route = read_route;
 }
 
+void gridpico_patch_session_enable_flat_managed_routes(gridpico_patch_session *session)
+{
+    session->flat_managed_routes = true;
+}
+
 void gridpico_patch_session_bind_local_routing(gridpico_patch_session *session,
                                               gridpico_local_read_graph_fn read_graph,
                                               gridpico_local_read_availability_fn read_availability,
@@ -568,10 +573,11 @@ gridpico_result gridpico_patch_session_bind_apc_patch(gridpico_patch_session *se
 }
 
 static bool compatible_apc_cell(const gridpico_local_registry *registry,
-                                const gridpico_patch_port *source, const gridpico_patch_port *destination)
+                                const gridpico_patch_port *source, const gridpico_patch_port *destination,
+                                bool flat_managed_routes)
 {
     return source != NULL && destination != NULL &&
-           (source->device != destination->device ||
+           (flat_managed_routes || source->device != destination->device ||
             gridpico_local_native_virtual_cable_matches(&registry->native_virtual_cable,
                                                        source->id, destination->id));
 }
@@ -633,7 +639,7 @@ static bool valid_apc_snapshot_routes(const gridpico_local_registry *registry,
                                                         GRIDPICO_PATCH_INPUT, route.source);
         const gridpico_patch_port *destination = find_apc_port(registry, audition_source,
                                                              GRIDPICO_PATCH_OUTPUT, route.destination);
-        if (!compatible_apc_cell(registry, source, destination)) {
+        if (!compatible_apc_cell(registry, source, destination, false)) {
             return false;
         }
         for (size_t j = 0; j < i; ++j) {
@@ -692,6 +698,7 @@ gridpico_result gridpico_patch_session_restore_apc_snapshot(gridpico_patch_sessi
 }
 
 static void read_apc_cells(const gridpico_local_graph_state *graph, gridpico_port_id audition_source,
+                           bool flat_managed_routes,
                            gridpico_apc_patch_snapshot *snapshot)
 {
     const gridpico_patch_port *rows[GRIDPICO_PATCH_SOURCE_ROWS];
@@ -706,7 +713,7 @@ static void read_apc_cells(const gridpico_local_graph_state *graph, gridpico_por
     }
     for (size_t row = 0; row < GRIDPICO_PATCH_SOURCE_ROWS; ++row) {
         for (size_t column = 0; column < GRIDPICO_PATCH_DESTINATION_COLUMNS; ++column) {
-            if (compatible_apc_cell(&graph->registry, rows[row], columns[column])) {
+            if (compatible_apc_cell(&graph->registry, rows[row], columns[column], flat_managed_routes)) {
                 gridpico_apc_patch_cell *cell = &snapshot->cells[row][column];
                 cell->compatible = true;
                 cell->available = rows[row]->state == GRIDPICO_PATCH_CONNECTED &&
@@ -756,7 +763,7 @@ static gridpico_result project_apc_patch(const gridpico_patch_session *session,
             };
         }
     }
-    read_apc_cells(graph, session->apc_audition_source, out);
+    read_apc_cells(graph, session->apc_audition_source, session->flat_managed_routes, out);
     return GRIDPICO_OK;
 }
 
@@ -938,7 +945,7 @@ gridpico_result gridpico_patch_session_set_apc_patch_cell(void *context,
     const gridpico_patch_port *destination = find_apc_port(
         &graph.registry, session->apc_audition_source, GRIDPICO_PATCH_OUTPUT,
         session->apc_layout.columns[column]);
-    if (!compatible_apc_cell(&graph.registry, source, destination)) {
+    if (!compatible_apc_cell(&graph.registry, source, destination, session->flat_managed_routes)) {
         return GRIDPICO_INVALID;
     }
 

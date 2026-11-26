@@ -178,7 +178,10 @@ static void verify_native_virtual_cable(void)
     assert(patch.cells[0][0].compatible && patch.cells[1][2].compatible);
     assert(set_apc_cell(&runtime, &patch, 0, 0, true) == GRIDPICO_OK);
     assert(gridpico_patch_session_read_apc_patch(&runtime.session, &patch) == GRIDPICO_OK);
-    assert(set_apc_cell(&runtime, &patch, 1, 2, true) == GRIDPICO_INVALID);
+    assert(set_apc_cell(&runtime, &patch, 1, 2, true) == GRIDPICO_OK);
+    assert(gridpico_patch_session_read_apc_patch(&runtime.session, &patch) == GRIDPICO_OK);
+    assert(patch.cells[0][0].state == GRIDPICO_PATCH_ROUTE_PENDING);
+    assert(patch.cells[1][2].state == GRIDPICO_PATCH_ROUTE_PENDING);
 
     init_fixture_with_registry(&runtime, 4, &configured);
     assert(gridpico_patch_session_restore_apc_snapshot(&runtime.session, &saved) == GRIDPICO_OK);
@@ -248,11 +251,14 @@ int main(void)
     assert(gridpico_patch_session_restore_apc_snapshot(&staged.session, &invalid) == GRIDPICO_INVALID);
     expect_graph(&staged, 0);
 
-    invalid.routes[2] = (gridpico_apc_session_route){KEYS_B, OUT_A};
-    assert(gridpico_patch_session_restore_apc_snapshot(&staged.session, &invalid) == GRIDPICO_INVALID);
+    gridpico_apc_session_snapshot reciprocal = exported;
+    reciprocal.routes[2] = (gridpico_apc_session_route){KEYS_B, OUT_A};
+    assert(gridpico_patch_session_restore_apc_snapshot(&staged.session, &reciprocal) == GRIDPICO_OK);
+    expect_graph(&staged, 3);
     gridpico_apc_session_snapshot stage_state;
     assert(gridpico_patch_session_export_apc_snapshot(&staged.session, &stage_state) == GRIDPICO_OK);
-    expect_layout(&stage_state.layout, &factory_layout);
+    expect_layout(&stage_state.layout, &reciprocal.layout);
+    expect_routes(&stage_state, &reciprocal);
 
     init_fixture(&staged, 1);
     assert(gridpico_patch_session_restore_apc_snapshot(&staged.session, &exported) == GRIDPICO_CAPACITY);
