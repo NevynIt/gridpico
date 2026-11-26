@@ -103,6 +103,36 @@ static bool same_payload(const record *left, const record *right)
     return memcmp(left->bytes + HEADER_BYTES, right->bytes + HEADER_BYTES, PAYLOAD_BYTES) == 0;
 }
 
+gridpico_result gridpico_pico_inspect_pat1(
+    const uint8_t *const sectors[GRIDPICO_PICO_SAVE_SECTORS], gridpico_pico_pat1_status *out)
+{
+    if (sectors == NULL || out == NULL) return GRIDPICO_INVALID;
+
+    static const gridpico_pico_pat1_kind kinds[] = {
+        [UNREADABLE] = GRIDPICO_PICO_PAT1_UNREADABLE,
+        [ERASED] = GRIDPICO_PICO_PAT1_ERASED,
+        [UNKNOWN] = GRIDPICO_PICO_PAT1_UNKNOWN,
+        [INCOMPLETE] = GRIDPICO_PICO_PAT1_INCOMPLETE,
+        [VALID] = GRIDPICO_PICO_PAT1_INCOMPLETE,
+    };
+    const record records[] = {inspect(sectors[0]), inspect(sectors[1])};
+    gridpico_pico_pat1_status report = {0};
+    gridpico_apc_session_snapshot decoded;
+    for (unsigned i = 0; i < GRIDPICO_PICO_SAVE_SECTORS; ++i) {
+        const record *item = &records[i];
+        report.copies[i].kind = kinds[item->kind];
+        if (item->kind == VALID && decode_payload(item->bytes + HEADER_BYTES, &decoded)) {
+            report.copies[i] = (gridpico_pico_pat1_copy){GRIDPICO_PICO_PAT1_COMMITTED, item->generation};
+        }
+    }
+    report.conflict = report.copies[0].kind == GRIDPICO_PICO_PAT1_COMMITTED &&
+                      report.copies[1].kind == GRIDPICO_PICO_PAT1_COMMITTED &&
+                      records[0].generation == records[1].generation &&
+                      !same_payload(&records[0], &records[1]);
+    *out = report;
+    return GRIDPICO_OK;
+}
+
 static gridpico_result restore(gridpico_pico_router *router, const record *item)
 {
     gridpico_apc_session_snapshot snapshot;

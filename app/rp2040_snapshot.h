@@ -34,6 +34,30 @@ typedef struct {
     bool reconcile_required;
 } gridpico_pico_save_state;
 
+typedef enum {
+    GRIDPICO_PICO_PAT1_UNREADABLE,
+    GRIDPICO_PICO_PAT1_ERASED,
+    GRIDPICO_PICO_PAT1_UNKNOWN,
+    GRIDPICO_PICO_PAT1_INCOMPLETE,
+    GRIDPICO_PICO_PAT1_COMMITTED,
+} gridpico_pico_pat1_kind;
+
+typedef struct {
+    gridpico_pico_pat1_kind kind;
+    uint32_t generation; /* Nonzero only for a structurally committed copy. */
+} gridpico_pico_pat1_copy;
+
+typedef struct {
+    gridpico_pico_pat1_copy copies[GRIDPICO_PICO_SAVE_SECTORS];
+    bool conflict;
+} gridpico_pico_pat1_status;
+
+/* Borrow two sector views in A/B order. A null view is unreadable. This
+ * reports structural state only and leaves out untouched on invalid args.
+ */
+gridpico_result gridpico_pico_inspect_pat1(
+    const uint8_t *const sectors[GRIDPICO_PICO_SAVE_SECTORS], gridpico_pico_pat1_status *out);
+
 /* Boot before any attachment or ingress. Boot reads but never writes storage. */
 gridpico_result gridpico_pico_boot_saved(gridpico_pico_router *router, const gridpico_pico_save_store *store,
                                       gridpico_pico_save_state *state);
