@@ -21,6 +21,18 @@ For example, enter `route 11 18 managed on` in Diagnostics. The route is Pending
 
 In Diagnostics, `help` lists the commands available on the connected router. [Shared CLI reference](../../frontends/cli/README.md)
 
+## 32-direction portable profile
+
+From the checkout with the Compose `dev` service running:
+
+```sh
+./scripts/web-ui.sh --profile app/profiles/desktop-32.conf
+```
+
+This profile registers 12 devices and 36 directional ports. It admits 35 simultaneous MIDI peers, with room for 32 Managed directions while all three control directions are attached. One registered Managed direction is spare at full occupancy. The route budget is 12 Managed branches and one Raw branch.
+
+To try a route near the end of the inventory, attach a sender to `/midi/143` and a receiver to `/midi/239` on the loopback host. In **Routing**, select **Keys A 3 → Instrument B 3**.
+
 ## Transpose or remap an active route
 
 The shipped desktop profile enables live transforms with `note-transform on`. Use Diagnostics or the loopback host's same-origin `/serial` connection. Attach an input and an output and enable their public Managed socket route. For the desktop profile, `/midi/1` is Keybed and `/midi/12` is Instruments A / A1 when recording is disabled.
@@ -49,7 +61,7 @@ device ID NAME
 port ID DEVICE in|out managed|raw|panel QUEUE ROLE socket|unavailable NAME
 ```
 
-Use one `limits` row and one `surface` row. The desktop build backs up to 8 devices, 18 ports, 12 managed routes, one Raw route, four managed destinations per source, 50 held occurrences and 200 release credits. Set `PEERS` to a positive limit within the number of socket ports. Each queue has 1–128 frames. Managed outputs need room for the largest owed release batch, and the LED output needs at least 40 frames for a complete page.
+Use one `limits` row and one `surface` row. The normal portable build backs up to 12 devices, 36 ports, 12 managed routes, one Raw route, four managed destinations per source, 50 held occurrences and 200 release credits. Set `PEERS` to a positive limit within the number of socket ports. Each queue has 1–128 frames. Managed outputs need room for the largest owed release batch, and the LED output needs at least 40 frames for a complete page.
 
 `note-transform on` is optional and may appear once. Without it the profile omits the transform command. The row enables the command and leaves every new branch at identity.
 
