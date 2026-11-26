@@ -48,6 +48,9 @@ typedef struct {
     gridpico_local_read_route_fn routing_read_route;
     gridpico_local_set_route_fn routing_set_route;
     gridpico_local_routing_snapshot *routing_scratch;
+    /* Optional isolated dev-run managed transform provider. */
+    void *note_transform_context;
+    gridpico_apply_managed_note_transform_fn apply_note_transform;
     unsigned platform_capabilities;
     gridpico_cli_start_platform_fn start_platform;
     void *platform_context;
@@ -112,5 +115,10 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
  */
 void gridpico_cli_receive(gridpico_cli_frontend *frontend, const char *bytes, size_t size);
 void gridpico_cli_process(gridpico_cli_frontend *frontend);
+
+/* Bind the optional serialized transform provider before command processing. */
+void gridpico_cli_bind_note_transform(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_apply_managed_note_transform_fn apply);
 
 #endif

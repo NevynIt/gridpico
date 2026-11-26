@@ -1,4 +1,5 @@
 #include "app/local_runtime.h"
+#include "core/processors/managed_note.h"
 
 #include <string.h>
 
@@ -371,6 +372,78 @@ static gridpico_result read_routing(void *context, gridpico_local_routing_snapsh
     return gridpico_patch_session_read_local_routing(&runtime->session, out);
 }
 
+static gridpico_result apply_note_transform(
+    void *context, const gridpico_managed_note_transform_request *request,
+    gridpico_managed_note_transform_status *out)
+{
+    local_runtime *runtime = context;
+    if (request == NULL || out == NULL || request->source == 0 ||
+        request->destination == 0 || request->expected_revision == 0 ||
+        request->transform.transpose_semitones < -127 ||
+        request->transform.output_channel > 16) {
+        return GRIDPICO_INVALID;
+    }
+    const gridpico_local_route *route = &runtime->transform_witness;
+    if (route->source != request->source || route->destination != request->destination) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+
+    gridpico_local_routing_snapshot snapshot;
+    const gridpico_result read = read_routing(runtime, &snapshot);
+    if (read != GRIDPICO_OK) return read;
+    if (snapshot.revision != request->expected_revision) return GRIDPICO_UNAVAILABLE;
+
+    gridpico_local_route_status branch;
+    const gridpico_result lookup = gridpico_patch_graph_read_local_route(&runtime->graph,
+                                                                        route, &branch);
+    if (lookup != GRIDPICO_OK) return lookup;
+    if (branch.state != GRIDPICO_PATCH_ROUTE_ACTIVE) return GRIDPICO_UNAVAILABLE;
+
+    gridpico_managed_note_transform current;
+    const gridpico_result settings = gridpico_patch_graph_read_managed_note_transform(
+        &runtime->graph, route, &current);
+    if (settings != GRIDPICO_OK) return settings;
+
+    gridpico_patch_session *session = &runtime->session;
+    if (current.transpose_semitones != request->transform.transpose_semitones ||
+        current.output_channel != request->transform.output_channel) {
+        if (snapshot.revision == UINT64_MAX) return GRIDPICO_CAPACITY;
+        const gridpico_result result = gridpico_patch_graph_set_managed_note_transform(
+            &runtime->graph, route, &request->transform);
+        if (result != GRIDPICO_OK) return result;
+
+        /* This socket-only transaction changes the Graph revision. Availability,
+         * descriptors and colors still match the complete snapshot read above. */
+        session->routing_graph_revision = runtime->graph.revision;
+        ++session->routing_revision;
+        current = request->transform;
+    }
+    *out = (gridpico_managed_note_transform_status){current, session->routing_revision};
+    return GRIDPICO_OK;
+}
+
+gridpico_result local_runtime_enable_transform_witness(local_runtime *runtime,
+                                                        gridpico_port_id source,
+                                                        gridpico_port_id destination)
+{
+    const size_t input = port_index(runtime, source);
+    const size_t output = port_index(runtime, destination);
+    if (!runtime->configured || runtime->transform_witness.source != 0 ||
+        !managed_port(runtime, input, GRIDPICO_PATCH_INPUT) ||
+        !managed_port(runtime, output, GRIDPICO_PATCH_OUTPUT) ||
+        !runtime->profile->ports[input].socket || !runtime->profile->ports[output].socket) {
+        return GRIDPICO_INVALID;
+    }
+    const gridpico_local_route route = {source, destination, GRIDPICO_LOCAL_MANAGED};
+    gridpico_local_route_status status;
+    const gridpico_result result = gridpico_patch_graph_read_local_route(&runtime->graph,
+                                                                        &route, &status);
+    if (result != GRIDPICO_OK) return result;
+    runtime->transform_witness = route;
+    gridpico_patch_graph_bind_note_transform(&runtime->graph, gridpico_transform_managed_note);
+    return GRIDPICO_OK;
+}
+
 static void enable_routing(local_runtime *runtime)
 {
     gridpico_patch_session_bind_local_routing(&runtime->session, gridpico_patch_graph_read_local_state,
@@ -643,6 +716,9 @@ gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t gener
         runtime->cli.set_local_route = set_local_route;
         runtime->cli.read_local_route = read_local_route;
         if (runtime->routing_enabled) runtime->cli.read_local_routing = read_routing;
+        if (runtime->transform_witness.source != 0) {
+            gridpico_cli_bind_note_transform(&runtime->cli, runtime, apply_note_transform);
+        }
         runtime->serial = (local_binding){.generation = generation, .attached = true};
         gridpico_cli_process(&runtime->cli);
     }

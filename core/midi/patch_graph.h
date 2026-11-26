@@ -11,6 +11,7 @@ enum {
 typedef struct {
     uint32_t generation;
     bool quiesced;
+    bool apc_led_reserved;
 } gridpico_patch_port_runtime;
 
 typedef struct {
@@ -18,6 +19,7 @@ typedef struct {
     size_t destination;
     gridpico_local_route_mode mode;
     bool enabled;
+    gridpico_managed_note_transform transform;
 } gridpico_patch_graph_branch;
 
 typedef struct {
@@ -44,6 +46,7 @@ typedef struct {
     gridpico_revision revision;
     gridpico_deliver_note_fn deliver;
     gridpico_local_deliver_raw_fn deliver_raw;
+    gridpico_managed_note_transform_fn transform_note;
     void *delivery_context;
     gridpico_patch_port_runtime ports[GRIDPICO_PATCH_MAX_PORTS];
     gridpico_local_port_capability port_capabilities[GRIDPICO_PATCH_MAX_PORTS];
@@ -94,6 +97,19 @@ gridpico_result gridpico_patch_graph_read_graph(void *context, gridpico_patch_gr
 gridpico_result gridpico_patch_graph_read_local_state(void *context, gridpico_local_graph_state *out);
 /* Checks note obligations for a registered output across connection generations. */
 bool gridpico_patch_graph_destination_idle(const gridpico_patch_graph *graph, gridpico_port_id destination);
+/* Caller checks output ownership and transport retirement before changing the role. */
+gridpico_result gridpico_patch_graph_set_apc_led_reserved(
+    gridpico_patch_graph *graph, gridpico_port_id output, bool reserved);
+/* Bind the optional local processor before ingress. The caller guards edits in
+ * the same serialized turn as the selected target and route validation. */
+void gridpico_patch_graph_bind_note_transform(
+    gridpico_patch_graph *graph, gridpico_managed_note_transform_fn transform);
+gridpico_result gridpico_patch_graph_read_managed_note_transform(
+    const gridpico_patch_graph *graph, const gridpico_local_route *route,
+    gridpico_managed_note_transform *out);
+gridpico_result gridpico_patch_graph_set_managed_note_transform(
+    gridpico_patch_graph *graph, const gridpico_local_route *route,
+    const gridpico_managed_note_transform *transform);
 gridpico_result gridpico_patch_graph_submit_note(void *context, const gridpico_ingress_note *input);
 gridpico_result gridpico_patch_graph_set_local_route(void *context,
                                                     const gridpico_local_route_request *request);

@@ -58,6 +58,7 @@ typedef struct {
     gridpico_port_id sequence_port;
     bool configured;
     bool routing_enabled;
+    gridpico_local_route transform_witness;
     local_binding bindings[GRIDPICO_PATCH_MAX_PORTS];
     local_binding serial;
     local_output output[LOCAL_MIDI_STAGE_FRAMES + GRIDPICO_PATCH_MAX_PORTS];
@@ -80,6 +81,10 @@ typedef struct {
 gridpico_result local_runtime_init(local_runtime *runtime);
 /* A configured profile remains valid for the lifetime of the runtime. */
 gridpico_result local_runtime_init_profile(local_runtime *runtime, const local_router_profile *profile);
+/* Enable one configured managed socket pair before the runner admits ingress. */
+gridpico_result local_runtime_enable_transform_witness(local_runtime *runtime,
+                                                        gridpico_port_id source,
+                                                        gridpico_port_id destination);
 gridpico_result local_runtime_enable_web_ui_routes(local_runtime *runtime);
 gridpico_result local_runtime_enable_recorder_route(local_runtime *runtime);
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms);

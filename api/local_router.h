@@ -85,6 +85,19 @@ typedef struct {
     gridpico_patch_route_state state;
 } gridpico_local_route_status;
 
+/* Zero initialization preserves every admitted note. */
+typedef struct {
+    int8_t transpose_semitones; /* -127 through 127. */
+    uint8_t output_channel;     /* 0 preserves channel, 1 through 16 replaces it. */
+} gridpico_managed_note_transform;
+
+/* Apply to a normalized attack with validated configuration. False filters
+ * the attack and leaves out untouched. The graph owns matching releases.
+ */
+typedef bool (*gridpico_managed_note_transform_fn)(
+    const gridpico_managed_note_transform *transform, const gridpico_note *input,
+    gridpico_note *out);
+
 typedef struct {
     gridpico_local_route route;
     gridpico_patch_route_state state;

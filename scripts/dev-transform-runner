@@ -1,0 +1,7 @@
+#!/bin/sh
+set -eu
+case $0 in
+  */*) root=${0%/*} ;;
+  *) exit 2 ;;
+esac
+exec "$root/../build/dev-transform/gridpico_local_router" --transform-witness 1 12 "$@"

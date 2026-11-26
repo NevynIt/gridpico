@@ -117,4 +117,23 @@ typedef gridpico_result (*gridpico_apc_patch_set_cell_fn)(
 typedef gridpico_result (*gridpico_apc_patch_audition_fn)(
     void *context, gridpico_port_id destination, bool start);
 
+typedef struct {
+    gridpico_port_id source;
+    gridpico_port_id destination;
+    gridpico_managed_note_transform transform;
+    gridpico_revision expected_revision; /* Nonzero Routing revision. */
+} gridpico_managed_note_transform_request;
+
+typedef struct {
+    gridpico_managed_note_transform transform;
+    gridpico_revision revision; /* Committed Routing revision. */
+} gridpico_managed_note_transform_status;
+
+/* Validate and apply on the selected target in one serialized call.
+ * On success return the committed setting. On failure leave out untouched.
+ */
+typedef gridpico_result (*gridpico_apply_managed_note_transform_fn)(
+    void *context, const gridpico_managed_note_transform_request *request,
+    gridpico_managed_note_transform_status *out);
+
 #endif

@@ -354,6 +354,8 @@ int main(int argc, char **argv)
     bool recorder = false;
     bool ui_descriptor = false;
     const char *path = NULL;
+    uint32_t witness_source = 0;
+    uint32_t witness_destination = 0;
     for (int i = 1; i < argc; ++i) {
         if (!web_ui && strcmp(argv[i], "--web-ui") == 0) {
             web_ui = true;
@@ -364,9 +366,14 @@ int main(int argc, char **argv)
         } else if (path == NULL && i + 1 < argc && strcmp(argv[i], "--profile") == 0 &&
                    strncmp(argv[i + 1], "--", 2) != 0) {
             path = argv[++i];
+        } else if (witness_source == 0 && i + 2 < argc &&
+                   strcmp(argv[i], "--transform-witness") == 0 &&
+                   decimal(argv[i + 1], UINT16_MAX, &witness_source) &&
+                   decimal(argv[i + 2], UINT16_MAX, &witness_destination)) {
+            i += 2;
         } else {
             fputs("Usage: gridpico_local_router [--web-ui] [--profile FILE] [--recorder] "
-                  "[--ui-descriptor]\n", stderr);
+                  "[--ui-descriptor] [--transform-witness SRC DST]\n", stderr);
             return EXIT_FAILURE;
         }
     }
@@ -382,6 +389,14 @@ int main(int argc, char **argv)
     local_runtime runtime;
     if (local_runtime_init_profile(&runtime, path != NULL ? &profile : NULL) != GRIDPICO_OK) {
         fputs("Local router could not initialize the production graph\n", stderr);
+        return EXIT_FAILURE;
+    }
+    if (witness_source != 0 &&
+        (recorder || web_ui ||
+         local_runtime_enable_transform_witness(&runtime, (gridpico_port_id)witness_source,
+                                                  (gridpico_port_id)witness_destination) != GRIDPICO_OK)) {
+        fputs("Transform witness requires one configured managed socket pair and manual routes\n",
+              stderr);
         return EXIT_FAILURE;
     }
     if (web_ui && local_runtime_enable_web_ui_routes(&runtime) != GRIDPICO_OK) {
