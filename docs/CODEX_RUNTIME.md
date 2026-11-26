@@ -57,6 +57,16 @@ Normal later resume always targets the exact recorded Codex session ID, includin
 
 [MODEL_PLAN.md](../.team/MODEL_PLAN.md) is owned by Project Manager and records initial candidates for every proposed seat. Session Manager is an operator, not a resource-budget enforcer or a model-policy designer.
 
+## Ask about a seat's saved history
+
+From the shared development container, pass a seat alias and one quoted question.
+
+```sh
+./scripts/seat-ask architect 'What is the approved onboard status LED pin?'
+```
+
+The helper resolves the recorded native session through Session Manager's roster and queries its saved history with one read-only, ephemeral Codex invocation. The original seat receives no message and can continue working. The answer may omit work still in progress. If the session cannot be loaded or the read-only mode cannot be verified, the helper fails without printing an answer. It accepts no override flags.
+
 ## If the Docker-only arrangement needs revisiting
 
 See `scripts/check-codex-sandbox.sh` for a Bubblewrap diagnostic. Nested sandbox mode can be reconsidered if the host environment changes, but this has **not** been fixed or tested on the M5. The Docker-only mode has been **configured in scripts/documentation, not independently executed on the server** by the assistant.
