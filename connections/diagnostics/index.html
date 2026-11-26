@@ -591,8 +591,10 @@
         }
       },
       async routingCommand(line, confirmed = false) {
-        const readOnly = /^routing(?: [1-9][0-9]* [0-9]+)?$/.test(line);
-        const edit = /^route [1-9][0-9]* [1-9][0-9]* (?:managed|raw) (?:on|off)$/.test(line);
+        const readOnly = line === "help route" || /^routing(?: [1-9][0-9]* [0-9]+)?$/.test(line);
+        const guarded = /^route [1-9][0-9]* [1-9][0-9]* managed (?:on|off) if ([1-9][0-9]{0,19})$/.exec(line);
+        const edit = guarded ? BigInt(guarded[1]) <= 0xffffffffffffffffn :
+          /^route [1-9][0-9]* [1-9][0-9]* raw (?:on|off)$/.test(line);
         if (!(readOnly || edit) || line.length > commandLimit) throw new Error("Invalid Routing command.");
         const active = connection;
         if (!active || active.pico || active.routingFailed) throw new Error("Routing is unavailable on this serial session.");

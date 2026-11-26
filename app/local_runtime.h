@@ -53,6 +53,7 @@ typedef struct {
     gridpico_patch_session session;
     gridpico_apc_patch apc;
     gridpico_cli_frontend cli;
+    gridpico_local_routing_snapshot routing_scratch;
     const local_router_profile *profile;
     gridpico_port_id feedback_port;
     gridpico_port_id sequence_port;

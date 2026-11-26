@@ -640,9 +640,13 @@ gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t gener
                                                    set_color, runtime, read_logs, write_serial,
                                                    runtime);
     if (result == GRIDPICO_OK) {
-        runtime->cli.set_local_route = set_local_route;
-        runtime->cli.read_local_route = read_local_route;
-        if (runtime->routing_enabled) runtime->cli.read_local_routing = read_routing;
+        if (runtime->routing_enabled) {
+            gridpico_cli_bind_routing(&runtime->cli, runtime, read_routing, read_local_route,
+                                     set_local_route, &runtime->routing_scratch);
+        } else {
+            runtime->cli.set_local_route = set_local_route;
+            runtime->cli.read_local_route = read_local_route;
+        }
         runtime->serial = (local_binding){.generation = generation, .attached = true};
         gridpico_cli_process(&runtime->cli);
     }

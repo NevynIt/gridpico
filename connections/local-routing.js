@@ -59,6 +59,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   const rejections = { INVALID: "Invalid request", CAPACITY: "Capacity limit", UNAVAILABLE: "Unavailable" };
 
   let snapshot;
+  let managedGuard;
   let work;
   let stale = false;
   let initialRead = true;
@@ -134,6 +135,18 @@ window.addEventListener("DOMContentLoaded", async () => {
         (destination > previous.destination || (destination === previous.destination && mode > previous.mode))));
       routes.set(routeKey, route.state);
       projection.previousRoute = route;
+    }
+  }
+
+  async function readManagedGuard() {
+    const command = "help route";
+    try {
+      const reply = cliReply(await cli.routingCommand(command), command);
+      const form = reply.lines?.[0]?.split(" -- ", 1)[0];
+      return reply.lines?.length === 1 && form.startsWith("COMMAND route ") &&
+        form.split("; ").includes("route <src> <dst> managed on|off if <revision>");
+    } catch {
+      return false;
     }
   }
 
@@ -340,8 +353,9 @@ window.addEventListener("DOMContentLoaded", async () => {
     const authorized = cli?.loopback || (cli?.structured && confirmRouter.checked);
     const enabled = Boolean(cli?.ready && !work && !stale && authorized);
     for (const button of results.querySelectorAll(".route-switch")) {
-      button.setAttribute("aria-disabled", String(!enabled));
-      if (!dedicated) button.disabled = !enabled;
+      const editable = enabled && (button.dataset.mode === "raw" || managedGuard === true);
+      button.setAttribute("aria-disabled", String(!editable));
+      if (!dedicated) button.disabled = !editable;
     }
     if (!dedicated) link.hidden = !cli?.supported;
     router.textContent = cli?.endpoint ? `Selected router endpoint · ${cli.endpoint}` :
@@ -352,6 +366,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (work) revision.textContent = `Reading current state · showing confirmed revision ${snapshot.revision}.`;
       else if (stale) revision.textContent = `Stale snapshot · revision ${snapshot.revision}. Refresh before editing.`;
       else if (!authorized) revision.textContent = `Read-only · revision ${snapshot.revision}. Confirm the selected device to edit.`;
+      else if (!managedGuard) revision.textContent =
+        `Managed routes are read-only · revision ${snapshot.revision}. The selected CLI did not advertise guarded edits.`;
       else revision.textContent = `Snapshot revision ${snapshot.revision}`;
     }
   }
@@ -375,6 +391,11 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
     if (work !== job) return;
     if (completed.changed) throw new Error("Routing changed again. Refresh to try a new snapshot.");
+    if (managedGuard === undefined) {
+      const supported = await readManagedGuard();
+      if (work !== job) return;
+      managedGuard = supported;
+    }
     cli.confirmRoutingCapability();
     render(completed);
     snapshot = completed;
@@ -406,7 +427,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function edit(route, on) {
-    if (stale || (!cli.loopback && !confirmRouter.checked)) return;
+    if (stale || (route.mode === "managed" && !managedGuard) || (!cli.loopback && !confirmRouter.checked)) return;
+    const guard = snapshot.revision;
     const job = begin();
     if (!job) return;
     const { source, destination, mode } = route;
@@ -420,7 +442,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     status.textContent = "Waiting for the router to commit the edit…";
     editStatus.textContent = `${pair} · Awaiting readback.`;
     try {
-      const command = `route ${source} ${destination} ${mode} ${on ? "on" : "off"}`;
+      const write = `route ${source} ${destination} ${mode} ${on ? "on" : "off"}`;
+      const command = mode === "managed" ? `${write} if ${guard}` : write;
       const reply = cliReply(await cli.routingCommand(command, confirmRouter.checked), command);
       if (work !== job) return;
       if (reply.rejected) {
@@ -462,7 +485,9 @@ window.addEventListener("DOMContentLoaded", async () => {
       if (dedicated && adapter?.capabilityStatus === "unavailable") {
         status.textContent = "Couldn’t load capabilities from " + location.origin + ".";
       } else if (!cli?.supported) {
-        status.textContent = dedicated && adapter?.capabilities ? "Routing unavailable on this connection. Use the router’s local CLI or SSH loopback connection." :
+        if (adapter?.capabilities?.actions.picoCdc) {
+          status.textContent = "Typed Pico Routing is unavailable. Use Diagnostics for the Pico terminal or the Pi’s SSH loopback for Pi Routing.";
+        } else status.textContent = dedicated && adapter?.capabilities ? "Routing unavailable on this connection. Use the router’s local CLI or SSH loopback connection." :
           "Routing unavailable. Open it from the router’s loopback Home or connect the device through Web Serial CDC in a supported browser.";
       }
       else if (!cli.attached) status.textContent = cli.notice || "Routing unavailable. Connect a serial provider to read this router.";
@@ -478,6 +503,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener("gridpico-local-cli-binding", () => {
     work = undefined;
     snapshot = undefined;
+    managedGuard = undefined;
     results.hidden = true;
     managedTable.replaceChildren();
     rawTable.replaceChildren();
