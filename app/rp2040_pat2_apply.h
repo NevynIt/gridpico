@@ -3,7 +3,11 @@
 
 #include "app/rp2040_pat2_projection.h"
 
-#ifdef GRIDPICO_PAT2_APPLY_HOST
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+#if defined(GRIDPICO_PAT2_APPLY_HOST) && defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+#error "The PAT2 link fixture cannot enable the live host fixture hooks."
+#endif
+
 enum {
     GRIDPICO_PAT2_DUE,
     GRIDPICO_PAT2_APPLIED,
@@ -50,6 +54,12 @@ gridpico_result gridpico_pico_pat2_prepare(gridpico_pico_router *router, gridpic
 gridpico_result gridpico_pico_pat2_commit(gridpico_pico_router *router, gridpico_revision roles);
 void gridpico_pico_pat2_refresh_panels(gridpico_pico_router *router);
 
+#ifdef GRIDPICO_RP2040_PAT2_LINK_FIXTURE
+/* Retained for offline inspection. There is no runtime caller. */
+gridpico_result gridpico_pico_pat2_link_fixture(const gridpico_pico_pat2_intent *intent);
+#endif
+
+#ifdef GRIDPICO_PAT2_APPLY_HOST
 size_t gridpico_pico_pat2_slot_index(gridpico_patch_direction axis, uint8_t slot);
 bool gridpico_pico_pat2_placement_blocked(const gridpico_pico_router *router,
                                           size_t slot);
@@ -57,6 +67,7 @@ bool gridpico_pico_pat2_has_reservation(const gridpico_pico_router *router, size
 void gridpico_pico_pat2_own_slot(gridpico_pico_router *router, size_t slot,
                                 gridpico_port_id previous, gridpico_port_id current);
 void gridpico_pico_pat2_own_pair(gridpico_pico_router *router, const gridpico_local_route *route);
+#endif
 #endif
 
 #endif

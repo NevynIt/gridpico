@@ -56,6 +56,18 @@ option(GRIDPICO_RP2040_KEYS_BENCH "Enable the three-pair Patchbay and Keys fixtu
 option(GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH "Enable local channel-4 MicroFreak Program Change" OFF)
 option(GRIDPICO_RP2040_FLASH_ROUTER "Persist the selected router in flash and run from SRAM" OFF)
 option(GRIDPICO_RP2040_FLASH_STARTUP_FAULT "Build a flash-only watchdog starvation fixture" OFF)
+option(GRIDPICO_RP2040_PAT2_LINK_FIXTURE "Retain the uncalled PAT2 apply fixture for offline inspection" OFF)
+if(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+    if(NOT PICO_BOARD STREQUAL "waveshare_rp2040_zero" OR NOT GRIDPICO_RP2040_FLASH_ROUTER
+       OR NOT GRIDPICO_RP2040_PATCHBAY_BENCH OR GRIDPICO_RP2040_FLASH_STARTUP_FAULT
+       OR GRIDPICO_RP2040_KEYS_BENCH OR GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
+        message(FATAL_ERROR "The PAT2 link fixture requires the normal generic Waveshare RP2040 Zero router.")
+    endif()
+    target_compile_definitions(gridpico_rp2040_router PRIVATE GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+    target_sources(gridpico_rp2040_router PRIVATE
+        "${root}/app/rp2040_pat2_apply.c" "${root}/app/rp2040_snapshot_pat2.c")
+    target_link_options(gridpico_rp2040_router PRIVATE "LINKER:--undefined=gridpico_pico_pat2_link_fixture")
+endif()
 if(PICO_BOARD STREQUAL "waveshare_rp2040_zero" AND GRIDPICO_RP2040_FLASH_ROUTER
    AND NOT GRIDPICO_RP2040_FLASH_STARTUP_FAULT AND NOT GRIDPICO_RP2040_KEYS_BENCH
    AND NOT GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)

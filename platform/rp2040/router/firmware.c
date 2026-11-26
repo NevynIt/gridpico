@@ -21,7 +21,7 @@
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
 #include "hardware/structs/usb.h"
 #include "app/rp2040_pat2_projection.h"
-#ifdef GRIDPICO_PAT2_APPLY_HOST
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
 #include "app/rp2040_pat2_apply.h"
 #endif
 #include "frontends/apc/apc_chooser.h"
@@ -1955,6 +1955,40 @@ gridpico_result gridpico_pico_project_pat2_view(gridpico_pico_pat2_projection *o
     return GRIDPICO_OK;
 }
 
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+/* Borrow the caller-owned fixture state for a single serialized turn. */
+static gridpico_result apply_pat2_turn(gridpico_revision roles)
+{
+    gridpico_pico_pat2_apply *apply = router.pat2_apply;
+    gridpico_result result = gridpico_pico_project_pat2_view(&apply->projection);
+    if (result == GRIDPICO_OK) result = gridpico_pico_pat2_prepare(&router, roles);
+    if (result == GRIDPICO_OK) result = gridpico_pico_project_pat2_view(&apply->projection);
+    if (result == GRIDPICO_OK) result = gridpico_pico_pat2_commit(&router, roles);
+    if (result != GRIDPICO_OK) apply->prepared = false;
+    return result;
+}
+#endif
+
+#ifdef GRIDPICO_RP2040_PAT2_LINK_FIXTURE
+static _Alignas(8) gridpico_pico_pat2_apply pat2_link_workspace;
+
+gridpico_result gridpico_pico_pat2_link_fixture(const gridpico_pico_pat2_intent *intent)
+{
+    if (intent == NULL) return GRIDPICO_OK;
+    if (router.pat2_apply != NULL) return GRIDPICO_UNAVAILABLE;
+
+    gridpico_pico_pat2_apply *apply = &pat2_link_workspace;
+    memset(&apply->progress, 0, sizeof(apply->progress));
+    apply->intent = intent;
+    router.pat2_apply = apply;
+    const gridpico_result result = apply_pat2_turn(physical_roles.revision);
+    router.pat2_apply = NULL;
+    apply->intent = NULL;
+    apply->before.intent = NULL;
+    return result;
+}
+#endif
+
 static void service_automatic_policy(void)
 {
     bool coherent = !discovery_dirty && (discovery.index == NO_INTERFACE || discovery.expired) &&
@@ -1968,13 +2002,7 @@ static void service_automatic_policy(void)
     }
 #ifdef GRIDPICO_PAT2_APPLY_HOST
     if (coherent && router.pat2_apply != NULL && router.pat2_apply->intent != NULL) {
-        gridpico_pico_pat2_apply *apply = router.pat2_apply;
-        gridpico_result result = gridpico_pico_project_pat2_view(&apply->projection);
-        if (result == GRIDPICO_OK) result = gridpico_pico_pat2_prepare(&router, roles->revision);
-        if (result == GRIDPICO_OK) result = gridpico_pico_project_pat2_view(&apply->projection);
-        if (result == GRIDPICO_OK) result = gridpico_pico_pat2_commit(&router, roles->revision);
-        if (result != GRIDPICO_OK) apply->prepared = false;
-        coherent = result == GRIDPICO_OK;
+        coherent = apply_pat2_turn(roles->revision) == GRIDPICO_OK;
     }
 #endif
     if (coherent) {

@@ -1,5 +1,5 @@
 #include "app/rp2040_router.h"
-#ifdef GRIDPICO_PAT2_APPLY_HOST
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
 #include "app/rp2040_pat2_apply.h"
 #endif
 
@@ -520,7 +520,7 @@ static void refresh_panels(gridpico_pico_router *router)
     }
 }
 
-#ifdef GRIDPICO_PAT2_APPLY_HOST
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
 void gridpico_pico_pat2_refresh_panels(gridpico_pico_router *router)
 {
     refresh_panels(router);

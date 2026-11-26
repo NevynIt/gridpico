@@ -1,6 +1,6 @@
 #include "app/rp2040_pat2_apply.h"
 
-#ifdef GRIDPICO_PAT2_APPLY_HOST
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
 #include <string.h>
 
 _Static_assert(GRIDPICO_PATCH_MAX_PORTS <= 32, "Host fixture has Pico registry bounds");
@@ -14,6 +14,7 @@ static size_t port_slot(const gridpico_patch_inventory *inventory, gridpico_port
     return inventory->port_count;
 }
 
+#ifdef GRIDPICO_PAT2_APPLY_HOST
 size_t gridpico_pico_pat2_slot_index(gridpico_patch_direction axis, uint8_t slot)
 {
     if (axis == GRIDPICO_PATCH_INPUT && slot < GRIDPICO_PATCH_SOURCE_ROWS) return slot;
@@ -56,6 +57,8 @@ void gridpico_pico_pat2_own_slot(gridpico_pico_router *router, size_t slot,
     apply->progress.reservations[slot] = 0;
 }
 
+#endif
+
 static size_t pair_bit(const gridpico_patch_inventory *inventory, const gridpico_local_route *route)
 {
     const size_t source = port_slot(inventory, route->source);
@@ -66,6 +69,7 @@ static size_t pair_bit(const gridpico_patch_inventory *inventory, const gridpico
     return source * GRIDPICO_PATCH_MAX_PORTS + destination;
 }
 
+#ifdef GRIDPICO_PAT2_APPLY_HOST
 void gridpico_pico_pat2_own_pair(gridpico_pico_router *router, const gridpico_local_route *route)
 {
     if (router->pat2_apply == NULL || router->pat2_apply->intent == NULL ||
@@ -75,6 +79,8 @@ void gridpico_pico_pat2_own_pair(gridpico_pico_router *router, const gridpico_lo
         router->pat2_apply->progress.owned_pairs.off[bit / 8u] |= (uint8_t)(1u << (bit % 8u));
     }
 }
+
+#endif
 
 static gridpico_port_id *layout_slot(gridpico_apc_patch_layout *layout, size_t position)
 {
