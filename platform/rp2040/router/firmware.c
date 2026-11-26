@@ -1073,6 +1073,7 @@ static bool panel_graph_input(gridpico_port_id id, uint32_t generation, bool res
 }
 
 enum { KEYS_LED_QUEUE = 16, KEYS_PAD_FIRST = 0x20 };
+typedef enum { KEYS_LED_PAGE, KEYS_LED_SHOW, KEYS_LED_RESTORE, KEYS_LED_COMPUTER } keys_led_effect;
 static struct {
     gridpico_apc_chooser chooser;
     usb_midi_lane panel, led;
@@ -1080,8 +1081,9 @@ static struct {
     uint32_t panel_lifetime, led_lifetime;
     uint32_t panel_generation, keybed_generation, led_generation, native_generation;
     gridpico_apc_chooser_mode requested;
-    gridpico_pico_packet led_queue[KEYS_LED_QUEUE], cue[2], last_pad[2];
-    uint8_t led_head, led_count, cue_cursor, known_pads;
+    gridpico_pico_packet led_queue[KEYS_LED_QUEUE], last_pad[2];
+    keys_led_effect flight_effect;
+    uint8_t led_head, led_count, show_pads, touched_pads, known_pads;
 } keys;
 
 static uint8_t keys_voice_length(const gridpico_pico_packet *packet)
@@ -1092,24 +1094,27 @@ static uint8_t keys_voice_length(const gridpico_pico_packet *packet)
     return packet->bytes[3] <= 127 ? 3u : 0u;
 }
 
-static bool keys_attachment_current(void)
+static bool keys_input_current(void)
 {
-    if (keys.chooser.attachment.endpoint == 0 || physical_roles.retiring ||
-        keys.chooser.attachment.endpoint != physical_roles.panel || keys.led_id != physical_roles.led ||
+    if (keys.chooser.attachment.endpoint == 0 ||
+        keys.chooser.attachment.endpoint != physical_roles.panel ||
         keys.chooser.attachment.generation != router.generation[GRIDPICO_PICO_APC] ||
-        !router.attached[GRIDPICO_PICO_APC] || keys.panel_generation != physical_roles.panel_generation ||
+        !router.attached[GRIDPICO_PICO_APC] || keys.panel_generation != physical_roles.panel_generation) return false;
+    const discovered_device *panel = mounted_binding(keys.panel.index);
+    return panel != NULL && !panel->ambiguous && panel->lifetime == keys.panel_lifetime &&
+        eligible_interface(keys.panel.index) && panel_lane_generation(&keys.panel) == keys.panel_generation &&
+        router.attached[panel->first_peer] &&
+        router.discovered[panel->first_peer - GRIDPICO_PICO_DISCOVERED].input_generation == keys.keybed_generation;
+}
+
+static bool keys_led_current(void)
+{
+    if (keys.led_generation == 0 || keys.led_id != physical_roles.led || physical_roles.retiring ||
         keys.led_generation != physical_roles.led_generation || !router.attached[keys.led.peer] ||
         router.generation[keys.led.peer] != keys.led_generation) return false;
-    const discovered_device *panel = mounted_binding(keys.panel.index);
     const discovered_device *led = mounted_binding(keys.led.index);
-    return panel != NULL && led != NULL && !panel->ambiguous && !led->ambiguous &&
-        panel->lifetime == keys.panel_lifetime && led->lifetime == keys.led_lifetime &&
-        eligible_interface(keys.panel.index) && eligible_interface(keys.led.index) &&
-        panel_lane_generation(&keys.panel) == keys.panel_generation &&
-        led->identity.output_endpoint == host_endpoints_out[keys.led.index] &&
-        router.attached[panel->first_peer] &&
-        router.discovered[panel->first_peer - GRIDPICO_PICO_DISCOVERED].input_generation == keys.keybed_generation &&
-        router.discovered[keys.panel.peer - GRIDPICO_PICO_DISCOVERED].input_generation == keys.panel_generation;
+    return led != NULL && !led->ambiguous && led->lifetime == keys.led_lifetime &&
+        eligible_interface(keys.led.index) && led->identity.output_endpoint == host_endpoints_out[keys.led.index];
 }
 
 static bool keys_native_current(void)
@@ -1117,23 +1122,13 @@ static bool keys_native_current(void)
     return native_epoch_current() && router.native_output_ready && !tud_suspended();
 }
 
-static void refresh_keys_attachment(void)
+static void refresh_keys_input(void)
 {
-    const bool current = keys_attachment_current();
-    if (router.keys_mode || router.keys_cutover) {
-        if (!current || !keys_native_current() || keys.native_generation != router.generation[GRIDPICO_PICO_WEB]) {
-            keys.requested = GRIDPICO_APC_CHOOSER_PATCHBAY;
-            router.keys_cutover = true;
-        }
-        return;
-    }
-    if (current) return;
     gridpico_apc_chooser_detach(&keys.chooser, keys.chooser.attachment);
-    keys.cue_cursor = 2;
-    usb_midi_lane panel, led;
-    if (physical_roles.retiring || physical_roles.panel_generation == 0 || physical_roles.led_generation == 0 ||
+    keys.show_pads = 0;
+    usb_midi_lane panel;
+    if (physical_roles.panel_generation == 0 ||
         lookup_lane(physical_roles.panel, false, &panel) != GRIDPICO_OK ||
-        lookup_lane(physical_roles.led, true, &led) != GRIDPICO_OK ||
         panel_lane_generation(&panel) != physical_roles.panel_generation) return;
     const discovered_device *binding = mounted_binding(panel.index);
     const gridpico_pico_peer keybed = binding->first_peer;
@@ -1142,63 +1137,132 @@ static void refresh_keys_attachment(void)
         !panel_graph_input(router.discovered[slot].input, router.discovered[slot].input_generation, false)) return;
 
     keys.panel = panel;
-    keys.led = led;
-    keys.led_id = physical_roles.led;
     keys.panel_lifetime = binding->lifetime;
-    keys.led_lifetime = observations[led.index].lifetime;
     keys.panel_generation = physical_roles.panel_generation;
     keys.keybed_generation = router.discovered[slot].input_generation;
-    keys.led_generation = physical_roles.led_generation;
     gridpico_apc_chooser_init(&keys.chooser,
         (gridpico_connection){physical_roles.panel, router.generation[GRIDPICO_PICO_APC]});
 }
 
-static gridpico_pico_packet keys_pad(unsigned pad, uint8_t color)
+static void refresh_keys_attachment(void)
 {
-    return (gridpico_pico_packet){{0x19, 0x96, (uint8_t)(KEYS_PAD_FIRST + pad), color}};
+    const bool input_current = keys_input_current();
+    const bool led_current = keys_led_current();
+    const bool native_current = keys_native_current() &&
+        (!(router.keys_mode || router.keys_cutover) || keys.native_generation == router.generation[GRIDPICO_PICO_WEB]);
+    if (!led_current || !native_current) {
+        /* Keep locally consumed pairs until this exact input attachment retires. */
+        keys.chooser.open = false;
+        keys.show_pads = 0;
+    }
+    if (!led_current || (router.keys_mode && !native_current)) {
+        keys.touched_pads = keys.known_pads = 0;
+    }
+    if (router.keys_mode || router.keys_cutover) {
+        if (!input_current || !led_current || !native_current) {
+            keys.requested = GRIDPICO_APC_CHOOSER_PATCHBAY;
+            router.keys_cutover = true;
+        }
+        return;
+    }
+
+    if (!input_current) refresh_keys_input();
+    if (led_current) return;
+    keys.led_generation = 0;
+    usb_midi_lane led;
+    if (physical_roles.retiring || physical_roles.led_generation == 0 ||
+        lookup_lane(physical_roles.led, true, &led) != GRIDPICO_OK ||
+        router.generation[led.peer] != physical_roles.led_generation) return;
+    keys.led = led;
+    keys.led_id = physical_roles.led;
+    keys.led_lifetime = observations[led.index].lifetime;
+    keys.led_generation = physical_roles.led_generation;
 }
 
-static void keys_cue(bool show)
+static bool keys_pad_restore(unsigned pad, gridpico_pico_packet *out)
 {
-    for (unsigned pad = 0; pad < 2; ++pad) {
-        const bool active = (pad == 1) == router.keys_mode;
-        keys.cue[pad] = keys_pad(pad, show ? (active ? 0x15 : 0x01) : 0);
-        if (show) continue;
-        if (router.keys_mode) {
-            if (keys.known_pads & (1u << pad)) keys.cue[pad] = keys.last_pad[pad];
-        } else {
-            const gridpico_pico_patch_panel *panel = &router.panels[GRIDPICO_PICO_APC];
-            if (!panel->latest_valid) continue;
+    if (!router.keys_mode) {
+        const gridpico_pico_patch_panel *panel = &router.panels[GRIDPICO_PICO_APC];
+        if (panel->latest_valid) {
             for (size_t i = 0; i < GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES; ++i) {
                 const gridpico_pico_packet *packet = &panel->latest[i];
                 if (packet->bytes[1] == 0x96 && packet->bytes[2] == KEYS_PAD_FIRST + pad) {
-                    keys.cue[pad] = *packet;
-                    break;
+                    *out = *packet;
+                    return true;
                 }
             }
         }
+        return false;
     }
-    keys.cue_cursor = 0;
+    if ((keys.known_pads & (1u << pad)) == 0) return false;
+    *out = keys.last_pad[pad];
+    return true;
+}
+
+static keys_led_effect keys_cue_packet(gridpico_pico_packet *out)
+{
+    const bool showing = keys.chooser.open && !router.keys_cutover;
+    for (unsigned pad = 0; pad < 2; ++pad) {
+        const uint8_t bit = (uint8_t)(1u << pad);
+        if (((showing ? keys.show_pads : keys.touched_pads) & bit) == 0) continue;
+        gridpico_pico_packet restore;
+        if (!keys_pad_restore(pad, &restore)) {
+            keys.show_pads &= (uint8_t)~bit;
+            if (!showing) keys.touched_pads &= (uint8_t)~bit;
+            continue;
+        }
+        if (!showing) {
+            *out = restore;
+            return KEYS_LED_RESTORE;
+        }
+        keys.last_pad[pad] = restore;
+        keys.known_pads |= bit;
+        const bool active = (pad == 1) == router.keys_mode;
+        *out = (gridpico_pico_packet){{0x19, 0x96, (uint8_t)(KEYS_PAD_FIRST + pad), active ? 0x15 : 0x01}};
+        return KEYS_LED_SHOW;
+    }
+    return KEYS_LED_PAGE;
+}
+
+static void keys_led_complete(keys_led_effect effect, const gridpico_pico_packet *packet)
+{
+    if (effect == KEYS_LED_PAGE || packet->bytes[2] < KEYS_PAD_FIRST ||
+        packet->bytes[2] >= KEYS_PAD_FIRST + 2) return;
+    const unsigned pad = packet->bytes[2] - KEYS_PAD_FIRST;
+    const uint8_t bit = (uint8_t)(1u << pad);
+    if (effect == KEYS_LED_SHOW) {
+        keys.touched_pads |= keys.known_pads & bit;
+    } else if (effect == KEYS_LED_RESTORE) {
+        keys.touched_pads &= (uint8_t)~bit;
+    } else if (packet->bytes[1] == 0x96 || packet->bytes[1] == 0x90 ||
+               packet->bytes[1] == 0x86 || packet->bytes[1] == 0x80) {
+        keys.last_pad[pad] = *packet;
+        keys.known_pads |= bit;
+        keys.touched_pads &= (uint8_t)~bit;
+    }
 }
 
 static bool dispatch_keys_host(uint8_t index, const gridpico_pico_packet *packet)
 {
-    if (keys.chooser.attachment.endpoint == 0 || index != keys.panel.index ||
+    if (keys.panel_lifetime == 0 || index != keys.panel.index ||
         observations[index].lifetime != keys.panel_lifetime) return false;
     const uint8_t cable = packet->bytes[0] >> 4;
     const uint8_t length = keys_voice_length(packet);
     if (cable > 1 || length == 0) return router.keys_mode || router.keys_cutover;
-    if (keys_attachment_current()) {
+    if (keys_input_current()) {
         const bool open = keys.chooser.open;
         const gridpico_apc_chooser_result action = gridpico_apc_chooser_receive(
             &keys.chooser, keys.chooser.attachment, cable, &packet->bytes[1], length);
-        if (open != keys.chooser.open) keys_cue(keys.chooser.open);
-        if (action.requested_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST &&
-            (action.requested_mode == GRIDPICO_APC_CHOOSER_KEYS) != router.keys_mode &&
-            !router.keys_cutover && keys_native_current()) {
-            keys.native_generation = router.generation[GRIDPICO_PICO_WEB];
-            keys.requested = action.requested_mode;
-            router.keys_cutover = true;
+        if (open != keys.chooser.open || action.requested_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST) {
+            const bool available = keys_led_current() && keys_native_current() && !router.keys_cutover;
+            if (!available) keys.chooser.open = false;
+            keys.show_pads = keys.chooser.open ? 3u : 0u;
+            if (available && action.requested_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST &&
+                (action.requested_mode == GRIDPICO_APC_CHOOSER_KEYS) != router.keys_mode) {
+                keys.native_generation = router.generation[GRIDPICO_PICO_WEB];
+                keys.requested = action.requested_mode;
+                router.keys_cutover = true;
+            }
         }
         if (action.consumed) return true;
     }
@@ -1216,18 +1280,12 @@ static void offer_keys_led(const gridpico_pico_packet *packet)
         keys.led_count == KEYS_LED_QUEUE) return;
     keys.led_queue[(keys.led_head + keys.led_count) % KEYS_LED_QUEUE] = *packet;
     ++keys.led_count;
-    const uint8_t kind = packet->bytes[1] >> 4;
-    if ((kind == 8 || kind == 9) && packet->bytes[2] >= KEYS_PAD_FIRST && packet->bytes[2] < KEYS_PAD_FIRST + 2) {
-        const unsigned pad = packet->bytes[2] - KEYS_PAD_FIRST;
-        keys.known_pads |= (uint8_t)(1u << pad);
-        keys.last_pad[pad] = *packet;
-    }
 }
 
 static void service_keys_cutover(void)
 {
     if (!router.keys_cutover || native_out.kind != NATIVE_OUT_IDLE ||
-        physical_roles.led_flight_lifetime != 0) return;
+        physical_roles.led_flight_lifetime != 0 || keys.touched_pads != 0) return;
     const bool enter_keys = keys.requested == GRIDPICO_APC_CHOOSER_KEYS;
     const bool physical_live = observations[keys.panel.index].lifetime == keys.panel_lifetime &&
                                tuh_midi_mounted(keys.panel.index);
@@ -1241,14 +1299,13 @@ static void service_keys_cutover(void)
     restore_interrupts(irq);
     if (!quiet) return;
 
-    const bool current = keys_attachment_current();
-    if (enter_keys && !current) return;
+    const bool input_current = keys_input_current();
+    if (enter_keys && (!input_current || !keys_led_current())) return;
     keys.led_head = keys.led_count = keys.known_pads = 0;
-    keys.cue_cursor = 2;
+    keys.show_pads = 0;
     keys.requested = GRIDPICO_APC_CHOOSER_NO_REQUEST;
     gridpico_pico_router_commit_keys_mode(&router, enter_keys);
-    if (enter_keys) keys_cue(false);
-    if (!current) gridpico_apc_chooser_detach(&keys.chooser, keys.chooser.attachment);
+    if (!input_current) gridpico_apc_chooser_detach(&keys.chooser, keys.chooser.attachment);
 }
 
 static gridpico_result sync_apc_roles(apc_roles *roles)
@@ -2074,6 +2131,7 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
         itf->out_generation = 0;
         if (led && current) {
             physical_roles.led_flight_lifetime = 0;
+            if (complete && keys_led_current()) keys_led_complete(keys.flight_effect, &itf->in_flight);
             if (physical_roles.flight_feedback_generation == router.physical_feedback_generation) {
                 gridpico_pico_router_led_complete(&router, GRIDPICO_PICO_APC, complete);
             }
@@ -2266,18 +2324,22 @@ static bool service_musical_out(uint8_t index, const discovered_device *binding)
 static void service_apc_led_out(uint8_t index)
 {
     apc_roles *roles = &physical_roles;
-    if (router.keys_cutover || roles->led_generation == 0 || roles->retiring || roles->led_flight_lifetime != 0) return;
+    if (roles->led_generation == 0 || roles->retiring || roles->led_flight_lifetime != 0) return;
     usb_midi_lane lane;
     if (lookup_lane(roles->led, true, &lane) != GRIDPICO_OK || lane.index != index ||
         roles->led_generation != router.generation[lane.peer]) return;
-    const bool keys_led = keys.chooser.attachment.endpoint != 0 &&
-                          keys.led.index == index && keys.led_generation == roles->led_generation;
-    const bool cue = keys_led && keys.cue_cursor < 2;
+
+    gridpico_pico_packet cue;
     const gridpico_pico_packet *packet = NULL;
-    if (cue) {
-        packet = &keys.cue[keys.cue_cursor];
+    const bool keys_led = keys.led.index == index && keys_led_current();
+    keys_led_effect effect = keys_led ? keys_cue_packet(&cue) : KEYS_LED_PAGE;
+    if (effect != KEYS_LED_PAGE) {
+        packet = &cue;
+    } else if (router.keys_cutover) {
+        return;
     } else if (router.keys_mode && keys_led && keys.led_count != 0) {
         packet = &keys.led_queue[keys.led_head];
+        effect = KEYS_LED_COMPUTER;
     } else if (!router.keys_mode && !keys.chooser.open) {
         packet = gridpico_pico_router_led(&router, GRIDPICO_PICO_APC);
     }
@@ -2285,12 +2347,13 @@ static void service_apc_led_out(uint8_t index)
     roles->led_flight_interface = index;
     roles->led_flight_lifetime = observations[index].lifetime;
     roles->flight_feedback_generation = 0;
-    if (cue) {
-        ++keys.cue_cursor;
-    } else if (router.keys_mode) {
+    keys.flight_effect = effect;
+    if (effect == KEYS_LED_SHOW) {
+        keys.show_pads &= (uint8_t)~(1u << (cue.bytes[2] - KEYS_PAD_FIRST));
+    } else if (effect == KEYS_LED_COMPUTER) {
         keys.led_head = (uint8_t)((keys.led_head + 1u) % KEYS_LED_QUEUE);
         --keys.led_count;
-    } else {
+    } else if (effect == KEYS_LED_PAGE) {
         roles->flight_feedback_generation = router.physical_feedback_generation;
         gridpico_pico_router_led_sent(&router, GRIDPICO_PICO_APC);
     }
@@ -2405,7 +2468,12 @@ static void service_host(void)
     for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
         if (interfaces[index].busy) continue;
         const discovered_device *binding = mounted_binding(index);
-        if (binding != NULL && !service_musical_out(index, binding)) service_apc_led_out(index);
+        if (binding == NULL) continue;
+        if (router.keys_cutover && keys.touched_pads != 0 && index == keys.led.index) {
+            service_apc_led_out(index);
+            if (interfaces[index].busy) continue;
+        }
+        if (!service_musical_out(index, binding)) service_apc_led_out(index);
     }
 }
 #else
