@@ -65,6 +65,7 @@ typedef struct {
         CLI_COMMAND_APC,
         CLI_COMMAND_TRANSFORM,
         CLI_COMMAND_AUTOROUTE,
+        CLI_COMMAND_FORWARDING,
         CLI_COMMAND_TRACE,
         CLI_COMMAND_HUBTRACE,
         CLI_COMMAND_BOOTSEL
@@ -101,6 +102,10 @@ static const cli_help_entry help_autoroute_explain = {
     CLI_COMMAND_AUTOROUTE, "autoroute", "autoroute explain [<revision> <offset>] -- read bounded automatic-route exclusions"};
 static const cli_help_entry help_autoroute_both = {
     CLI_COMMAND_AUTOROUTE, "autoroute", "autoroute -- read the completed summary | autoroute explain [<revision> <offset>] -- read bounded automatic-route exclusions"};
+static const cli_help_entry help_forwarding = {
+    CLI_COMMAND_FORWARDING, "forwarding", "forwarding | forwarding running|paused if <revision> -- read or set the guarded master forwarding gate"};
+static const cli_help_entry help_forwarding_readonly = {
+    CLI_COMMAND_FORWARDING, "forwarding", "forwarding -- read the master forwarding gate"};
 static const cli_help_entry help_trace = {
     CLI_COMMAND_TRACE, "trace", "trace -- request platform TRACE diagnostics"};
 static const cli_help_entry help_hubtrace = {
@@ -117,7 +122,7 @@ static const cli_help_entry help_color_set = {
 static const cli_help_entry *const command_table[] = {
     &help_self, &help_inventory, &help_status, &help_logs, &help_color,
     &help_route, &help_routing, &help_apc_readonly, &help_transform, &help_trace,
-    &help_autoroute, &help_hubtrace, &help_bootsel
+    &help_autoroute, &help_forwarding, &help_hubtrace, &help_bootsel
 };
 
 static const cli_help_entry *command_for_line(const char *line)
@@ -179,6 +184,10 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
         else if (frontend->read_auto_route_explain != NULL)
             entries[count++] = &help_autoroute_explain;
     }
+    if (frontend->read_forwarding != NULL && count < capacity) {
+        entries[count++] = frontend->apply_forwarding != NULL
+                               ? &help_forwarding : &help_forwarding_readonly;
+    }
     if (frontend->start_platform != NULL &&
         (frontend->platform_capabilities & GRIDPICO_CLI_PLATFORM_TRACE) != 0 &&
         count < capacity) entries[count++] = &help_trace;
@@ -193,7 +202,7 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
 static gridpico_result execute_help(gridpico_cli_frontend *frontend, const char *topic,
                                     gridpico_cli_write_fn write, void *context)
 {
-    const cli_help_entry *entries[13];
+    const cli_help_entry *entries[14];
     const size_t count = help_entries(frontend, entries, sizeof entries / sizeof entries[0]);
     if (topic != NULL) {
         if (strcmp(topic, "TRACE") == 0) topic = "trace";
@@ -217,7 +226,7 @@ static gridpico_result execute_help(gridpico_cli_frontend *frontend, const char 
                 static const char *const known[] = {
                     "help", "inventory", "status", "logs", "color", "route",
                     "routing", "apc", "transform", "trace", "hubtrace",
-                    "autoroute", "BOOTSEL"
+                    "autoroute", "forwarding", "BOOTSEL"
                 };
                 for (size_t i = 0; i < sizeof known / sizeof known[0]; ++i) {
                     if (strcmp(known[i], topic) == 0) return GRIDPICO_UNAVAILABLE;
@@ -1379,6 +1388,89 @@ static const char *error_record(gridpico_result result)
     return "ERR INVALID";
 }
 
+typedef struct {
+    bool read_only;
+    bool running;
+    gridpico_revision expected_revision;
+} forwarding_command;
+
+static bool parse_forwarding_command(const char *line, forwarding_command *command)
+{
+    if (line == NULL || command == NULL) return false;
+    if (strcmp(line, "forwarding") == 0) {
+        *command = (forwarding_command){.read_only = true};
+        return true;
+    }
+    const size_t length = strlen(line);
+    if (length == 0 || length >= GRIDPICO_CLI_LINE_BYTES) return false;
+    char buffer[GRIDPICO_CLI_LINE_BYTES];
+    memcpy(buffer, line, length + 1);
+    char *tokens[4];
+    size_t count = 0;
+    char *cursor = buffer;
+    while (*cursor != '\0') {
+        if (*cursor == ' ' || count == sizeof tokens / sizeof tokens[0]) return false;
+        tokens[count++] = cursor;
+        char *space = strchr(cursor, ' ');
+        if (space == NULL) break;
+        *space = '\0';
+        cursor = space + 1;
+        if (*cursor == '\0' || *cursor == ' ') return false;
+    }
+    uint64_t revision;
+    if (count != 4 || strcmp(tokens[0], "forwarding") != 0 ||
+        strcmp(tokens[2], "if") != 0 ||
+        !parse_unsigned_decimal(tokens[3], strlen(tokens[3]), &revision) ||
+        revision == 0) return false;
+    bool running;
+    if (strcmp(tokens[1], "running") == 0) running = true;
+    else if (strcmp(tokens[1], "paused") == 0) running = false;
+    else return false;
+    *command = (forwarding_command){
+        .read_only = false,
+        .running = running,
+        .expected_revision = (gridpico_revision)revision,
+    };
+    return true;
+}
+
+static gridpico_result write_forwarding_status(
+    gridpico_cli_write_fn write, void *context,
+    const gridpico_forwarding_status *status)
+{
+    if (status == NULL || status->revision == 0) return GRIDPICO_INVALID;
+    char record[GRIDPICO_CLI_RECORD_BYTES];
+    const int size = snprintf(record, sizeof record, "FORWARDING %s %llu",
+                              status->running ? "RUNNING" : "PAUSED",
+                              (unsigned long long)status->revision);
+    if (size < 0 || (size_t)size >= sizeof record) return GRIDPICO_CAPACITY;
+    return write_record(write, context, record, (size_t)size)
+               ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
+}
+
+static gridpico_result execute_forwarding(gridpico_cli_frontend *frontend,
+                                          const char *line,
+                                          gridpico_cli_write_fn write,
+                                          void *context)
+{
+    forwarding_command command = {0};
+    if (!parse_forwarding_command(line, &command)) return GRIDPICO_INVALID;
+    gridpico_forwarding_status status = {0};
+    gridpico_result result;
+    if (command.read_only) {
+        if (frontend->read_forwarding == NULL) return GRIDPICO_UNAVAILABLE;
+        result = frontend->read_forwarding(frontend->musical_control_context, &status);
+    } else {
+        if (frontend->read_forwarding == NULL || frontend->apply_forwarding == NULL)
+            return GRIDPICO_UNAVAILABLE;
+        result = frontend->apply_forwarding(frontend->musical_control_context,
+                                            command.running,
+                                            command.expected_revision, &status);
+    }
+    return result == GRIDPICO_OK ? write_forwarding_status(write, context, &status)
+                                 : result;
+}
+
 static const char *apc_role_state_name(gridpico_apc_role_state state, bool led)
 {
     switch (state) {
@@ -1738,6 +1830,13 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
                     result = GRIDPICO_INVALID;
                 }
                 break;
+            case CLI_COMMAND_FORWARDING:
+                result = strncmp(line, "forwarding", sizeof("forwarding") - 1) == 0 &&
+                         (line[sizeof("forwarding") - 1] == '\0' ||
+                          line[sizeof("forwarding") - 1] == ' ')
+                             ? execute_forwarding(frontend, line, write, write_context)
+                             : GRIDPICO_INVALID;
+                break;
             case CLI_COMMAND_TRACE:
             case CLI_COMMAND_HUBTRACE: {
                 const unsigned capability = entry->command == CLI_COMMAND_TRACE
@@ -1923,6 +2022,23 @@ void gridpico_cli_bind_auto_route_explain(
     if (frontend == NULL) return;
     frontend->auto_route_explain_context = context;
     frontend->read_auto_route_explain = read_explain;
+}
+
+void gridpico_cli_bind_musical_control(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_read_forwarding_fn read_forwarding,
+    gridpico_apply_forwarding_fn apply_forwarding,
+    gridpico_read_panic_fn read_panic,
+    gridpico_apply_panic_fn apply_panic,
+    gridpico_panic_stage_report *panic_scratch)
+{
+    if (frontend == NULL) return;
+    frontend->musical_control_context = context;
+    frontend->read_forwarding = read_forwarding;
+    frontend->apply_forwarding = apply_forwarding;
+    frontend->read_panic = read_panic;
+    frontend->apply_panic = apply_panic;
+    frontend->panic_scratch = panic_scratch;
 }
 
 void gridpico_cli_receive(gridpico_cli_frontend *frontend, const char *bytes, size_t size)

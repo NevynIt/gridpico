@@ -60,6 +60,14 @@ typedef struct {
     gridpico_read_auto_route_summary_fn read_auto_route_summary;
     void *auto_route_explain_context;
     gridpico_read_auto_route_explain_fn read_auto_route_explain;
+    /* Optional serialized master forwarding gate. */
+    void *musical_control_context;
+    gridpico_read_forwarding_fn read_forwarding;
+    gridpico_apply_forwarding_fn apply_forwarding;
+    /* M1a Panic providers stay unbound in the forwarding-only candidate. */
+    gridpico_read_panic_fn read_panic;
+    gridpico_apply_panic_fn apply_panic;
+    gridpico_panic_stage_report *panic_scratch;
     unsigned platform_capabilities;
     gridpico_cli_start_platform_fn start_platform;
     void *platform_context;
@@ -128,6 +136,15 @@ void gridpico_cli_bind_auto_route_summary(
 void gridpico_cli_bind_auto_route_explain(
     gridpico_cli_frontend *frontend, void *context,
     gridpico_read_auto_route_explain_fn read_explain);
+
+/* Bind the shared M1a context. Panic providers remain unbound here. */
+void gridpico_cli_bind_musical_control(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_read_forwarding_fn read_forwarding,
+    gridpico_apply_forwarding_fn apply_forwarding,
+    gridpico_read_panic_fn read_panic,
+    gridpico_apply_panic_fn apply_panic,
+    gridpico_panic_stage_report *panic_scratch);
 
 /* Execute a complete UTF-8 command line. Diagnostics and serial terminal
  * command callbacks use this same handler. Synchronous commands emit CRLF

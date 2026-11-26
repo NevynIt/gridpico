@@ -273,6 +273,8 @@ const websockets = new WebSocketServer({
 
 const peers = new Map();
 const generations = new Map();
+let forwardingEnabled = false;
+let forwarding = { revision: 1n, running: true };
 let midiPeerLimit;
 let busy;
 let shuttingDown = false;
@@ -333,19 +335,22 @@ function monitorHeartbeat(peer) {
   peer.heartbeatTimer = setTimeout(ping, heartbeatMs);
 }
 
-function output(peer, data) {
+function output(peer, record) {
+  const { data, forwardingRevision } = record;
+  if (forwardingRevision !== undefined &&
+      (!forwarding.running || forwardingRevision !== forwarding.revision)) return;
   if (peer.closing || (peer.socket && peer.socket.readyState !== WebSocket.OPEN)) return;
   const full = peer.port === undefined
     ? peer.outputBytes + data.length > serialQueueBytes : peer.outputFrames === peer.limit;
   if (full) {
-    retire(peer, { code: 1013, reason: "Output queue full" });
+    if (record.provenance !== "panic") retire(peer, { code: 1013, reason: "Output queue full" });
     return;
   }
 
   peer.outputFrames++;
   peer.outputBytes += data.length;
   if (!peer.socket) {
-    peer.beforeUpgrade.push(data);
+    peer.beforeUpgrade.push(record);
     return;
   }
   peer.socket.send(data, { binary: true }, (error) => {
@@ -363,13 +368,39 @@ function output(peer, data) {
   }
 }
 
+function applyForwardingState(record) {
+  if (!forwardingEnabled || record.revision !== forwarding.revision + 1n || record.running === forwarding.running) {
+    throw new Error("Unexpected router forwarding transition");
+  }
+  forwarding = record;
+  for (const peer of peers.values()) {
+    if (peer.managed && peer.direction === "in") {
+      peer.input = peer.input.filter(frame => frame.forwardingRevision === undefined);
+      peer.inputBytes = peer.input.reduce((bytes, frame) => bytes + frame.data.length, 0);
+    }
+    if (!peer.socket && peer.beforeUpgrade.length) {
+      peer.beforeUpgrade = peer.beforeUpgrade.filter(frame => frame.forwardingRevision === undefined);
+      peer.outputFrames = peer.beforeUpgrade.length;
+      peer.outputBytes = peer.beforeUpgrade.reduce((bytes, frame) => bytes + frame.data.length, 0);
+    }
+  }
+}
+
 function handleRecord(record) {
+  if (record.kind === "forwarding-state") {
+    applyForwardingState(record);
+    return;
+  }
+  if (record.forwardingRevision > forwarding.revision) {
+    throw new Error("Router ordinary output preceded its forwarding barrier");
+  }
   const peer = peers.get(record.port ?? "serial");
   if (record.kind === "bound") {
     if (!peer || peer.generation !== record.generation || busy !== peer || peer.bound) {
       throw new Error("Unexpected binding confirmation");
     }
     peer.direction = record.direction;
+    peer.managed = record.classification === "managed";
     peer.limit = record.limit;
     peer.bound = true;
     generations.set(peer.key, peer.generation);
@@ -384,7 +415,7 @@ function handleRecord(record) {
   if (peer.port !== undefined && (!peer.bound || peer.direction !== "out")) {
     throw new Error("Unexpected MIDI output direction");
   }
-  output(peer, record.data);
+  output(peer, record);
 }
 
 function completeUpgrade(peer) {
@@ -406,13 +437,22 @@ function completeUpgrade(peer) {
         return;
       }
 
+      let forwardingRevision;
+      if (peer.managed) {
+        const status = data[0] >> 4;
+        if ((status === 8 || status === 9) && data[1] <= 127 && data[2] <= 127) {
+          if (!forwarding.running) return;
+          forwardingRevision = forwarding.revision;
+        }
+      }
+
       const full = peer.port === undefined
         ? peer.inputBytes + data.length > serialQueueBytes : peer.input.length === peer.limit;
       if (full) {
         retire(peer, { code: 1013, reason: "Input queue full" });
         return;
       }
-      peer.input.push(data);
+      peer.input.push({ data, forwardingRevision });
       peer.inputBytes += data.length;
       pump();
     });
@@ -425,7 +465,7 @@ function completeUpgrade(peer) {
     peer.beforeUpgrade = [];
     peer.outputFrames = 0;
     peer.outputBytes = 0;
-    for (const data of staged) output(peer, data);
+    for (const record of staged) output(peer, record);
     if (peer.expectedDirection && !peer.closing) monitorHeartbeat(peer);
     peer.raw.resume();
   });
@@ -450,7 +490,7 @@ function pump() {
           if (peer.bound) retire(peer);
           else removePeer(peer);
         } else if ((peer.expectedDirection && peer.direction !== peer.expectedDirection) ||
-                   (peer.managedReceive && peer.direction !== "out")) {
+                   (peer.managedReceive && (peer.direction !== "out" || (forwardingEnabled && !peer.managed)))) {
           reject(peer.raw, "403 Forbidden");
           retire(peer);
         } else if (peers.get(peer.key) === peer) {
@@ -458,10 +498,16 @@ function pump() {
         }
       };
     } else if (peer.input.length > 0) {
-      const data = peer.input.shift();
+      const { data, forwardingRevision } = peer.input.shift();
       if (port !== undefined) peer.inputBytes -= data.length;
+      if (forwardingRevision !== undefined &&
+          (!forwarding.running || forwardingRevision !== forwarding.revision)) {
+        queueMicrotask(pump);
+        continue;
+      }
       const hex = data.toString("hex").toUpperCase();
-      line = port === undefined ? `serial ${generation} ${hex}` : `midi ${port} ${generation} ${hex}`;
+      const payload = forwardingRevision === undefined ? hex : `ordinary ${forwardingRevision} ${hex}`;
+      line = port === undefined ? `serial ${generation} ${hex}` : `midi ${port} ${generation} ${payload}`;
       complete = (error) => {
         if (port === undefined && !peer.closing) peer.inputBytes -= data.length;
         if (error && peers.get(peer.key) === peer) retire(peer, { code: 1008, reason: "Router rejected the frame" });
@@ -585,29 +631,34 @@ async function shutdown() {
   pipe.stop(); // Runtime EOF retires inputs before outputs and drains accepted cleanup.
 }
 
+function listen(peerLimit, runtimeRoles) {
+  if (bundle) prepareCapabilities(runtimeRoles);
+  midiPeerLimit = peerLimit;
+  server.listen(port, address, () => {
+    loopbackPort = server.address().port;
+    const host = `${address}:${loopbackPort}`;
+    const announce = () => console.log(`Gridpico local router listening at http://${host}/`);
+    if (lan && !shuttingDown) {
+      lan.server.listen(lan.port, lan.address, () => {
+        announce();
+        console.log(`Gridpico trusted LAN listening at ${lan.origin}/`);
+        lanWatch = setInterval(() => {
+          if (!lan.available()) failLan("the configured IPv4 interface is no longer active");
+        }, 5000);
+      });
+    } else announce();
+    if (network && !shuttingDown) {
+      network.server.listen(network.port, network.address, () => {
+        console.log(`Gridpico WSS MIDI listening at ${network.origin}/apc/ and ${network.origin}/diagnostics/`);
+      });
+    }
+  });
+}
+
 const pipe = startLocalPipe(runnerPath, {
-  onReady(peerLimit, runtimeRoles) {
-    if (bundle) prepareCapabilities(runtimeRoles);
-    midiPeerLimit = peerLimit;
-    server.listen(port, address, () => {
-      loopbackPort = server.address().port;
-      const host = `${address}:${loopbackPort}`;
-      const announce = () => console.log(`Gridpico local router listening at http://${host}/`);
-      if (lan && !shuttingDown) {
-        lan.server.listen(lan.port, lan.address, () => {
-          announce();
-          console.log(`Gridpico trusted LAN listening at ${lan.origin}/`);
-          lanWatch = setInterval(() => {
-            if (!lan.available()) failLan("the configured IPv4 interface is no longer active");
-          }, 5000);
-        });
-      } else announce();
-      if (network && !shuttingDown) {
-        network.server.listen(network.port, network.address, () => {
-          console.log(`Gridpico WSS MIDI listening at ${network.origin}/apc/ and ${network.origin}/diagnostics/`);
-        });
-      }
-    });
+  onReady(peerLimit, runtimeRoles, qualifiedForwarding) {
+    forwardingEnabled = qualifiedForwarding;
+    listen(peerLimit, runtimeRoles);
   },
   onRecord: handleRecord,
   onFailure(message) {

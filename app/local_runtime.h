@@ -10,6 +10,7 @@
 enum {
     LOCAL_SERIAL_QUEUE = 8192,
     LOCAL_SERIAL_CHUNK = 256,
+    LOCAL_FORWARDING_BARRIERS = 16,
     LOCAL_RAW_LEASE_MS = 30000,
     /* One dispatch can render feedback as well as its MIDI fan-out. */
     LOCAL_MIDI_STAGE_FRAMES = 2 * GRIDPICO_PATCH_LED_FRAMES + GRIDPICO_LOCAL_MAX_FANOUT + 1,
@@ -29,6 +30,7 @@ typedef struct {
     bool attached;
     bool adapter_owned;
     bool socket;
+    bool managed;
 } local_port_state;
 
 typedef struct {
@@ -43,9 +45,16 @@ typedef struct {
 
 typedef struct {
     gridpico_connection destination;
+    gridpico_revision forwarding_revision;
     uint8_t bytes[GRIDPICO_LOCAL_MESSAGE_BYTES];
     bool fault;
 } local_output;
+
+typedef struct {
+    gridpico_revision revision;
+    size_t serial_offset;
+    bool running;
+} local_forwarding_barrier;
 
 typedef struct {
     gridpico_patch_graph graph;
@@ -60,6 +69,11 @@ typedef struct {
     bool routing_enabled;
     bool note_transform_enabled;
     bool recording_enabled;
+    bool forwarding_enabled;
+    bool forwarding_running;
+    gridpico_revision forwarding_revision;
+    local_forwarding_barrier forwarding_barriers[LOCAL_FORWARDING_BARRIERS];
+    size_t forwarding_barrier_count;
     local_binding bindings[GRIDPICO_PATCH_MAX_PORTS];
     local_binding serial;
     local_output output[LOCAL_MIDI_STAGE_FRAMES + GRIDPICO_PATCH_MAX_PORTS];
@@ -100,6 +114,10 @@ gridpico_result local_runtime_bind_adapter(local_runtime *runtime, gridpico_conn
                                            local_midi_adapter adapter);
 gridpico_result local_runtime_detach(local_runtime *runtime, gridpico_connection connection);
 gridpico_result local_runtime_midi(local_runtime *runtime, const gridpico_local_raw_ingress *input);
+/* Zero is the legacy, untagged pipe form. */
+gridpico_result local_runtime_midi_at_revision(local_runtime *runtime,
+                                               const gridpico_local_raw_ingress *input,
+                                               gridpico_revision revision);
 gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t generation);
 gridpico_result local_runtime_serial_detach(local_runtime *runtime, uint32_t generation);
 gridpico_result local_runtime_serial(local_runtime *runtime, uint32_t generation,

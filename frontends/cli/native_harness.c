@@ -34,6 +34,42 @@ typedef struct {
     size_t calls;
 } platform_fixture;
 
+typedef struct {
+    gridpico_forwarding_status status;
+    gridpico_result read_result;
+    gridpico_result apply_result;
+    size_t reads;
+    size_t applies;
+} forwarding_fixture;
+
+static gridpico_result unused_snapshot(void *context, gridpico_patch_snapshot *out);
+
+static gridpico_result read_forwarding(void *context, gridpico_forwarding_status *out)
+{
+    forwarding_fixture *fixture = context;
+    ++fixture->reads;
+    if (fixture->read_result != GRIDPICO_OK) return fixture->read_result;
+    *out = fixture->status;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result apply_forwarding(void *context, bool running,
+                                        gridpico_revision expected_revision,
+                                        gridpico_forwarding_status *out)
+{
+    forwarding_fixture *fixture = context;
+    ++fixture->applies;
+    if (fixture->apply_result != GRIDPICO_OK) return fixture->apply_result;
+    if (expected_revision != fixture->status.revision) return GRIDPICO_UNAVAILABLE;
+    if (running != fixture->status.running) {
+        if (fixture->status.revision == UINT64_MAX) return GRIDPICO_CAPACITY;
+        fixture->status.running = running;
+        ++fixture->status.revision;
+    }
+    *out = fixture->status;
+    return GRIDPICO_OK;
+}
+
 static void capture(void *context, const char *bytes, size_t size)
 {
     transcript *out = context;
@@ -81,6 +117,95 @@ static void compare_terminal_reply(gridpico_cli_frontend *cli, transcript *termi
     gridpico_cli_receive(cli, "\r\n", 2);
     gridpico_cli_process(cli);
     assert(contains_bytes(terminal, diagnostics.output, diagnostics.size));
+}
+
+static void test_forwarding_cli(transcript *terminal)
+{
+    forwarding_fixture fixture = {
+        .status = {.revision = 7, .running = true},
+        .read_result = GRIDPICO_OK,
+        .apply_result = GRIDPICO_OK,
+    };
+    gridpico_cli_frontend cli;
+    assert(gridpico_cli_init(&cli, &fixture, unused_snapshot, NULL, NULL,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "forwarding", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help", capture, terminal) == GRIDPICO_OK);
+    assert(!contains(terminal, "COMMAND forwarding"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help forwarding", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+
+    gridpico_cli_bind_musical_control(&cli, &fixture, read_forwarding, NULL,
+                                      NULL, NULL, NULL);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "forwarding", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORWARDING RUNNING 7\r\nOK\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "COMMAND forwarding -- read the master forwarding gate"));
+    clear(terminal);
+    const size_t applies_before = fixture.applies;
+    assert(gridpico_cli_execute_line(&cli, "forwarding paused if 7", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(fixture.applies == applies_before);
+
+    gridpico_cli_bind_musical_control(&cli, &fixture, NULL, apply_forwarding,
+                                      NULL, NULL, NULL);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help forwarding", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(gridpico_cli_execute_line(&cli, "forwarding", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(gridpico_cli_execute_line(&cli, "forwarding paused if 7", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(fixture.applies == applies_before);
+
+    gridpico_cli_bind_musical_control(&cli, &fixture, read_forwarding,
+                                      apply_forwarding, NULL, NULL, NULL);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "forwarding paused if 7", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORWARDING PAUSED 8\r\nOK\r\n") == 0);
+    assert(!fixture.status.running && fixture.status.revision == 8);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "forwarding paused if 7", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "forwarding paused if 8", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORWARDING PAUSED 8\r\nOK\r\n") == 0);
+
+    const size_t calls = fixture.applies;
+    static const char *const invalid[] = {
+        "forwarding run if 8", "forwarding running if 0",
+        "forwarding running if 18446744073709551616",
+        "forwarding running if 8 extra", "forwarding  paused if 8",
+    };
+    for (size_t i = 0; i < sizeof invalid / sizeof invalid[0]; ++i) {
+        clear(terminal);
+        assert(gridpico_cli_execute_line(&cli, invalid[i], capture, terminal) ==
+               GRIDPICO_INVALID);
+        assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    }
+    assert(fixture.applies == calls);
+
+    fixture.status = (gridpico_forwarding_status){.revision = UINT64_MAX, .running = true};
+    clear(terminal);
+    assert(gridpico_cli_execute_line(
+               &cli, "forwarding paused if 18446744073709551615", capture, terminal) ==
+           GRIDPICO_CAPACITY);
+    assert(strcmp(terminal->output, "ERR CAPACITY\r\n") == 0);
+    assert(fixture.status.running && fixture.status.revision == UINT64_MAX);
+
+    compare_terminal_reply(&cli, terminal, "forwarding", GRIDPICO_OK);
+    compare_terminal_reply(&cli, terminal, "forwarding running if 18446744073709551615",
+                           GRIDPICO_OK);
 }
 
 static void initialize_monitor_inventory(gridpico_patch_inventory *inventory)
@@ -893,5 +1018,6 @@ int main(void)
     test_routing_cli(&terminal);
     test_guarded_route_cli(&terminal);
     test_platform_cli(&terminal);
+    test_forwarding_cli(&terminal);
     return 0;
 }

@@ -12,7 +12,7 @@
 #include <time.h>
 #include <unistd.h>
 
-enum { MAX_LINE_BYTES = 544, MAX_FIELDS = 4, SERVICE_BATCH = 16 };
+enum { MAX_LINE_BYTES = 544, MAX_FIELDS = 6, SERVICE_BATCH = 16 };
 
 typedef struct {
     gridpico_connection connection;
@@ -42,14 +42,14 @@ static const char *result_line(gridpico_result result)
     return "err UNAVAILABLE";
 }
 
-static bool decimal(const char *text, uint32_t maximum, uint32_t *result)
+static bool decimal(const char *text, uint64_t maximum, uint64_t *result)
 {
-    uint32_t value = 0;
+    uint64_t value = 0;
     for (; *text != '\0'; ++text) {
         if (*text < '0' || *text > '9') {
             return false;
         }
-        const uint32_t digit = (uint32_t)(*text - '0');
+        const unsigned digit = (unsigned)(*text - '0');
         if (value > (maximum - digit) / 10u) {
             return false;
         }
@@ -110,31 +110,31 @@ static gridpico_result dispatch(local_runtime *runtime, char *line, reply *respo
         return GRIDPICO_INVALID;
     }
     const char *command = fields[0];
-    uint32_t generation;
+    uint64_t generation;
     if (strncmp(command, "serial", sizeof("serial") - 1u) == 0) {
         if (!decimal(fields[1], UINT32_MAX, &generation)) {
             return GRIDPICO_INVALID;
         }
         if (count == 2 && strcmp(command, "serial-bind") == 0) {
-            return local_runtime_serial_bind(runtime, generation);
+            return local_runtime_serial_bind(runtime, (uint32_t)generation);
         }
         if (count == 2 && strcmp(command, "serial-detach") == 0) {
-            return local_runtime_serial_detach(runtime, generation);
+            return local_runtime_serial_detach(runtime, (uint32_t)generation);
         }
         if (count == 3 && strcmp(command, "serial") == 0) {
             uint8_t bytes[LOCAL_SERIAL_CHUNK];
             const size_t size = decode_hex(fields[2], bytes, sizeof(bytes));
-            return local_runtime_serial(runtime, generation, (const char *)bytes, size);
+            return local_runtime_serial(runtime, (uint32_t)generation, (const char *)bytes, size);
         }
         return GRIDPICO_INVALID;
     }
 
-    uint32_t port;
+    uint64_t port;
     if (count < 3 || !decimal(fields[1], UINT16_MAX, &port) ||
         !decimal(fields[2], UINT32_MAX, &generation)) {
         return GRIDPICO_INVALID;
     }
-    const gridpico_connection connection = {(gridpico_port_id)port, generation};
+    const gridpico_connection connection = {(gridpico_port_id)port, (uint32_t)generation};
     const bool managed_output_only = strcmp(command, "bind-managed-out") == 0;
     if (count == 3 && (strcmp(command, "bind") == 0 || managed_output_only)) {
         const gridpico_result result = managed_output_only ?
@@ -153,10 +153,18 @@ static gridpico_result dispatch(local_runtime *runtime, char *line, reply *respo
     if (count == 3 && strcmp(command, "detach") == 0) {
         return local_runtime_detach(runtime, connection);
     }
-    if (count == 4 && strcmp(command, "midi") == 0) {
+    if ((count == 4 || count == 6) && strcmp(command, "midi") == 0) {
+        const char *hex = fields[3];
+        gridpico_revision revision = 0;
+        if (count == 6) {
+            hex = fields[5];
+            if (!runtime->forwarding_enabled || strcmp(fields[3], "ordinary") != 0 ||
+                fields[4][0] == '0' || !decimal(fields[4], UINT64_MAX, &revision) ||
+                strspn(hex, "0123456789ABCDEF") != 2u * GRIDPICO_LOCAL_MESSAGE_BYTES) return GRIDPICO_INVALID;
+        }
         gridpico_local_raw_ingress input = {.source = connection};
-        if (decode_hex(fields[3], input.bytes, sizeof(input.bytes)) == sizeof(input.bytes)) {
-            return local_runtime_midi(runtime, &input);
+        if (decode_hex(hex, input.bytes, sizeof(input.bytes)) == sizeof(input.bytes)) {
+            return local_runtime_midi_at_revision(runtime, &input, revision);
         }
     }
     return GRIDPICO_INVALID;
@@ -171,11 +179,32 @@ static bool write_hex(const char *bytes, size_t count)
             return false;
         }
     }
-    return putchar('\n') != EOF;
+    return true;
+}
+
+static bool write_serial_range(const local_runtime *runtime, size_t sent, size_t end)
+{
+    for (; sent < end;) {
+        const size_t remaining = end - sent;
+        const size_t count = remaining < LOCAL_SERIAL_CHUNK ? remaining : LOCAL_SERIAL_CHUNK;
+        if (printf("serial %" PRIu32 " ", runtime->serial.generation) < 0 ||
+            !write_hex(runtime->serial_bytes + sent, count) || putchar('\n') == EOF) return false;
+        sent += count;
+    }
+    return true;
 }
 
 static bool write_records(const local_runtime *runtime)
 {
+    size_t serial_offset = 0;
+    for (size_t i = 0; i < runtime->forwarding_barrier_count; ++i) {
+        const local_forwarding_barrier *barrier = &runtime->forwarding_barriers[i];
+        if (!runtime->serial.fault &&
+            !write_serial_range(runtime, serial_offset, barrier->serial_offset)) return false;
+        if (printf("forwarding-state %" PRIu64 " %s\n", barrier->revision,
+                   barrier->running ? "running" : "paused") < 0) return false;
+        serial_offset = barrier->serial_offset;
+    }
     for (size_t i = 0; i < runtime->output_count; ++i) {
         const local_output *row = &runtime->output[i];
         const unsigned port = row->destination.endpoint;
@@ -188,23 +217,21 @@ static bool write_records(const local_runtime *runtime)
             local_port_state state;
             if (local_runtime_port(runtime, row->destination.endpoint, &state) != GRIDPICO_OK ||
                 !state.attached || state.generation != generation) continue;
-            if (printf("midi %u %" PRIu32 " ", port, generation) < 0 ||
-                !write_hex((const char *)row->bytes, sizeof(row->bytes))) return false;
+            if (row->forwarding_revision != 0 && (!runtime->forwarding_running ||
+                row->forwarding_revision != runtime->forwarding_revision)) continue;
+            if (printf("midi %u %" PRIu32 " ", port, generation) < 0) return false;
+            if (runtime->forwarding_enabled) {
+                const int prefix = row->forwarding_revision != 0
+                    ? printf("ordinary %" PRIu64 " ", row->forwarding_revision) : printf("control - ");
+                if (prefix < 0) return false;
+            }
+            if (!write_hex((const char *)row->bytes, sizeof(row->bytes)) || putchar('\n') == EOF) return false;
         }
     }
     if (runtime->serial.fault) {
         return printf("fault serial %" PRIu32 "\n", runtime->serial.generation) >= 0;
     }
-    for (size_t sent = 0; sent < runtime->serial_count;) {
-        const size_t remaining = runtime->serial_count - sent;
-        const size_t count = remaining < LOCAL_SERIAL_CHUNK ? remaining : LOCAL_SERIAL_CHUNK;
-        if (printf("serial %" PRIu32 " ", runtime->serial.generation) < 0 ||
-            !write_hex(runtime->serial_bytes + sent, count)) {
-            return false;
-        }
-        sent += count;
-    }
-    return true;
+    return write_serial_range(runtime, serial_offset, runtime->serial_count);
 }
 
 static bool write_event(const local_runtime *runtime)
@@ -236,11 +263,17 @@ static bool handle_line(local_runtime *runtime, char *line, bool malformed)
     const gridpico_result dispatched = malformed ? GRIDPICO_INVALID
                                                   : dispatch(runtime, line, &response);
     const gridpico_result result = local_runtime_finish(runtime, dispatched);
-    if (response.bound && result == GRIDPICO_OK &&
-        printf("bound %u %" PRIu32 " %s %u\n", (unsigned)response.connection.endpoint,
-               response.connection.generation,
-               response.direction == GRIDPICO_PATCH_INPUT ? "in" : "out", response.limit) < 0) {
-        return false;
+    if (response.bound && result == GRIDPICO_OK) {
+        const char *classification = "";
+        if (runtime->forwarding_enabled) {
+            local_port_state state;
+            if (local_runtime_port(runtime, response.connection.endpoint, &state) != GRIDPICO_OK) return false;
+            classification = state.managed ? " managed" : " control";
+        }
+        if (printf("bound %u %" PRIu32 " %s %u%s\n", (unsigned)response.connection.endpoint,
+                   response.connection.generation,
+                   response.direction == GRIDPICO_PATCH_INPUT ? "in" : "out",
+                   response.limit, classification) < 0) return false;
     }
     return write_records(runtime) && puts(result_line(result)) != EOF && fflush(stdout) == 0;
 }
@@ -336,8 +369,9 @@ int local_router_run(local_runtime *runtime, const local_router_service *service
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR || (ui_descriptor && !write_ui_roles(runtime))) {
         return EXIT_FAILURE;
     }
-    const int ready = runtime->configured
-        ? printf("ready %zu\n", runtime->profile->limits.midi_peer_limit) : puts("ready");
+    const int ready = runtime->forwarding_enabled || runtime->configured
+        ? printf("ready %zu%s\n", runtime->profile->limits.midi_peer_limit,
+                 runtime->forwarding_enabled ? " forwarding-v1" : "") : puts("ready");
     const bool complete = ready >= 0 && fflush(stdout) == 0 &&
         (runtime->output_count == 0 || write_event(runtime)) && serve(runtime, service);
     local_runtime_begin(runtime, 0);
@@ -396,6 +430,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
     local_runtime_enable_desktop_note_transform(&runtime);
+    runtime.forwarding_enabled = ui_descriptor && !recorder;
     return local_router_run(&runtime, NULL, ui_descriptor);
 }
 #endif

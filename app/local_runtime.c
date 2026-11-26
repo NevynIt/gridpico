@@ -110,7 +110,8 @@ static size_t read_logs(void *context, gridpico_diagnostic_log_entry *rows, size
 }
 
 static gridpico_result stage_midi(local_runtime *runtime, gridpico_connection to,
-                                  const uint8_t bytes[GRIDPICO_LOCAL_MESSAGE_BYTES])
+                                  const uint8_t bytes[GRIDPICO_LOCAL_MESSAGE_BYTES],
+                                  gridpico_revision forwarding_revision)
 {
     const size_t index = port_index(runtime, to.endpoint);
     if (index == runtime->profile->registry.inventory.port_count) {
@@ -136,7 +137,7 @@ static gridpico_result stage_midi(local_runtime *runtime, gridpico_connection to
         return result;
     }
     local_output *row = &runtime->output[runtime->output_count++];
-    *row = (local_output){.destination = to};
+    *row = (local_output){.destination = to, .forwarding_revision = forwarding_revision};
     memcpy(row->bytes, bytes, sizeof(row->bytes));
     ++sink->queued;
     return GRIDPICO_OK;
@@ -144,17 +145,19 @@ static gridpico_result stage_midi(local_runtime *runtime, gridpico_connection to
 
 static gridpico_result deliver_note(void *context, const gridpico_note_delivery *delivery)
 {
+    local_runtime *runtime = context;
     const gridpico_note note = delivery->note;
     const uint8_t bytes[] = {
         (uint8_t)((note.kind == GRIDPICO_NOTE_ON ? 0x90 : 0x80) | note.channel_index),
         note.key, note.velocity,
     };
-    return stage_midi(context, delivery->destination, bytes);
+    return stage_midi(runtime, delivery->destination, bytes,
+                      runtime->forwarding_enabled ? runtime->forwarding_revision : 0);
 }
 
 static gridpico_result deliver_raw(void *context, const gridpico_local_raw_delivery *delivery)
 {
-    return stage_midi(context, delivery->destination, delivery->bytes);
+    return stage_midi(context, delivery->destination, delivery->bytes, 0);
 }
 
 static void deliver_feedback(void *context, const gridpico_apc_surface_message *message)
@@ -164,7 +167,7 @@ static void deliver_feedback(void *context, const gridpico_apc_surface_message *
     if (sink != NULL && sink->attached && runtime->raw_deadline_ms == 0 &&
         (runtime->feedback_ready || runtime->refreshing)) {
         const gridpico_connection destination = {runtime->feedback_port, sink->generation};
-        stage_midi(runtime, destination, message->bytes);
+        stage_midi(runtime, destination, message->bytes, 0);
     }
 }
 
@@ -346,6 +349,57 @@ static void write_serial(void *context, const char *bytes, size_t size)
     }
 }
 
+static gridpico_result read_forwarding(void *context, gridpico_forwarding_status *out)
+{
+    const local_runtime *runtime = context;
+    if (!runtime->forwarding_enabled || !runtime->serial.attached) return GRIDPICO_UNAVAILABLE;
+    *out = (gridpico_forwarding_status){.revision = runtime->forwarding_revision,
+                                       .running = runtime->forwarding_running};
+    return GRIDPICO_OK;
+}
+
+static void purge_ordinary_output(local_runtime *runtime)
+{
+    size_t kept = 0;
+    for (size_t i = 0; i < runtime->output_count; ++i) {
+        const local_output *row = &runtime->output[i];
+        if (row->forwarding_revision == 0) {
+            runtime->output[kept++] = *row;
+        } else {
+            local_binding *sink = binding(runtime, row->destination.endpoint);
+            if (sink != NULL && sink->generation == row->destination.generation && sink->queued != 0) {
+                --sink->queued;
+            }
+        }
+    }
+    runtime->output_count = kept;
+}
+
+static gridpico_result apply_forwarding(void *context, bool running, gridpico_revision expected_revision,
+                                        gridpico_forwarding_status *out)
+{
+    local_runtime *runtime = context;
+    if (expected_revision == 0) return GRIDPICO_INVALID;
+    if (!runtime->forwarding_enabled || !runtime->serial.attached || runtime->serial.fault ||
+        expected_revision != runtime->forwarding_revision) return GRIDPICO_UNAVAILABLE;
+    if (running == runtime->forwarding_running) return read_forwarding(context, out);
+
+    const size_t reply_size = sizeof("FORWARDING RUNNING 18446744073709551615\r\nOK\r\n> ") - 1u;
+    if (runtime->forwarding_revision == UINT64_MAX ||
+        runtime->forwarding_barrier_count == LOCAL_FORWARDING_BARRIERS ||
+        sizeof(runtime->serial_bytes) - runtime->serial_count < reply_size) return GRIDPICO_CAPACITY;
+
+    ++runtime->forwarding_revision;
+    runtime->forwarding_running = running;
+    purge_ordinary_output(runtime);
+    runtime->forwarding_barriers[runtime->forwarding_barrier_count++] = (local_forwarding_barrier){
+        .revision = runtime->forwarding_revision,
+        .serial_offset = runtime->serial_count,
+        .running = running,
+    };
+    return read_forwarding(context, out);
+}
+
 static gridpico_result read_availability(
     void *context, const gridpico_local_registry *registry,
     gridpico_local_port_availability out[GRIDPICO_PATCH_MAX_PORTS])
@@ -440,7 +494,7 @@ static void enable_routing(local_runtime *runtime)
 
 gridpico_result local_runtime_init_profile(local_runtime *runtime, const local_router_profile *profile)
 {
-    *runtime = (local_runtime){0};
+    *runtime = (local_runtime){.forwarding_running = true, .forwarding_revision = 1};
     runtime->configured = profile != NULL;
     runtime->profile = runtime->configured ? profile : &default_profile;
     const gridpico_local_registry *registry = &runtime->profile->registry;
@@ -519,6 +573,7 @@ void local_runtime_begin(local_runtime *runtime, uint64_t now_ms)
     runtime->now_ms = now_ms;
     runtime->output_count = 0;
     runtime->fault_count = 0;
+    runtime->forwarding_barrier_count = 0;
     runtime->serial_count = 0;
     runtime->serial.fault = false;
     for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
@@ -542,6 +597,7 @@ gridpico_result local_runtime_port(const local_runtime *runtime, gridpico_port_i
         .attached = binding->attached,
         .adapter_owned = binding->adapter_owned,
         .socket = runtime->profile->ports[index].socket,
+        .managed = runtime->profile->registry.port_capabilities[index] == GRIDPICO_LOCAL_PORT_MANAGED,
     };
     return GRIDPICO_OK;
 }
@@ -646,7 +702,9 @@ static bool valid_triplet(const uint8_t *bytes)
            bytes[1] <= 127 && bytes[2] <= 127;
 }
 
-gridpico_result local_runtime_midi(local_runtime *runtime, const gridpico_local_raw_ingress *input)
+gridpico_result local_runtime_midi_at_revision(local_runtime *runtime,
+                                               const gridpico_local_raw_ingress *input,
+                                               gridpico_revision revision)
 {
     const size_t index = port_index(runtime, input->source.endpoint);
     if (index == runtime->profile->registry.inventory.port_count ||
@@ -658,7 +716,11 @@ gridpico_result local_runtime_midi(local_runtime *runtime, const gridpico_local_
     if (!port->attached || port->generation != input->source.generation) {
         return GRIDPICO_UNAVAILABLE;
     }
-    switch (runtime->profile->registry.port_capabilities[index]) {
+    const gridpico_local_port_capability capability = runtime->profile->registry.port_capabilities[index];
+    if (revision != 0 && (!runtime->forwarding_enabled || capability != GRIDPICO_LOCAL_PORT_MANAGED)) {
+        return GRIDPICO_INVALID;
+    }
+    switch (capability) {
     case GRIDPICO_LOCAL_PORT_PANEL: {
         gridpico_apc_surface_message message;
         memcpy(message.bytes, input->bytes, sizeof(message.bytes));
@@ -673,6 +735,10 @@ gridpico_result local_runtime_midi(local_runtime *runtime, const gridpico_local_
         const uint8_t status = input->bytes[0];
         if ((status >> 4) != 8 && (status >> 4) != 9) {
             return GRIDPICO_INVALID;
+        }
+        if (runtime->forwarding_enabled) {
+            if (revision == 0 || revision > runtime->forwarding_revision) return GRIDPICO_INVALID;
+            if (!runtime->forwarding_running || revision != runtime->forwarding_revision) return GRIDPICO_OK;
         }
         const gridpico_ingress_note note = {
             .source = input->source,
@@ -697,6 +763,11 @@ gridpico_result local_runtime_midi(local_runtime *runtime, const gridpico_local_
     return GRIDPICO_INVALID;
 }
 
+gridpico_result local_runtime_midi(local_runtime *runtime, const gridpico_local_raw_ingress *input)
+{
+    return local_runtime_midi_at_revision(runtime, input, 0);
+}
+
 gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t generation)
 {
     if (generation == 0) {
@@ -719,6 +790,10 @@ gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t gener
         }
         if (runtime->note_transform_enabled) {
             gridpico_cli_bind_note_transform(&runtime->cli, runtime, apply_note_transform);
+        }
+        if (runtime->forwarding_enabled) {
+            gridpico_cli_bind_musical_control(&runtime->cli, runtime, read_forwarding, apply_forwarding,
+                                              NULL, NULL, NULL);
         }
         runtime->serial = (local_binding){.generation = generation, .attached = true};
         gridpico_cli_process(&runtime->cli);

@@ -28,17 +28,45 @@ function bytes(hex, maxBytes, exact = false) {
   return Buffer.from(hex, "hex");
 }
 
-function recordFrom(line) {
+function revision(text) {
+  if (!/^[1-9][0-9]{0,19}$/.test(text) || BigInt(text) > 0xffffffffffffffffn) {
+    throw new Error("Invalid router forwarding revision");
+  }
+  return BigInt(text);
+}
+
+function recordFrom(line, forwardingEnabled) {
   const fields = line.split(" ");
   const [kind, first, second, third] = fields;
-  if (kind === "bound" && fields.length === 5 && (third === "in" || third === "out")) {
+  if (kind === "forwarding-state" && forwardingEnabled) {
+    if (fields.length !== 3 || (second !== "running" && second !== "paused")) {
+      throw new Error("Invalid router forwarding state");
+    }
+    return { kind, revision: revision(first), running: second === "running" };
+  }
+  if (kind === "bound" && fields.length === (forwardingEnabled ? 6 : 5) && (third === "in" || third === "out")) {
+    const classification = fields[5];
+    if (classification !== undefined && classification !== "managed" && classification !== "control") {
+      throw new Error("Invalid router binding class");
+    }
     return {
       kind, port: unsigned(first, 65535), generation: unsigned(second, maxGeneration),
-      direction: third, limit: unsigned(fields[4], 128),
+      direction: third, limit: unsigned(fields[4], 128), classification,
     };
   }
-  if (kind === "midi" && fields.length === 4) {
-    return { kind, port: unsigned(first, 65535), generation: unsigned(second, maxGeneration), data: bytes(third, 3, true) };
+  if (kind === "midi" && fields.length === (forwardingEnabled ? 6 : 4)) {
+    const provenance = forwardingEnabled ? third : undefined;
+    let forwardingRevision;
+    if (provenance === "ordinary") {
+      forwardingRevision = revision(fields[4]);
+    } else if (forwardingEnabled &&
+               ((provenance !== "control" && provenance !== "panic") || fields[4] !== "-")) {
+      throw new Error("Invalid router output provenance");
+    }
+    return {
+      kind, port: unsigned(first, 65535), generation: unsigned(second, maxGeneration),
+      data: bytes(forwardingEnabled ? fields[5] : third, 3, true), provenance, forwardingRevision,
+    };
   }
   if (kind === "serial" && fields.length === 3) {
     return { kind, generation: unsigned(first, maxGeneration), data: bytes(second, 256) };
@@ -78,6 +106,7 @@ function uiRolesFrom(line) {
 function startLocalPipe(executable, handlers, args = [], expectUiRoles = false) {
   const runner = spawn(executable, args, { stdio: ["pipe", "pipe", "inherit"], detached: process.platform !== "win32" });
   let ready = false;
+  let forwardingEnabled = false;
   let uiRoles;
   let stopped = false;
   let response;
@@ -108,11 +137,12 @@ function startLocalPipe(executable, handlers, args = [], expectUiRoles = false) 
       return;
     }
     if (!ready) {
-      const match = /^ready ([1-9][0-9]*)$/.exec(line);
+      const match = /^ready ([1-9][0-9]*)( forwarding-v1)?$/.exec(line);
       if (line !== "ready" && (!match || Number(match[1]) > maxMidiPeers)) {
         throw new Error("Invalid router readiness");
       }
       if (expectUiRoles && !uiRoles) throw new Error("Router did not advertise UI roles");
+      forwardingEnabled = Boolean(match?.[2]);
       ready = true;
       clearTimeout(timer);
       const limit = match ? Number(match[1]) : defaultMidiPeers;
@@ -120,9 +150,9 @@ function startLocalPipe(executable, handlers, args = [], expectUiRoles = false) 
         // Parse the entire startup chunk before accepting a listener, including any late metadata.
         setImmediate(() => {
           if (stopped) return;
-          try { handlers.onReady(limit, uiRoles); } catch (error) { fail(error.message); }
+          try { handlers.onReady(limit, uiRoles, forwardingEnabled); } catch (error) { fail(error.message); }
         });
-      } else handlers.onReady(limit);
+      } else handlers.onReady(limit, undefined, forwardingEnabled);
       return;
     }
     if (line === "event" && !inEvent && !replyStarted) {
@@ -145,7 +175,7 @@ function startLocalPipe(executable, handlers, args = [], expectUiRoles = false) 
       return;
     }
     if (!inEvent) replyStarted = true;
-    handlers.onRecord(recordFrom(line));
+    handlers.onRecord(recordFrom(line, forwardingEnabled));
   }
 
   runner.stdout.on("data", (chunk) => {
