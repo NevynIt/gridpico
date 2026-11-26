@@ -25,9 +25,7 @@ SEND_TIMEOUT = 15
 LIFECYCLE_TIMEOUT = 3
 RECIPIENT = "project-manager"
 SENDER = "stall-check@dev"
-BODY = ("Stall check reminder. Review the project backlog when available. "
-        "After receiving this reminder, run ./scripts/seat-stall-check ack "
-        "to allow the next one.")
+BODY = "Stall check reminder. Review the project backlog when available."
 MESSAGE_ID = re.compile(rb"(?m)^Queued message ([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}) for thread ")
 
 
@@ -57,17 +55,21 @@ def read_state():
             state = json.load(file)
     except FileNotFoundError:
         return {"enabled": False, "interval_seconds": DEFAULT_INTERVAL, "schedule": 0,
-                "outstanding": None, "last_attempt": None, "last_send": None}
+                "last_outcome": None, "last_attempt": None, "last_send": None}
     if (not isinstance(state, dict) or type(state.get("enabled")) is not bool or
             type(state.get("interval_seconds")) is not int or
             not 1 <= state["interval_seconds"] <= sys.maxsize or
             type(state.get("schedule")) is not int or state["schedule"] < 0 or
-            not {"outstanding", "last_attempt", "last_send"} <= state.keys()):
+            not {"last_attempt", "last_send"} <= state.keys()):
         raise ValueError("invalid state file")
-    outstanding = state["outstanding"]
-    if outstanding is not None and (not isinstance(outstanding, dict) or
-            outstanding.get("state") not in ("attempting", "queued", "uncertain")):
-        raise ValueError("invalid outstanding reminder state")
+    if "outstanding" in state:
+        state.setdefault("last_outcome", state.pop("outstanding"))
+    if "last_outcome" not in state:
+        raise ValueError("invalid state file")
+    outcome = state["last_outcome"]
+    if outcome is not None and (not isinstance(outcome, dict) or
+            outcome.get("state") not in ("attempting", "queued", "uncertain")):
+        raise ValueError("invalid last reminder outcome")
     return state
 
 
@@ -123,30 +125,34 @@ def queue_once(state_lock):
 
 def serve():
     schedule = None
-    deadline = 0.0
+    deadline = 0
     while True:
         with lock("state.lock") as state_lock:
             state = read_state()
             if not state["enabled"]:
                 return
-            now = time.monotonic()
+            now = time.monotonic_ns()
             if schedule != state["schedule"]:
                 schedule = state["schedule"]
-                deadline = now + state["interval_seconds"]
-            outstanding = state["outstanding"]
-            if outstanding and outstanding["state"] == "attempting":
-                outstanding.update(state="uncertain", reason="worker ended before recording a queue result")
+                interval = state["interval_seconds"] * 1_000_000_000
+                deadline = now + interval
+            outcome = state["last_outcome"]
+            if outcome and outcome["state"] == "attempting":
+                outcome.update(state="uncertain", reason="worker ended before recording a queue result")
                 write_state(state)
-            if outstanding is None and now >= deadline:
+            if now >= deadline:
                 attempted = utc_now()
                 state["last_attempt"] = attempted
-                state["outstanding"] = {"state": "attempting", "attempted_at": attempted}
+                state["last_outcome"] = {"state": "attempting", "attempted_at": attempted}
                 write_state(state)
                 outcome = queue_once(state_lock)
-                state["outstanding"] = {**outcome, "attempted_at": attempted}
+                state["last_outcome"] = {**outcome, "attempted_at": attempted}
                 if outcome["state"] == "queued":
                     state["last_send"] = {"queued_at": utc_now(), "message_id": outcome["message_id"]}
                 write_state(state)
+                # Keep the cadence anchored to its original monotonic ticks.
+                elapsed = time.monotonic_ns() - deadline
+                deadline += (elapsed // interval + 1) * interval
         time.sleep(POLL)
 
 
@@ -180,16 +186,11 @@ def control(action, interval):
                                                  cwd=SCRIPT.parent.parent, stdin=subprocess.DEVNULL,
                                                  stdout=subprocess.DEVNULL, stderr=log,
                                                  start_new_session=True)
-            elif action == "disable":
+            else:
                 state["enabled"] = False
                 write_state(state)
-            elif state["outstanding"] is not None:
-                state["outstanding"] = None
-                state["schedule"] += 1
-                write_state(state)
 
-        if action in ("enable", "disable"):
-            wait_worker(action == "enable", child)
+        wait_worker(action == "enable", child)
 
 
 def positive_interval(value):
@@ -213,7 +214,6 @@ def main():
     enable.add_argument("--interval", type=positive_interval, metavar="SECONDS")
     commands.add_parser("disable", help="stop future reminders and wait for the worker to exit")
     commands.add_parser("status", help="show configuration, worker liveness and queue history")
-    commands.add_parser("ack", help="clear one received or reconciled outstanding reminder")
     args = parser.parse_args()
     STATE_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
     if args.action != "status":

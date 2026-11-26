@@ -4,11 +4,14 @@
 from contextlib import contextmanager
 import json
 from pathlib import Path
+import runpy
 import subprocess
 import sys
 import tempfile
 import time
+from types import SimpleNamespace
 import unittest
+from unittest.mock import patch
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "seat-stall-check"
@@ -19,19 +22,20 @@ import sys
 import time
 
 root = Path(__file__).parent
-with (root / "calls").open("a") as log:
-    print(json.dumps(sys.argv[1:]), file=log)
+calls = root / "calls"
+number = len(calls.read_text().splitlines()) + 1 if calls.exists() else 1
+with calls.open("a") as log:
+    print(json.dumps({"args": sys.argv[1:], "time": time.monotonic()}), file=log)
 mode = (root / "mode").read_text()
 if mode == "timeout":
     time.sleep(30)
 if mode == "failure":
     sys.exit(3)
-print("Queued message 00000000-0000-0000-0000-000000000001 for thread fake.")
+print(f"Queued message 00000000-0000-0000-0000-{number:012x} for thread fake.")
 """
 EXPECTED = [
     "--from", "stall-check@dev", "project-manager",
-    "Stall check reminder. Review the project backlog when available. "
-    "After receiving this reminder, run ./scripts/seat-stall-check ack to allow the next one.",
+    "Stall check reminder. Review the project backlog when available.",
 ]
 
 
@@ -55,9 +59,15 @@ class Sandbox:
         output = subprocess.check_output(self.command(*args), text=True, timeout=8)
         return json.loads(output)
 
-    def calls(self):
+    def attempts(self):
         path = self.scripts / "calls"
         return [json.loads(line) for line in path.read_text().splitlines()] if path.exists() else []
+
+    def calls(self):
+        return [attempt["args"] for attempt in self.attempts()]
+
+    def mode(self, mode):
+        (self.scripts / "mode").write_text(mode)
 
     def wait_for(self, predicate):
         deadline = time.monotonic() + 6
@@ -80,7 +90,7 @@ def sandbox(mode="success"):
 
 
 class StallCheckTests(unittest.TestCase):
-    def test_single_worker_ack_and_disable(self):
+    def test_single_worker_recurs_and_disable(self):
         with sandbox() as lab:
             status = lab.run("status")
             self.assertEqual(status["interval_seconds"], 1800)
@@ -95,39 +105,78 @@ class StallCheckTests(unittest.TestCase):
                 self.assertTrue(json.loads(output)["worker_running"])
             self.assertEqual(lab.calls(), [])
             first = lab.wait_for(lambda state: state["last_send"] is not None)
-            self.assertEqual(first["outstanding"]["state"], "queued")
-            time.sleep(1.3)
-            self.assertEqual(lab.calls(), [EXPECTED])
+            self.assertEqual(first["last_outcome"]["state"], "queued")
+            second = lab.wait_for(lambda state: state["last_send"] != first["last_send"])
+            self.assertEqual(second["last_outcome"]["state"], "queued")
+            self.assertEqual(lab.calls(), [EXPECTED, EXPECTED])
+            first_attempt, second_attempt = lab.attempts()
+            self.assertGreaterEqual(second_attempt["time"] - first_attempt["time"], 0.70)
 
             stopped = lab.run("disable")
             self.assertFalse(stopped["enabled"])
             self.assertFalse(stopped["worker_running"])
-            self.assertEqual(stopped["outstanding"], first["outstanding"])
-            self.assertEqual(stopped["last_send"], first["last_send"])
+            self.assertEqual(stopped["last_outcome"], second["last_outcome"])
+            self.assertEqual(stopped["last_send"], second["last_send"])
             time.sleep(1.2)
-            self.assertEqual(lab.calls(), [EXPECTED])
-
-            lab.run("enable")
-            time.sleep(1.2)
-            self.assertEqual(lab.calls(), [EXPECTED])
-            self.assertIsNone(lab.run("ack")["outstanding"])
-            self.assertEqual(lab.calls(), [EXPECTED])
-            lab.wait_for(lambda state: len(lab.calls()) == 2 and state["outstanding"] is not None)
             self.assertEqual(lab.calls(), [EXPECTED, EXPECTED])
 
-    def test_failed_and_timed_out_attempts_hold_slot(self):
+            restarted_at = time.monotonic()
+            lab.run("enable")
+            self.assertEqual(lab.calls(), [EXPECTED, EXPECTED])
+            lab.wait_for(lambda state: state["last_send"] != second["last_send"])
+            self.assertEqual(lab.calls(), [EXPECTED, EXPECTED, EXPECTED])
+            self.assertGreaterEqual(lab.attempts()[-1]["time"] - restarted_at, 0.95)
+
+    def test_failed_and_timed_out_attempts_recover_on_schedule(self):
         for mode, reason in (("failure", "no queue receipt (exit 3)"), ("timeout", "timed out")):
             with self.subTest(mode=mode), sandbox(mode) as lab:
                 lab.run("enable", "--interval", "1")
-                state = lab.wait_for(lambda status: status["outstanding"] is not None)
-                self.assertEqual(state["outstanding"]["state"], "uncertain")
-                self.assertIn(reason, state["outstanding"]["reason"])
+                state = lab.wait_for(lambda status: status["last_outcome"] is not None)
+                self.assertEqual(state["last_outcome"]["state"], "uncertain")
+                self.assertIn(reason, state["last_outcome"]["reason"])
                 self.assertIsNone(state["last_send"])
                 self.assertIsNotNone(state["last_attempt"])
-                time.sleep(1.2)
+                lab.mode("success")
                 self.assertEqual(lab.calls(), [EXPECTED])
+                recovered = lab.wait_for(lambda status: status["last_send"] is not None)
+                self.assertEqual(recovered["last_outcome"]["state"], "queued")
+                self.assertEqual(lab.calls(), [EXPECTED, EXPECTED])
+                first_attempt, second_attempt = lab.attempts()
+                minimum = 0.95 if mode == "timeout" else 0.70
+                self.assertGreaterEqual(second_attempt["time"] - first_attempt["time"], minimum)
 
-    def test_explicit_restart_keeps_uncertain_reservation(self):
+    def test_slow_send_keeps_cadence_and_skips_missed_ticks(self):
+        serve = runpy.run_path(str(SCRIPT))["serve"]
+        now = 0
+        second = 1_000_000_000
+        attempts = []
+        state = {"enabled": True, "schedule": 1, "interval_seconds": 4,
+                 "last_outcome": None, "last_attempt": None, "last_send": None}
+
+        @contextmanager
+        def fake_lock(_):
+            yield None
+
+        def advance(seconds):
+            nonlocal now
+            now += int(seconds * second)
+            self.assertLess(now, 40 * second)
+
+        def queue_once(_):
+            attempts.append(now)
+            advance((2, 10, 0)[len(attempts) - 1])
+            if len(attempts) == 3:
+                state["enabled"] = False
+            return {"state": "uncertain", "reason": "mocked send"}
+
+        clock = SimpleNamespace(monotonic=lambda: now / second,
+                                monotonic_ns=lambda: now, sleep=advance)
+        with patch.dict(serve.__globals__, time=clock, lock=fake_lock, read_state=lambda: state,
+                        write_state=lambda _: None, queue_once=queue_once):
+            serve()
+        self.assertEqual(attempts, [4 * second, 8 * second, 20 * second])
+
+    def test_explicit_restart_migrates_legacy_attempt_and_recurs(self):
         with sandbox() as lab:
             lab.run("status")
             lab.state.write_text(json.dumps({
@@ -136,18 +185,22 @@ class StallCheckTests(unittest.TestCase):
                 "outstanding": {"state": "attempting", "attempted_at": "2026-01-01T00:00:00+00:00"},
             }))
             self.assertFalse(lab.run("status")["worker_running"])
+            restarted_at = time.monotonic()
             lab.run("enable")
-            state = lab.wait_for(lambda status: status["outstanding"]["state"] == "uncertain")
-            self.assertIn("worker ended", state["outstanding"]["reason"])
-            time.sleep(1.2)
+            state = lab.wait_for(lambda status: status["last_outcome"]["state"] == "uncertain")
+            self.assertIn("worker ended", state["last_outcome"]["reason"])
+            self.assertNotIn("outstanding", state)
             self.assertEqual(lab.calls(), [])
+            lab.wait_for(lambda status: status["last_send"] is not None)
+            self.assertEqual(lab.calls(), [EXPECTED])
+            self.assertGreaterEqual(lab.attempts()[0]["time"] - restarted_at, 0.95)
 
-    def test_worker_death_during_send_does_not_repeat(self):
+    def test_worker_death_during_send_recovers_at_next_interval(self):
         with sandbox("timeout") as lab:
             lab.run("status")
             lab.state.write_text(json.dumps({
                 "enabled": True, "interval_seconds": 1, "schedule": 1,
-                "last_attempt": None, "last_send": None, "outstanding": None,
+                "last_attempt": None, "last_send": None, "last_outcome": None,
             }))
             with subprocess.Popen(lab.command("_worker")) as worker:
                 deadline = time.monotonic() + 5
@@ -158,11 +211,15 @@ class StallCheckTests(unittest.TestCase):
                 worker.wait(timeout=3)
             stopped = lab.run("disable")
             self.assertFalse(stopped["worker_running"])
-            self.assertEqual(stopped["outstanding"]["state"], "attempting")
+            self.assertEqual(stopped["last_outcome"]["state"], "attempting")
+            lab.mode("success")
+            restarted_at = time.monotonic()
             lab.run("enable")
-            lab.wait_for(lambda status: status["outstanding"]["state"] == "uncertain")
-            time.sleep(1.2)
             self.assertEqual(lab.calls(), [EXPECTED])
+            lab.wait_for(lambda status: status["last_outcome"]["state"] == "uncertain")
+            lab.wait_for(lambda status: status["last_send"] is not None)
+            self.assertEqual(lab.calls(), [EXPECTED, EXPECTED])
+            self.assertGreaterEqual(lab.attempts()[-1]["time"] - restarted_at, 0.95)
 
 
 if __name__ == "__main__":
