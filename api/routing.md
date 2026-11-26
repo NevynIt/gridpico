@@ -137,57 +137,118 @@ typedef struct {
     bool running;
 } gridpico_forwarding_status;
 
+typedef enum {
+    GRIDPICO_PANIC_IDLE,
+    GRIDPICO_PANIC_WAIT,
+    GRIDPICO_PANIC_OPEN,
+    GRIDPICO_PANIC_CLOSED
+} gridpico_panic_window;
+
+typedef enum {
+    GRIDPICO_PANIC_STAGE_NONE,
+    GRIDPICO_PANIC_STAGE_RUNNING,
+    GRIDPICO_PANIC_STAGE_COMPLETE,
+    GRIDPICO_PANIC_STAGE_CANCELLED
+} gridpico_panic_stage_state;
+
+typedef enum {
+    GRIDPICO_PANIC_OUTPUT_PENDING,
+    GRIDPICO_PANIC_OUTPUT_COMPLETE,
+    GRIDPICO_PANIC_OUTPUT_REFUSED,
+    GRIDPICO_PANIC_OUTPUT_CANCELLED,
+    GRIDPICO_PANIC_OUTPUT_UNCONFIRMED
+} gridpico_panic_output_state;
+
 typedef struct {
     gridpico_connection output;
-    uint8_t accepted_count;
-    bool count_known;
+    uint16_t requested_count;
+    uint16_t accepted_count;
+    gridpico_panic_output_state state;
 } gridpico_panic_output;
 
 typedef struct {
+    gridpico_panic_stage_state state;
     size_t count;
     gridpico_panic_output outputs[GRIDPICO_PATCH_MAX_PORTS];
-} gridpico_panic_report;
+} gridpico_panic_stage_report;
+
+typedef struct {
+    uint64_t cycle;
+    gridpico_panic_window window;
+    uint32_t wait_us;
+    uint32_t remaining_us;
+    gridpico_panic_stage_report cc123;
+    gridpico_panic_stage_report sweep;
+} gridpico_panic_status;
+
+typedef enum {
+    GRIDPICO_PANIC_START = 1,
+    GRIDPICO_PANIC_SWEEP
+} gridpico_panic_action;
+
+typedef struct {
+    gridpico_panic_action action;
+    uint64_t cycle;
+} gridpico_panic_request;
 
 typedef gridpico_result (*gridpico_read_forwarding_fn)(
     void *context, gridpico_forwarding_status *out);
 typedef gridpico_result (*gridpico_apply_forwarding_fn)(
     void *context, bool running, gridpico_revision expected_revision,
     gridpico_forwarding_status *out);
-typedef gridpico_result (*gridpico_panic_fn)(
-    void *context, gridpico_panic_report *out);
+typedef gridpico_result (*gridpico_read_panic_fn)(
+    void *context, gridpico_panic_status *out);
+typedef gridpico_result (*gridpico_apply_panic_fn)(
+    void *context, const gridpico_panic_request *request, gridpico_panic_status *out);
 
 void gridpico_cli_bind_musical_control(
     gridpico_cli_frontend *frontend, void *context,
     gridpico_read_forwarding_fn read_forwarding,
     gridpico_apply_forwarding_fn apply_forwarding,
-    gridpico_panic_fn panic, gridpico_panic_report *panic_scratch);
+    gridpico_read_panic_fn read_panic,
+    gridpico_apply_panic_fn apply_panic, gridpico_panic_status *panic_scratch);
 ```
 
-The callbacks borrow outputs for the call only and leave them untouched on failure. Panic scratch is caller-owned and reused by the serialized CLI. Read requires its reader, apply requires the reader and applier, and `panic` requires its callback and scratch. `forwarding` reads `FORWARDING RUNNING|PAUSED REV` followed by `OK`. `forwarding running|paused if REV` returns the same committed record. The apply callback checks the nonzero expected gate revision and commits in one call. Invalid syntax or revision zero returns `ERR INVALID`. A stale guard returns `ERR UNAVAILABLE` even for a same-value request. A current same-value edit succeeds at the same revision, including at `UINT64_MAX`. An effective edit at `UINT64_MAX` returns `ERR CAPACITY` before changing state or queues. All other effective edits advance the gate revision once. Graph and Routing revisions and ordinary `status` records keep their existing contract.
+The callbacks borrow outputs for the call only and leave them untouched on failure. Panic scratch is caller-owned and reused by the serialized CLI. Each read requires its reader. Each apply requires the reader and applier. Panic forms also require scratch. `forwarding` reads `FORWARDING RUNNING|PAUSED REV` followed by `OK`. `forwarding running|paused if REV` returns the same committed record. The apply callback checks the nonzero expected gate revision and commits in one call. Invalid syntax or revision zero returns `ERR INVALID`. A stale guard returns `ERR UNAVAILABLE` even for a same-value request. A current same-value edit succeeds at the same revision, including at `UINT64_MAX`. An effective edit at `UINT64_MAX` returns `ERR CAPACITY` before changing state or queues. All other effective edits advance the gate revision once. Graph and Routing revisions and ordinary `status` records keep their existing contract.
 
 Validate the ordinary message and its source generation at the existing runtime ingress before applying the gate. While paused, consume valid ordinary input with no delivery and successful dispatch so a healthy input binding stays live. A platform may advertise the gate only when all its ordinary musical producers use the same admission and queue fence. Treat supported Audition output as ordinary music and invalidate its stale scheduled work. Keep local UI gesture pairing. The first portable implementation can gate at `local_runtime_midi` and the owned adapter entry points without extending Graph.
 
 Serialize the gate with ordinary dispatch. Each Running revision is one dispatch interval. Waiting ordinary ingress and egress belong to the accepting Running revision and their exact bindings. Before reporting Paused, close ordinary admission and invalidate and purge waiting work from the retiring interval in the runtime and host. Use the trusted binding class and work provenance to preserve control and explicit Panic. On an effective change, carry `forwarding-state REV running|paused` on the private launcher pipe before the associated public serial reply and before work of the new interval. The host mirrors that state, applies its fence and only then forwards the reply or dispatches the next work. A stale pending callback cannot queue ordinary data in a new interval. Resume admits traffic newly accepted at the target during its new Running revision. Connection generations and public MIDI framing stay intact. An already-issued WebSocket or native write can still arrive. This gate generates no MIDI or release obligations and establishes no receiver silence.
 
-The first Panic slice implements the optional explicit `panic` command for All Notes Off. The product's timed second action is a separate qualification. On acceptance, snapshot the eligible connected musical output IDs and their current generations. Request MIDI All Notes Off, CC 123 value `0`, on each of the 16 channels for each selected output through its own actual adapter. This action bypasses the gate and individual route and transform settings. Exclude disconnected, unresolved, control-only, Panel, LED, Raw and reserved capture-only outputs. The command uses no remembered keys and leaves gate, routes and transforms unchanged. Keep generations and existing per-output order. Pause leaves explicit Panic work eligible. Disconnect still retires queued Panic for that binding. Bound work by the active output pool, attempt each eligible output independently and report refusal or uncertainty without retrying or replaying.
+#### Two-stage Panic
 
-Eligibility includes an available musical output with no assigned cell or enabled edge. The runtime sends the fixed three-byte message `Bn 7B 00` through a private, exact-generation output adapter. The Managed Graph API remains Note On/Off-only. A full Panic queue is a refusal for that output and leaves its healthy binding available for subsequent ordinary traffic. Preflight the bounded result and staging capacity before any emission. At most `16 × eligible outputs` triplets can be attempted. Budget this independently of ordinary per-message fan-out.
+The same runtime owns one volatile Panic cycle independent of the forwarding and Routing revisions. Both stages bypass Pause, routes and transforms. They use the selected target's existing control authority and private output adapter. Managed ingress remains Note On/Off-only. A fresh runtime starts with no cycle, no active work and window `IDLE`.
 
-Evaluate outputs in ascending logical port order and channels in ascending order within each output. Stop that output at its first refusal or unconfirmed outcome and continue with the next output. Revalidate each binding before delivery. On completed evaluation, emit `PANIC N`, exactly `N` rows `PANIC_OUT PORT GENERATION ACCEPTED` in strictly increasing logical port order, then `OK`. Each record ends in CRLF. `N` ranges from zero to `GRIDPICO_PATCH_MAX_PORTS`. `PORT` and `GENERATION` are the actual nonzero unsigned endpoint ID and `uint32_t` generation. `ACCEPTED` is the exact adapter-accepted prefix length. `0` means none accepted, `1`–`15` means partial, `16` means full, and `-` means unconfirmed. Set `accepted_count` to zero when `count_known` is false. `OK` includes empty and all-refused reports. Before any attempts, malformed input returns only `ERR INVALID`, unavailable provider returns only `ERR UNAVAILABLE`, and a report or staging capacity refusal returns only `ERR CAPACITY`. Name the acceptance boundary in the UI. Receiver receipt and actual silence require separate observations.
+- `panic` starts a cycle with `GRIDPICO_PANIC_START` and request cycle zero. Allocate a fresh nonzero, nonwrapping cycle ID and stamp monotonic target time at admission. Start CC123 work immediately through bounded service. Admission opens the window even with an empty or later partial result. A delivery result or receiver acknowledgement never arms the sweep.
+- `panic status` reads the current cycle, window and both stages without scheduling work. A new cycle replaces the retained result. Reads on a fresh authorized binding may show an old result without inheriting its activation authority.
+- `panic sweep if CYCLE` requests `GRIDPICO_PANIC_SWEEP` for the exact nonzero current cycle and initiating control binding. Admit it once only when the first stage has no running work and the elapsed target time is strictly greater than 1 second and strictly less than 10 seconds. Consume the sweep authority on admission.
 
-The initial receiver is the existing Diagnostics Monitor. Accept exactly three MIDI bytes `Bn 7B 00` on its current receive binding and release only its local voices on MIDI channel `n + 1`. This is a receiver action. Managed ingress remains Note On/Off-only, and `PANIC_OUT` still reports adapter acceptance. With Monitor audio explicitly enabled, hold a note and confirm Pause while the voice is still sounding. Keep the binding and audio live, send Panic, then separately verify CC receipt and measured Monitor silence after its release interval. The witness applies to that Monitor's audio output.
+Use one monotonic target clock for elapsed time. Through `1,000,000` microseconds an unconsumed window is `WAIT`. From `1,000,001` through `9,999,999` it is `OPEN`. At `10,000,000` microseconds or later, after consumption or on control-binding loss, it is `CLOSED`. Expiry sends nothing and does not cancel a sweep already admitted. An unavailable provider, busy work, a stale control binding or cycle, early or expired sweep, and any third activation in the same cycle return `ERR UNAVAILABLE` and emit nothing. A repeated bare `panic` cannot restart that clock. A fresh deliberate start is eligible once the old interval expires and no job is running. A bad form, unsupported action or wrong zero/nonzero cycle argument returns `ERR INVALID`. A required allocation or cycle ID exhaustion returns `ERR CAPACITY` before work or state changes. On rejection return only the error and leave the previous result intact.
 
-Use the selected router's authorized CLI for browser controls. Show the last confirmed state with a pending indication during an operation. Adopt only the matching committed reply. Re-read on stale guard or reconnect. Never retry an ambiguous Panic automatically. All authorized views read the same gate. A second view needs an authorized read path under the existing exclusive serial admission. First qualify the ordinary portable terminal, then the same-origin Routing UI. Test queued ordinary traffic across Pause and Resume, continued CLI and feedback, and a failing Panic output alongside healthy outputs while paused. Pico and other platforms qualify the same command contract only when their actual providers and queue fences are ready.
+Each admitted stage takes its own bounded snapshot of currently verified connected musical output IDs, exact generations and channel scope, including unassigned musical outputs. Use verified documented channel capability when available. Otherwise request all 16 channels. Include only outputs with applicable channels. Exclude unavailable or unresolved bindings, Panel, LED, Raw, control-only and reserved capture-only outputs. Tool names, routes, transforms, past MIDI and ordinary USB or WebSocket slots cannot establish eligibility or channel scope. Revalidate identity, generation and eligibility before each submission. Discard work for a retired binding and never add a later attachment to an existing stage.
 
-#### Timed second Panic action
+For each applicable channel, stage one uses `Bn 7B 00`. The sweep uses explicit `8n KEY 00` for every key `0`–`127`. Preserve channel order, then key order within each output. Budget at most 16 CC123 events or 2,048 sweep events per output. Keep one active stage and a bounded cursor and result per output. Service at most eight Panic triplets per portable foreground pass, rotating through active outputs so one cannot monopolize service. Existing serial, feedback and ordinary service continue. The activation returns promptly with actual stage status. It never waits for the sweep or allocates its full frame list. On refusal or uncertain submission stop that output and continue the other outputs. A full queue does not evict a healthy binding. Output loss cancels its remaining work. Loss of the initiating control binding closes the window and cancels the active job's remaining work. Already-issued writes can finish. Discard retired waiting work, with no retries or replay. There is no remembered note state. [MIDI Association message summary](https://midi.org/summary-of-midi-1-0-messages)
 
-This later increment shares the selected target's Panic authority across the CLI and APC Routing controls. The first accepted activation requests `Bn 7B 00` on the requested MIDI channels. The current bare `panic` form requests all 16. The runtime records a single-use window token, the request's channel scope and its monotonic acceptance time. An evaluated partial or empty first result still opens the window. Receiver or transport acknowledgement plays no part in arming it. [MIDI Association message summary](https://midi.org/summary-of-midi-1-0-messages)
+Both the status read and a successful activation emit the following CRLF records. Reports describe the captured cohorts, so the two output lists can differ.
 
-The second action requires a separate deliberate activation for the current token through the same authorized target control binding. The runtime admits it only at elapsed time strictly greater than 1 second and strictly less than 10 seconds. Consume the token on admission. Early, expired, repeated and stale requests emit nothing. Loss of the control binding discards an unused window. A visible countdown explains when the action is available. A timer or a delivery result cannot invoke it. The CLI and APC controls read the same target window. Physical APC gesture and feedback qualify on their own target.
+```text
+PANIC CYCLE WINDOW WAIT_US REMAINING_US
+PANIC_STAGE CC123 STATE N
+PANIC_OUT PORT GENERATION REQUESTED ACCEPTED OUTCOME
+... N rows ...
+PANIC_STAGE SWEEP STATE N
+PANIC_OUT PORT GENERATION REQUESTED ACCEPTED OUTCOME
+... N rows ...
+OK
+```
 
-At sweep admission, take a fresh snapshot of known, eligible connected musical outputs and current attachment generations, including unassigned outputs. Use the requested channels subject to an authoritative output channel restriction where one exists. A route, transform, display name, ordinary device model and USB slot supply no channel or output selection. For each applicable channel generate explicit `8n KEY 00` for each key `0`–`127` in ascending order. The sweep remains available during Pause and leaves gate, route and transform state intact. It uses no note history. [MIDI Association message summary](https://midi.org/summary-of-midi-1-0-messages)
+`CYCLE` is zero only in `IDLE`. Report relative microseconds sampled from the target's monotonic time at readback. In `WAIT`, `WAIT_US` is the time until the first admissible tick and `REMAINING_US` is the time until the exclusive expiry. In `OPEN`, `WAIT_US` is zero and `REMAINING_US` is positive. In `IDLE` emit `- -` and zero both typed fields. In `CLOSED` emit `-` for `WAIT_US` and zero that field in the typed result. `REMAINING_US` still counts down to the original expiry, then reports zero. A stage can still be `RUNNING` when the window closes. The authoritative guard always rechecks time at activation.
 
-Budget one transient sweep with per-output generation, channel and key cursors, and result counts. Each output can receive up to 2,048 attempts. Limit each service pass and keep control and ordinary service bounded without staging the whole sweep. Stop the affected output on refusal or loss, continue independent outputs, and discard stale work rather than retrying or replaying it to a new binding. Show actual counts at the named local queue or transport boundary and mark unknown outcomes. MIDI Note Off and All Notes Off supply no synthesizer acknowledgement. Observe audio effect independently. Verify both exact timer boundaries, one-shot activation, no send on early or stale requests, exact sweep coverage, output loss, and operation while paused. [MIDI Association message summary](https://midi.org/summary-of-midi-1-0-messages)
+Each stage's `STATE` is `NONE`, `RUNNING`, `COMPLETE` or `CANCELLED`. `NONE` has zero rows. `COMPLETE` means all rows are terminal and allows partial or refused outputs. `CANCELLED` records cancellation of the whole active stage and retains its earlier counts. Per stage, `N` is at most `GRIDPICO_PATCH_MAX_PORTS`. Rows use strictly increasing nonzero logical `PORT`, captured nonzero `GENERATION` and `REQUESTED` equal to the applicable channel count for CC123 or that count times 128 for the sweep. `ACCEPTED` gives the confirmed adapter-accepted prefix so far, in `0`–`REQUESTED`. Emit `-` and store typed count zero if the outcome makes the exact count unconfirmed. `OUTCOME` is `PENDING`, `COMPLETE`, `REFUSED`, `CANCELLED` or `UNCONFIRMED`. `COMPLETE` requires the full requested count. `REFUSED` and `CANCELLED` can retain an exact partial count. The report carries at most two rows per logical output across the stages. Validate the bounded report before emitting it. `OK` confirms the read or accepted activation. It conveys completion only through the stage state.
+
+CLI and APC Routing controls use the same authorized provider, including while paused. Show the last confirmed phase and counts, with an action pending until a matching reply. Offer the sweep only for a confirmed `OPEN` window with CC123 no longer `RUNNING` and sweep state `NONE`. Offer a new first action in `IDLE` or after a confirmed zero `REMAINING_US` with neither stage `RUNNING`. Any countdown is based on provider readback. An early or held repeat, expiry, a stale view or a lost reply cannot trigger a sweep. Refresh state through the existing authority and require a fresh deliberate gesture. The reported boundary is local adapter acceptance. MIDI 1.0 CC123 and Note Off supply no synthesizer acknowledgement. Actual transport receipt and receiver sound need separate evidence. [MIDI Association message summary](https://midi.org/summary-of-midi-1-0-messages)
+
+The first receiver witness uses the existing Diagnostics Monitor. Exact `Bn 7B 00` ends its local voices on MIDI channel `n + 1` through its current receive binding. With audio explicitly enabled, hold a note and confirm Pause while it still sounds. Keep binding and audio live, send Panic, and separately verify CC receipt and measured Monitor silence after its release interval. The sweep witness checks exact key coverage, both boundary times, busy and third attempts, changed cohorts between stages, cancellation during one output's work and continued sibling progress. The portable terminal and authorized APC Routing controls qualify together. Physical controller gesture mapping and Pico service bounds require their target evidence.
 
 ## APC viewport
 
