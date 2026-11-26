@@ -26,9 +26,9 @@ LIFECYCLE_TIMEOUT = 3
 RECIPIENT = "project-manager"
 SENDER = "stall-check@dev"
 BODY = (
-    "Stall check reminder. Verify live seat activity and the current allowance. "
-    "If approved work is stalled, check blockers and start the next runnable task in order, "
-    "then confirm the owner has begun."
+    "Stall check reminder. Verify whether current work is underway or complete. "
+    "If incomplete, check the allowance and blockers and help the current owner resume and finish. "
+    "Start the next approved task only after confirming the current work is complete."
 )
 MESSAGE_ID = re.compile(rb"(?m)^Queued message ([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}) for thread ")
 

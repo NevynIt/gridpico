@@ -35,9 +35,9 @@ print(f"Queued message 00000000-0000-0000-0000-{number:012x} for thread fake.")
 """
 EXPECTED = [
     "--from", "stall-check@dev", "project-manager",
-    "Stall check reminder. Verify live seat activity and the current allowance. "
-    "If approved work is stalled, check blockers and start the next runnable task in order, "
-    "then confirm the owner has begun.",
+    "Stall check reminder. Verify whether current work is underway or complete. "
+    "If incomplete, check the allowance and blockers and help the current owner resume and finish. "
+    "Start the next approved task only after confirming the current work is complete.",
 ]
 
 
