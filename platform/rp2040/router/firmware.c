@@ -1230,12 +1230,12 @@ static void keys_led_complete(keys_led_effect effect, const gridpico_pico_packet
         packet->bytes[2] >= KEYS_PAD_FIRST + 2) return;
     const unsigned pad = packet->bytes[2] - KEYS_PAD_FIRST;
     const uint8_t bit = (uint8_t)(1u << pad);
+    const uint8_t kind = packet->bytes[1] >> 4;
     if (effect == KEYS_LED_SHOW) {
         keys.touched_pads |= keys.known_pads & bit;
     } else if (effect == KEYS_LED_RESTORE) {
         keys.touched_pads &= (uint8_t)~bit;
-    } else if (packet->bytes[1] == 0x96 || packet->bytes[1] == 0x90 ||
-               packet->bytes[1] == 0x86 || packet->bytes[1] == 0x80) {
+    } else if (kind == 8 || kind == 9) {
         keys.last_pad[pad] = *packet;
         keys.known_pads |= bit;
         keys.touched_pads &= (uint8_t)~bit;
@@ -1250,19 +1250,24 @@ static bool dispatch_keys_host(uint8_t index, const gridpico_pico_packet *packet
     const uint8_t length = keys_voice_length(packet);
     if (cable > 1 || length == 0) return router.keys_mode || router.keys_cutover;
     if (keys_input_current()) {
+        const bool available = !router.keys_cutover && keys_led_current() && keys_native_current();
+        const bool block_new_chord = !available && !keys.chooser.chord_used;
+        if (!available) {
+            keys.chooser.open = false;
+            keys.show_pads = 0;
+        }
+        /* Guard only new chords. The recognizer still owns its admitted pairs. */
+        if (block_new_chord) keys.chooser.chord_used = true;
         const bool open = keys.chooser.open;
         const gridpico_apc_chooser_result action = gridpico_apc_chooser_receive(
             &keys.chooser, keys.chooser.attachment, cable, &packet->bytes[1], length);
-        if (open != keys.chooser.open || action.requested_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST) {
-            const bool available = keys_led_current() && keys_native_current() && !router.keys_cutover;
-            if (!available) keys.chooser.open = false;
-            keys.show_pads = keys.chooser.open ? 3u : 0u;
-            if (available && action.requested_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST &&
-                (action.requested_mode == GRIDPICO_APC_CHOOSER_KEYS) != router.keys_mode) {
-                keys.native_generation = router.generation[GRIDPICO_PICO_WEB];
-                keys.requested = action.requested_mode;
-                router.keys_cutover = true;
-            }
+        if (block_new_chord) keys.chooser.chord_used = false;
+        if (open != keys.chooser.open) keys.show_pads = keys.chooser.open ? 3u : 0u;
+        if (available && action.requested_mode != GRIDPICO_APC_CHOOSER_NO_REQUEST &&
+            (action.requested_mode == GRIDPICO_APC_CHOOSER_KEYS) != router.keys_mode) {
+            keys.native_generation = router.generation[GRIDPICO_PICO_WEB];
+            keys.requested = action.requested_mode;
+            router.keys_cutover = true;
         }
         if (action.consumed) return true;
     }
@@ -1291,8 +1296,12 @@ static void service_keys_cutover(void)
                                tuh_midi_mounted(keys.panel.index);
     const uint32_t irq = save_and_disable_interrupts();
     const bool native_live = native_epoch_current();
-    const bool native_quiet = !native_live || (router.native_output_ready && !tud_task_event_ready() && tud_midi_available() == 0 &&
-        native_endpoint_quiet() && (usb_hw->buf_status & USB_BUFF_STATUS_EP3_OUT_BITS) == 0);
+    /* A completed fault can retire the old lane without reopening native output.
+     * A timed-out flight still busy in USBD cannot cross this boundary.
+     */
+    const bool native_quiet = !native_live || (!tud_task_event_ready() && tud_midi_available() == 0 &&
+        native_endpoint_quiet() && usbd_edpt_ready(DEVICE_ROOT, GRIDPICO_NATIVE_MIDI_IN_EP) &&
+        (usb_hw->buf_status & USB_BUFF_STATUS_EP3_OUT_BITS) == 0);
     const bool quiet = !tuh_task_event_ready() && (!physical_live || tuh_midi_read_available(keys.panel.index) == 0) &&
         native_quiet && (!enter_keys || (native_live && router.native_output_ready && !tud_suspended() &&
         keys.native_generation == router.generation[GRIDPICO_PICO_WEB]));
