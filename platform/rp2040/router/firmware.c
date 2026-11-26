@@ -1758,6 +1758,17 @@ static bool host_release_packet(const gridpico_pico_packet *packet)
     return (packet->bytes[0] & 0x0fu) == 8;
 }
 
+static bool recovery_sink_current(uint8_t index, gridpico_pico_peer owner)
+{
+    const size_t slot = owner - GRIDPICO_PICO_DISCOVERED;
+    if (!router.discovered[slot].recovering_output) return true;
+
+    const discovered_device *binding = mounted_binding(index);
+    return binding != NULL && !binding->ambiguous && observations[index].verified &&
+        eligible_interface(index) && binding->identity.output_endpoint == host_endpoints_out[index] &&
+        same_serial(&binding->identity, &observations[index].identity);
+}
+
 static bool current_musical_flight(uint8_t index)
 {
     const host_interface *itf = &interfaces[index];
@@ -1814,7 +1825,7 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
                 gridpico_pico_router_led_complete(&router, GRIDPICO_PICO_APC, complete);
             }
         }
-        if (complete && !led && host_release_packet(&itf->in_flight)) {
+        if (complete && !led && host_release_packet(&itf->in_flight) && recovery_sink_current(matched, owner)) {
             gridpico_pico_router_note_sent(&router, owner);
         }
         if (!complete) retire_host_interface(matched, true);
@@ -1956,6 +1967,7 @@ static bool service_musical_out(uint8_t index, const discovered_device *binding)
         const uint8_t cable = (uint8_t)((itf->next_cable + offset) % span);
         if ((binding->identity.outputs & (1u << cable)) == 0) continue;
         const gridpico_pico_peer owner = (gridpico_pico_peer)(binding->first_peer + cable);
+        if (!recovery_sink_current(index, owner)) continue;
         const gridpico_pico_packet *packet = gridpico_pico_router_note(&router, owner);
         if (packet == NULL) continue;
         if (submit_host_packet(index, owner, packet, cable)) {

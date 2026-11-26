@@ -97,10 +97,12 @@ struct gridpico_pico_router {
 #endif
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
     gridpico_revision physical_feedback_generation;
+    uint64_t host_output_ready_epoch;
     gridpico_patch_manual_routes manual_routes;
     struct {
         gridpico_port_id input, output;
         uint32_t input_generation;
+        bool recovering_output;
     } discovered[GRIDPICO_PICO_PEERS - GRIDPICO_PICO_DISCOVERED];
 #endif
 #ifdef GRIDPICO_RP2040_KEYS_BENCH

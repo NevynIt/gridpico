@@ -1027,7 +1027,12 @@ void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_pee
         if (peer >= GRIDPICO_PICO_DISCOVERED) {
             if (!attached) retain_host_releases(queue);
             const size_t slot = (size_t)(peer - GRIDPICO_PICO_DISCOVERED);
-            if (router->discovered[slot].output != 0) update_port(router, router->discovered[slot].output, peer);
+            const bool was_recovering = router->discovered[slot].recovering_output;
+            const bool recovering = attached && queue->count != 0;
+            router->discovered[slot].recovering_output = recovering;
+            if (router->discovered[slot].output != 0 && !(attached ? recovering : was_recovering)) {
+                update_port(router, router->discovered[slot].output, peer);
+            }
             if (router->discovered[slot].input != 0) {
                 if (attached) ++router->discovered[slot].input_generation;
                 (void)update_discovered_input(router, slot, attached);
@@ -1199,6 +1204,19 @@ void gridpico_pico_router_note_sent(gridpico_pico_router *router, gridpico_pico_
 #endif
     queue->head = (uint8_t)((queue->head + 1) % GRIDPICO_PICO_QUEUE_SIZE);
     --queue->count;
+#ifdef GRIDPICO_PICO_GENERIC_MIDI
+    if (peer >= GRIDPICO_PICO_DISCOVERED && queue->count == 0) {
+        const size_t slot = peer - GRIDPICO_PICO_DISCOVERED;
+        if (router->discovered[slot].recovering_output) {
+            /* The host verified the last retained release on this binding.
+             * Admit Graph-owned releases before anything can supply a new attack.
+             */
+            router->discovered[slot].recovering_output = false;
+            update_port(router, router->discovered[slot].output, peer);
+            ++router->host_output_ready_epoch;
+        }
+    }
+#endif
 }
 
 const gridpico_pico_packet *gridpico_pico_router_led(

@@ -8,7 +8,8 @@ _Static_assert(GRIDPICO_PICO_USB_CABLE_GROUPS <= 32, "lane mask fits one word");
 
 static uint64_t attachment_epoch(const gridpico_pico_router *router)
 {
-    uint64_t epoch = 0;
+    /* A recovered output can become available after its input's attach pass. */
+    uint64_t epoch = router->host_output_ready_epoch;
     for (unsigned peer = GRIDPICO_PICO_WEB; peer < GRIDPICO_PICO_PEERS; ++peer) {
         epoch += router->generation[peer];
     }
