@@ -171,6 +171,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       voice.oscillator.stop(now + 0.035);
     }
 
+    function releaseChannel(channel) {
+      for (const voice of voices) {
+        if (voice.channel === channel) release(voice);
+      }
+    }
+
     function silence() {
       for (const voice of voices) stopVoice(voice);
     }
@@ -235,19 +241,20 @@ window.addEventListener("DOMContentLoaded", async () => {
       }
       choice.addEventListener("change", () => {
         sounds[channel - 1] = choice.value;
-        if (choice.value === "mute") {
-          for (const voice of voices) {
-            if (voice.channel === channel) release(voice);
-          }
-        }
+        if (choice.value === "mute") releaseChannel(channel);
       });
       label.append(String(channel).padStart(2, "0"), choice);
       choices.append(label);
     }
 
     function receive(bytes) {
+      if (!audio?.ready) return;
+      if (bytes.length === 3 && (bytes[0] & 0xf0) === 0xb0 && bytes[1] === 123 && bytes[2] === 0) {
+        releaseChannel((bytes[0] & 0x0f) + 1);
+        return;
+      }
       const message = noteMessage(bytes);
-      if (!message || !audio?.ready || (filter.value && Number(filter.value) !== message.channel)) return;
+      if (!message || (filter.value && Number(filter.value) !== message.channel)) return;
       const { on, channel, note, velocity } = message;
       const held = [...voices].find(voice => !voice.releasing && voice.channel === channel && voice.note === note);
       if (!on) {

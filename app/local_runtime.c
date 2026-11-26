@@ -111,20 +111,21 @@ static size_t read_logs(void *context, gridpico_diagnostic_log_entry *rows, size
 
 static gridpico_result stage_midi(local_runtime *runtime, gridpico_connection to,
                                   const uint8_t bytes[GRIDPICO_LOCAL_MESSAGE_BYTES],
-                                  gridpico_revision forwarding_revision)
+                                  gridpico_revision forwarding_revision, bool panic)
 {
     const size_t index = port_index(runtime, to.endpoint);
     if (index == runtime->profile->registry.inventory.port_count) {
         return GRIDPICO_UNAVAILABLE;
     }
     local_binding *sink = &runtime->bindings[index];
-    if (!sink->attached || sink->generation != to.generation || sink->fault) {
+    if (!sink->attached || sink->generation != to.generation || sink->fault ||
+        (panic && sink->adapter_owned)) {
         return GRIDPICO_UNAVAILABLE;
     }
     if (sink->queued >= runtime->profile->ports[index].queue_limit ||
         (sink->adapter.send == NULL &&
          runtime->output_count - runtime->fault_count >= LOCAL_MIDI_STAGE_FRAMES)) {
-        sink->fault = true;
+        if (!panic) sink->fault = true;
         return GRIDPICO_UNAVAILABLE;
     }
     if (sink->adapter.send != NULL) {
@@ -137,7 +138,8 @@ static gridpico_result stage_midi(local_runtime *runtime, gridpico_connection to
         return result;
     }
     local_output *row = &runtime->output[runtime->output_count++];
-    *row = (local_output){.destination = to, .forwarding_revision = forwarding_revision};
+    *row = (local_output){.destination = to, .forwarding_revision = forwarding_revision,
+                          .panic = panic};
     memcpy(row->bytes, bytes, sizeof(row->bytes));
     ++sink->queued;
     return GRIDPICO_OK;
@@ -152,12 +154,12 @@ static gridpico_result deliver_note(void *context, const gridpico_note_delivery 
         note.key, note.velocity,
     };
     return stage_midi(runtime, delivery->destination, bytes,
-                      runtime->forwarding_enabled ? runtime->forwarding_revision : 0);
+                      runtime->forwarding_enabled ? runtime->forwarding_revision : 0, false);
 }
 
 static gridpico_result deliver_raw(void *context, const gridpico_local_raw_delivery *delivery)
 {
-    return stage_midi(context, delivery->destination, delivery->bytes, 0);
+    return stage_midi(context, delivery->destination, delivery->bytes, 0, false);
 }
 
 static void deliver_feedback(void *context, const gridpico_apc_surface_message *message)
@@ -167,7 +169,7 @@ static void deliver_feedback(void *context, const gridpico_apc_surface_message *
     if (sink != NULL && sink->attached && runtime->raw_deadline_ms == 0 &&
         (runtime->feedback_ready || runtime->refreshing)) {
         const gridpico_connection destination = {runtime->feedback_port, sink->generation};
-        stage_midi(runtime, destination, message->bytes, 0);
+        stage_midi(runtime, destination, message->bytes, 0, false);
     }
 }
 
@@ -398,6 +400,117 @@ static gridpico_result apply_forwarding(void *context, bool running, gridpico_re
         .running = running,
     };
     return read_forwarding(context, out);
+}
+
+enum { PANIC_CHANNELS = 16, PANIC_PASS_TRIPLETS = 8 };
+
+static bool panic_serial_current(const local_runtime *runtime)
+{
+    return runtime->forwarding_enabled && runtime->serial.attached && !runtime->serial.fault;
+}
+
+static bool panic_output_eligible(const local_runtime *runtime, size_t slot)
+{
+    if (!managed_port(runtime, slot, GRIDPICO_PATCH_OUTPUT)) return false;
+    const local_profile_port *port = &runtime->profile->ports[slot];
+    const local_binding *sink = &runtime->bindings[slot];
+    return port->socket && port->role != LOCAL_ROLE_LOG && !sink->adapter_owned &&
+           sink->attached && !sink->fault;
+}
+
+static gridpico_result read_panic(void *context, gridpico_panic_stage_report *out)
+{
+    const local_runtime *runtime = context;
+    if (!panic_serial_current(runtime)) return GRIDPICO_UNAVAILABLE;
+    *out = runtime->panic_report;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result start_panic(void *context, gridpico_panic_stage_report *out)
+{
+    local_runtime *runtime = context;
+    if (!panic_serial_current(runtime) || runtime->panic_report.state == GRIDPICO_PANIC_STAGE_RUNNING) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+
+    gridpico_panic_stage_report report = {.state = GRIDPICO_PANIC_STAGE_COMPLETE};
+    const gridpico_patch_inventory *inventory = &runtime->profile->registry.inventory;
+    for (size_t i = 0; i < inventory->port_count; ++i) {
+        if (!panic_output_eligible(runtime, i)) continue;
+        if (report.count == GRIDPICO_PATCH_MAX_PORTS) return GRIDPICO_CAPACITY;
+        const gridpico_port_id id = inventory->ports[i].id;
+        size_t slot = report.count++;
+        while (slot != 0 && report.outputs[slot - 1].output.endpoint > id) {
+            report.outputs[slot] = report.outputs[slot - 1];
+            --slot;
+        }
+        report.outputs[slot] = (gridpico_panic_output){
+            .output = {id, runtime->bindings[i].generation},
+            .requested_count = PANIC_CHANNELS,
+            .state = GRIDPICO_PANIC_OUTPUT_PENDING,
+        };
+    }
+
+    /* The activation reply must fit before the job starts accepting MIDI. */
+    const size_t reply_bound = sizeof("PANIC_STAGE CC123 COMPLETE 65535\r\nOK\r\n") - 1 +
+        report.count * (sizeof("PANIC_OUT 65535 4294967295 16 16 PENDING\r\n") - 1);
+    if (reply_bound > sizeof(runtime->serial_bytes) - runtime->serial_count) return GRIDPICO_CAPACITY;
+
+    if (report.count != 0) report.state = GRIDPICO_PANIC_STAGE_RUNNING;
+    runtime->panic_report = report;
+    runtime->panic_owner = runtime->serial.generation;
+    runtime->panic_cursor = 0;
+    runtime->panic_pending = report.count;
+    *out = report;
+    return GRIDPICO_OK;
+}
+
+static void finish_panic_output(local_runtime *runtime, gridpico_panic_output *row,
+                                gridpico_panic_output_state state)
+{
+    row->state = state;
+    if (--runtime->panic_pending == 0) runtime->panic_report.state = GRIDPICO_PANIC_STAGE_COMPLETE;
+}
+
+static void cancel_panic(local_runtime *runtime)
+{
+    gridpico_panic_stage_report *report = &runtime->panic_report;
+    if (report->state != GRIDPICO_PANIC_STAGE_RUNNING) return;
+    for (size_t i = 0; i < report->count; ++i) {
+        if (report->outputs[i].state == GRIDPICO_PANIC_OUTPUT_PENDING) {
+            report->outputs[i].state = GRIDPICO_PANIC_OUTPUT_CANCELLED;
+        }
+    }
+    report->state = GRIDPICO_PANIC_STAGE_CANCELLED;
+    runtime->panic_pending = 0;
+}
+
+void local_runtime_service_panic(local_runtime *runtime)
+{
+    gridpico_panic_stage_report *report = &runtime->panic_report;
+    if (report->state != GRIDPICO_PANIC_STAGE_RUNNING) return;
+    if (!panic_serial_current(runtime) || runtime->serial.generation != runtime->panic_owner) {
+        cancel_panic(runtime);
+        return;
+    }
+    for (unsigned attempts = 0; runtime->panic_pending != 0 && attempts < PANIC_PASS_TRIPLETS;) {
+        gridpico_panic_output *row = &report->outputs[runtime->panic_cursor];
+        if (++runtime->panic_cursor == report->count) runtime->panic_cursor = 0;
+        if (row->state != GRIDPICO_PANIC_OUTPUT_PENDING) continue;
+        const size_t slot = port_index(runtime, row->output.endpoint);
+        if (!panic_output_eligible(runtime, slot) ||
+            runtime->bindings[slot].generation != row->output.generation) {
+            finish_panic_output(runtime, row, GRIDPICO_PANIC_OUTPUT_CANCELLED);
+            continue;
+        }
+        const uint8_t bytes[] = {(uint8_t)(0xb0u + row->accepted_count), 123, 0};
+        ++attempts;
+        if (stage_midi(runtime, row->output, bytes, 0, true) != GRIDPICO_OK) {
+            finish_panic_output(runtime, row, GRIDPICO_PANIC_OUTPUT_REFUSED);
+        } else if (++row->accepted_count == row->requested_count) {
+            finish_panic_output(runtime, row, GRIDPICO_PANIC_OUTPUT_COMPLETE);
+        }
+    }
 }
 
 static gridpico_result read_availability(
@@ -698,6 +811,17 @@ gridpico_result local_runtime_detach(local_runtime *runtime, gridpico_connection
     }
     port->fault = false;
     gridpico_result result = apply_port(runtime, connection, false);
+    if (runtime->panic_report.state == GRIDPICO_PANIC_STAGE_RUNNING) {
+        for (size_t i = 0; i < runtime->panic_report.count; ++i) {
+            gridpico_panic_output *row = &runtime->panic_report.outputs[i];
+            if (row->state == GRIDPICO_PANIC_OUTPUT_PENDING &&
+                row->output.endpoint == connection.endpoint &&
+                row->output.generation == connection.generation) {
+                finish_panic_output(runtime, row, GRIDPICO_PANIC_OUTPUT_CANCELLED);
+                break;
+            }
+        }
+    }
     if (runtime->profile->registry.port_capabilities[port_index(runtime, connection.endpoint)] == GRIDPICO_LOCAL_PORT_PANEL) {
         if (runtime->profile->passive_surface) gridpico_apc_patch_reset_gestures(&runtime->apc);
         else reset_panel(runtime);
@@ -811,7 +935,7 @@ gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t gener
         }
         if (runtime->forwarding_enabled) {
             gridpico_cli_bind_musical_control(&runtime->cli, runtime, read_forwarding, apply_forwarding,
-                                              NULL, NULL, NULL);
+                                              read_panic, start_panic, &runtime->panic_scratch);
         }
         runtime->serial = (local_binding){.generation = generation, .attached = true};
         gridpico_cli_process(&runtime->cli);
@@ -826,6 +950,7 @@ gridpico_result local_runtime_serial_detach(local_runtime *runtime, uint32_t gen
     }
     runtime->serial.attached = false;
     runtime->serial_count = 0;
+    cancel_panic(runtime);
     return GRIDPICO_OK;
 }
 
@@ -906,6 +1031,7 @@ gridpico_result local_runtime_expire(local_runtime *runtime)
 gridpico_result local_runtime_retire(local_runtime *runtime)
 {
     gridpico_result result = GRIDPICO_OK;
+    cancel_panic(runtime);
     for (unsigned direction = GRIDPICO_PATCH_INPUT; direction <= GRIDPICO_PATCH_OUTPUT; ++direction) {
         for (size_t i = 0; i < runtime->profile->registry.inventory.port_count; ++i) {
             const gridpico_patch_port *port = &runtime->profile->registry.inventory.ports[i];

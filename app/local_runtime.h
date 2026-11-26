@@ -48,6 +48,7 @@ typedef struct {
     gridpico_revision forwarding_revision;
     uint8_t bytes[GRIDPICO_LOCAL_MESSAGE_BYTES];
     bool fault;
+    bool panic;
 } local_output;
 
 typedef struct {
@@ -77,6 +78,11 @@ typedef struct {
     size_t forwarding_barrier_count;
     local_binding bindings[GRIDPICO_PATCH_MAX_PORTS];
     local_binding serial;
+    gridpico_panic_stage_report panic_report;
+    gridpico_panic_stage_report panic_scratch;
+    uint32_t panic_owner;
+    size_t panic_cursor;
+    size_t panic_pending;
     local_output output[LOCAL_MIDI_STAGE_FRAMES + GRIDPICO_PATCH_MAX_PORTS];
     size_t output_count;
     size_t fault_count;
@@ -124,6 +130,7 @@ gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t gener
 gridpico_result local_runtime_serial_detach(local_runtime *runtime, uint32_t generation);
 gridpico_result local_runtime_serial(local_runtime *runtime, uint32_t generation,
                                     const char *bytes, size_t size);
+void local_runtime_service_panic(local_runtime *runtime);
 gridpico_result local_runtime_expire(local_runtime *runtime);
 gridpico_result local_runtime_retire(local_runtime *runtime);
 

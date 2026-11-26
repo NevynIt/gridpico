@@ -297,10 +297,22 @@ function removePeer(peer) {
   if (peers.get(peer.key) === peer) peers.delete(peer.key);
 }
 
+function filterPendingOutput(peer, keep) {
+  if (peer.socket || !peer.beforeUpgrade.length) return;
+  peer.beforeUpgrade = peer.beforeUpgrade.filter(keep);
+  peer.outputFrames = peer.beforeUpgrade.length;
+  peer.outputBytes = peer.beforeUpgrade.reduce((bytes, frame) => bytes + frame.data.length, 0);
+}
+
 function retire(peer, { code = 1011, reason = "Binding closed", graceful = false, retired = false } = {}) {
   clearPeerTimers(peer);
   peer.closing = true;
   peer.beforeUpgrade.length = 0;
+  if (peer.port === undefined) {
+    for (const destination of peers.values()) {
+      filterPendingOutput(destination, frame => frame.panicOwner !== peer);
+    }
+  }
   if (!graceful || retired) {
     peer.input.length = 0;
     peer.inputBytes = 0;
@@ -336,14 +348,18 @@ function monitorHeartbeat(peer) {
 }
 
 function output(peer, record) {
-  const { data, forwardingRevision } = record;
+  const { data, forwardingRevision, provenance, panicOwner } = record;
+  if (provenance === "panic" &&
+      (!peer.managed || (recorder && peer.port === recorderPort) ||
+       !panicOwner?.bound || panicOwner.closing || peers.get("serial") !== panicOwner ||
+       panicOwner.socket?.readyState !== WebSocket.OPEN)) return;
   if (forwardingRevision !== undefined &&
       (!forwarding.running || forwardingRevision !== forwarding.revision)) return;
   if (peer.closing || (peer.socket && peer.socket.readyState !== WebSocket.OPEN)) return;
   const full = peer.port === undefined
     ? peer.outputBytes + data.length > serialQueueBytes : peer.outputFrames === peer.limit;
   if (full) {
-    if (record.provenance !== "panic") retire(peer, { code: 1013, reason: "Output queue full" });
+    if (provenance !== "panic") retire(peer, { code: 1013, reason: "Output queue full" });
     return;
   }
 
@@ -378,11 +394,7 @@ function applyForwardingState(record) {
       peer.input = peer.input.filter(frame => frame.forwardingRevision === undefined);
       peer.inputBytes = peer.input.reduce((bytes, frame) => bytes + frame.data.length, 0);
     }
-    if (!peer.socket && peer.beforeUpgrade.length) {
-      peer.beforeUpgrade = peer.beforeUpgrade.filter(frame => frame.forwardingRevision === undefined);
-      peer.outputFrames = peer.beforeUpgrade.length;
-      peer.outputBytes = peer.beforeUpgrade.reduce((bytes, frame) => bytes + frame.data.length, 0);
-    }
+    filterPendingOutput(peer, frame => frame.forwardingRevision === undefined);
   }
 }
 
@@ -414,6 +426,11 @@ function handleRecord(record) {
   }
   if (peer.port !== undefined && (!peer.bound || peer.direction !== "out")) {
     throw new Error("Unexpected MIDI output direction");
+  }
+  if (record.provenance === "panic") {
+    // The portable CC123 producer is CLI-only and cancels on serial detach
+    // before a replacement lease can bind.
+    record.panicOwner = peers.get("serial");
   }
   output(peer, record);
 }

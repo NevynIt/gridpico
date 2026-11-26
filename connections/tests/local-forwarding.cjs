@@ -91,7 +91,21 @@ async function check({ hostPath, fixturePath, WebSocket }, scenario) {
       await assert.rejects(open("/midi/5"));
       return;
     }
+    const panicFixture = ["panic-owner", "pending-out"].includes(scenario);
+    const pendingOwner = panicFixture ? await open("/serial") : undefined;
+    const ownerClosed = scenario === "panic-owner" ? once(pendingOwner.socket, "close") : undefined;
     const monitor = await open("/midi/5");
+    if (scenario === "panic-owner") {
+      await ownerClosed;
+      await waitFor(() => monitor.received.length >= 1, "control output after owner loss");
+      assert.deepEqual(hex(monitor), ["B37B00"]);
+      assert.equal(monitor.socket.readyState, WebSocket.OPEN);
+      const replacement = await open("/serial");
+      await submit(replacement, [Buffer.from("panic-fixture\n")]);
+      await waitFor(() => monitor.received.length >= 2, "fresh owner Panic");
+      assert.deepEqual(hex(monitor), ["B37B00", "B47B00"]);
+      return;
+    }
     if (scenario === "missing-epoch" || scenario === "future-epoch") {
       const keybed = await open("/midi/1");
       keybed.socket.send(Buffer.from("903C60", "hex"));
@@ -112,6 +126,26 @@ async function check({ hostPath, fixturePath, WebSocket }, scenario) {
       await waitFor(() => monitor.received.length === 4, "staged output after the fence");
       assert.deepEqual(hex(monitor), ["B07B00", "B17B00", "B27B00", "B37B00"]);
       assert.equal(monitor.socket.readyState, WebSocket.OPEN);
+      return;
+    }
+    if (scenario === "panic-generation") {
+      const led = await open("/midi/3");
+      const terminal = await open("/serial");
+      const closed = once(monitor.socket, "close");
+      monitor.socket.close(1000);
+      await closed;
+      await waitFor(async () => /^detach 5 2$/m.test(await trace()), "old Monitor detach");
+      await release("hold");
+      await submit(terminal, [Buffer.from("hold\n")]);
+      await waitFor(() => serial(terminal).includes("STILL ALIVE"), "detach completed before serial reply");
+      const replacement = await open("/midi/5");
+      await submit(terminal, [Buffer.from("panic-fixture\n")]);
+      await waitFor(() => serial(terminal).includes("PANIC FIXTURE"), "Panic fixture replies");
+      await waitFor(() => replacement.received.length > 0, "current Monitor Panic");
+      assert.deepEqual(hex(replacement), ["B17B00"]);
+      assert.equal(monitor.received.length, 0);
+      assert.deepEqual(hex(led), []);
+      assert.equal(led.socket.readyState, WebSocket.OPEN);
       return;
     }
     const led = await open("/midi/3");
@@ -197,6 +231,7 @@ async function fixture(scratch) {
   const scenario = process.env.GRIDPICO_BARRIER_TEST_SCENARIO;
   let revision = 1;
   let running = true;
+  let serialGeneration;
   const emit = (...lines) => console.log(lines.join("\n"));
   const serial = (generation, text) =>
     `serial ${generation} ${Buffer.from(text).toString("hex").toUpperCase()}`;
@@ -237,6 +272,10 @@ async function fixture(scratch) {
       const suffix = legacy || scenario === "missing-class" ? "" : " " + classification;
       const limit = scenario === "pending-out" ? 4 : 64;
       emit(`bound ${port} ${generation} ${direction} ${limit}${suffix}`);
+      if (scenario === "panic-owner") {
+        emit(`midi ${dest(5)} panic - B07B00`, `fault serial ${serialGeneration}`,
+          `midi ${dest(5)} panic - B17B00`, `midi ${dest(5)} control - B37B00`);
+      }
       if (scenario === "pending-out") {
         emit(`midi ${dest(5)} ordinary 1 903C60`, `midi ${dest(5)} panic - B07B00`,
           "forwarding-state 2 paused", `midi ${dest(5)} control - B17B00`,
@@ -281,13 +320,27 @@ async function fixture(scratch) {
           emit(`forwarding-state ${revision} running`, `midi ${dest(5)} ordinary 1 904760`,
             serial(port, "FORWARDING RUNNING 3\r\nOK\r\n"), "ok");
           break;
+        case "panic-fixture\n":
+          if (scenario === "panic-generation") {
+            assert.equal(bound.get(5), "3");
+            emit("midi 5 2 panic - B07B00", `midi ${dest(3)} panic - B27B00`,
+              `midi ${dest(5)} panic - B17B00`);
+          } else {
+            assert.equal(serialGeneration, "2");
+            emit(`midi ${dest(5)} panic - B47B00`);
+          }
+          emit(serial(port, "PANIC FIXTURE\r\n"), "ok");
+          break;
         case "hold\n":
           await stopPoint("hold");
           emit(serial(port, "STILL ALIVE\r\n"), "ok");
           break;
         default: throw Error("Unexpected serial fixture command");
       }
-    } else if (action === "serial-bind" || action === "serial-detach") emit("ok");
+    } else if (action === "serial-bind") {
+      serialGeneration = portText;
+      emit("ok");
+    } else if (action === "serial-detach") emit("ok");
     else if (action === "detach") {
       assert.equal(bound.get(port), generation);
       bound.delete(port);
@@ -340,7 +393,7 @@ async function main() {
   for (const scenario of [
     "bad-init", "probe-capacity", "probe-record", "probe-event", "probe-early-ok", "probe-extra-ok",
     "probe-bare-ok", "probe-wrong-state", "probe-duplicate-state", "probe-state-invalid", "probe-trailing-partial", "probe-trailing-event",
-    "missing-class", "missing-epoch", "future-epoch", "pending-out", "legacy", "legacy-bare", "qualified",
+    "missing-class", "missing-epoch", "future-epoch", "pending-out", "legacy", "legacy-bare", "qualified", "panic-generation", "panic-owner",
   ]) {
     await check(options, scenario);
   }

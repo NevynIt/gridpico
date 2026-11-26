@@ -223,10 +223,13 @@ static bool write_records(const local_runtime *runtime)
                 !state.attached || state.generation != generation) continue;
             if (row->forwarding_revision != 0 && (!runtime->forwarding_running ||
                 row->forwarding_revision != runtime->forwarding_revision)) continue;
+            if (row->panic && (!runtime->serial.attached || runtime->serial.fault ||
+                runtime->serial.generation != runtime->panic_owner)) continue;
             if (printf("midi %u %" PRIu32 " ", port, generation) < 0) return false;
             if (runtime->forwarding_enabled) {
                 const int prefix = row->forwarding_revision != 0
-                    ? printf("ordinary %" PRIu64 " ", row->forwarding_revision) : printf("control - ");
+                    ? printf("ordinary %" PRIu64 " ", row->forwarding_revision)
+                    : fputs(row->panic ? "panic - " : "control - ", stdout);
                 if (prefix < 0) return false;
             }
             if (!write_hex((const char *)row->bytes, sizeof(row->bytes)) || putchar('\n') == EOF) return false;
@@ -300,6 +303,14 @@ static bool service_adapter(local_runtime *runtime, const local_router_service *
     return true;
 }
 
+static bool service_panic(local_runtime *runtime, uint64_t now)
+{
+    if (runtime->panic_report.state != GRIDPICO_PANIC_STAGE_RUNNING) return true;
+    local_runtime_begin(runtime, now);
+    local_runtime_service_panic(runtime);
+    return runtime->output_count == 0 || write_event(runtime);
+}
+
 static bool serve(local_runtime *runtime, const local_router_service *service)
 {
     char line[MAX_LINE_BYTES + 1];
@@ -316,9 +327,11 @@ static bool serve(local_runtime *runtime, const local_router_service *service)
         if (service != NULL && (wait < 0 || wait > service->interval_ms)) {
             wait = service->interval_ms;
         }
+        if (runtime->panic_report.state == GRIDPICO_PANIC_STAGE_RUNNING) wait = 0;
         struct pollfd input = {.fd = STDIN_FILENO, .events = POLLIN};
         const int ready = poll(&input, 1, wait);
         if (ready == 0 || (ready < 0 && errno == EINTR)) {
+            if (!service_panic(runtime, now)) return false;
             continue;
         }
         if (ready < 0) {
@@ -347,6 +360,7 @@ static bool serve(local_runtime *runtime, const local_router_service *service)
                 line[position++] = (char)byte;
             }
         }
+        if (!service_panic(runtime, now)) return false;
     }
 }
 

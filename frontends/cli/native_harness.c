@@ -1,6 +1,7 @@
 #include "app/patch_runtime.h"
 
 #include <assert.h>
+#include <stdio.h>
 #include <string.h>
 
 typedef struct {
@@ -40,6 +41,11 @@ typedef struct {
     gridpico_result apply_result;
     size_t reads;
     size_t applies;
+    gridpico_panic_stage_report panic_report;
+    gridpico_result panic_read_result;
+    gridpico_result panic_apply_result;
+    size_t panic_reads;
+    size_t panic_applies;
 } forwarding_fixture;
 
 static gridpico_result unused_snapshot(void *context, gridpico_patch_snapshot *out);
@@ -67,6 +73,24 @@ static gridpico_result apply_forwarding(void *context, bool running,
         ++fixture->status.revision;
     }
     *out = fixture->status;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result read_panic(void *context, gridpico_panic_stage_report *out)
+{
+    forwarding_fixture *fixture = context;
+    ++fixture->panic_reads;
+    if (fixture->panic_read_result != GRIDPICO_OK) return fixture->panic_read_result;
+    *out = fixture->panic_report;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result apply_panic(void *context, gridpico_panic_stage_report *out)
+{
+    forwarding_fixture *fixture = context;
+    ++fixture->panic_applies;
+    if (fixture->panic_apply_result != GRIDPICO_OK) return fixture->panic_apply_result;
+    *out = fixture->panic_report;
     return GRIDPICO_OK;
 }
 
@@ -139,6 +163,17 @@ static void test_forwarding_cli(transcript *terminal)
     clear(terminal);
     assert(gridpico_cli_execute_line(&cli, "help forwarding", capture, terminal) ==
            GRIDPICO_UNAVAILABLE);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help panic", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
 
     gridpico_cli_bind_musical_control(&cli, &fixture, read_forwarding, NULL,
                                       NULL, NULL, NULL);
@@ -203,6 +238,145 @@ static void test_forwarding_cli(transcript *terminal)
     assert(strcmp(terminal->output, "ERR CAPACITY\r\n") == 0);
     assert(fixture.status.running && fixture.status.revision == UINT64_MAX);
 
+    gridpico_panic_stage_report panic_scratch = {
+        .state = GRIDPICO_PANIC_STAGE_NONE,
+    };
+    fixture.panic_report = (gridpico_panic_stage_report){
+        .state = GRIDPICO_PANIC_STAGE_RUNNING,
+        .count = 3,
+        .outputs = {
+            {{2, 4}, 16, 2, GRIDPICO_PANIC_OUTPUT_PENDING},
+            {{8, 3}, 16, 16, GRIDPICO_PANIC_OUTPUT_COMPLETE},
+            {{17, 9}, 16, 0, GRIDPICO_PANIC_OUTPUT_UNCONFIRMED},
+        },
+    };
+    gridpico_cli_bind_musical_control(&cli, &fixture, read_forwarding,
+                                      apply_forwarding, read_panic, NULL,
+                                      &panic_scratch);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help panic", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "COMMAND panic status -- read the current CC123 All Notes Off stage\r\n"
+                  "OK\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic", capture, terminal) == GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_STAGE CC123 RUNNING 3\r\n"
+                  "PANIC_OUT 2 4 16 2 PENDING\r\n"
+                  "PANIC_OUT 8 3 16 16 COMPLETE\r\n"
+                  "PANIC_OUT 17 9 16 - UNCONFIRMED\r\n"
+                  "OK\r\n") == 0);
+    assert(terminal->size <= 1692);
+    panic_scratch = (gridpico_panic_stage_report){
+        .state = GRIDPICO_PANIC_STAGE_RUNNING,
+        .count = 1,
+        .outputs = {{{29, 7}, 16, 4, GRIDPICO_PANIC_OUTPUT_PENDING}},
+    };
+    fixture.panic_read_result = GRIDPICO_UNAVAILABLE;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(panic_scratch.count == 1 && panic_scratch.outputs[0].output.endpoint == 29 &&
+           panic_scratch.outputs[0].accepted_count == 4);
+    fixture.panic_read_result = GRIDPICO_OK;
+    fixture.panic_report.outputs[1].output.endpoint = 2;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+
+    fixture.panic_report = (gridpico_panic_stage_report){
+        .state = GRIDPICO_PANIC_STAGE_COMPLETE,
+    };
+    fixture.panic_apply_result = GRIDPICO_OK;
+    gridpico_cli_bind_musical_control(&cli, &fixture, read_forwarding,
+                                      apply_forwarding, read_panic, apply_panic,
+                                      &panic_scratch);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help panic", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "COMMAND panic | panic status"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "PANIC_STAGE CC123 COMPLETE 0\r\nOK\r\n") == 0);
+
+    fixture.panic_report = (gridpico_panic_stage_report){
+        .state = GRIDPICO_PANIC_STAGE_COMPLETE,
+        .count = 1,
+        .outputs = {{{65000, UINT32_MAX}, 16, 0, GRIDPICO_PANIC_OUTPUT_PENDING}},
+    };
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic", capture, terminal) == GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+
+    fixture.panic_report = (gridpico_panic_stage_report){
+        .state = GRIDPICO_PANIC_STAGE_COMPLETE,
+        .count = 2,
+        .outputs = {
+            {{4, 3}, 16, 7, GRIDPICO_PANIC_OUTPUT_REFUSED},
+            {{9, UINT32_MAX}, 8, 0, GRIDPICO_PANIC_OUTPUT_UNCONFIRMED},
+        },
+    };
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_STAGE CC123 COMPLETE 2\r\n"
+                  "PANIC_OUT 4 3 16 7 REFUSED\r\n"
+                  "PANIC_OUT 9 4294967295 8 - UNCONFIRMED\r\n"
+                  "OK\r\n") == 0);
+
+    fixture.panic_report.state = GRIDPICO_PANIC_STAGE_COMPLETE;
+    fixture.panic_report.count = GRIDPICO_PATCH_MAX_PORTS;
+    for (size_t i = 0; i < fixture.panic_report.count; ++i) {
+        fixture.panic_report.outputs[i] = (gridpico_panic_output){
+            .output = {.endpoint = (gridpico_port_id)(i + 1),
+                       .generation = UINT32_MAX},
+            .requested_count = 16,
+            .accepted_count = 8,
+            .state = GRIDPICO_PANIC_OUTPUT_REFUSED,
+        };
+    }
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "PANIC_STAGE CC123 COMPLETE"));
+    char last_panic_row[GRIDPICO_CLI_RECORD_BYTES];
+    const int last_panic_row_size = snprintf(
+        last_panic_row, sizeof last_panic_row,
+        "PANIC_OUT %u 4294967295 16 8 REFUSED\r\n",
+        (unsigned)GRIDPICO_PATCH_MAX_PORTS);
+    assert(last_panic_row_size > 0 && (size_t)last_panic_row_size < sizeof last_panic_row);
+    assert(contains(terminal, last_panic_row));
+    assert(terminal->size <= 1692);
+    size_t panic_rows = 0;
+    const char *panic_cursor = terminal->output;
+    while ((panic_cursor = strstr(panic_cursor, "PANIC_OUT ")) != NULL) {
+        ++panic_rows;
+        panic_cursor += sizeof("PANIC_OUT ") - 1;
+    }
+    assert(panic_rows == GRIDPICO_PATCH_MAX_PORTS);
+
+    fixture.panic_apply_result = GRIDPICO_UNAVAILABLE;
+    panic_scratch = (gridpico_panic_stage_report){
+        .state = GRIDPICO_PANIC_STAGE_RUNNING,
+        .count = 1,
+        .outputs = {{{31, 4}, 12, 3, GRIDPICO_PANIC_OUTPUT_PENDING}},
+    };
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(panic_scratch.count == 1 && panic_scratch.outputs[0].output.endpoint == 31 &&
+           panic_scratch.outputs[0].accepted_count == 3);
+
+    fixture.panic_apply_result = GRIDPICO_OK;
+    compare_terminal_reply(&cli, terminal, "panic status", GRIDPICO_OK);
     compare_terminal_reply(&cli, terminal, "forwarding", GRIDPICO_OK);
     compare_terminal_reply(&cli, terminal, "forwarding running if 18446744073709551615",
                            GRIDPICO_OK);
