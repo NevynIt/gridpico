@@ -197,7 +197,9 @@ Use the selected target's existing control authority and private output adapter.
 
 For each applicable channel, send `Bn 7B 00` in ascending channel order. Revalidate the captured logical output ID, generation and eligibility immediately before submission. Keep one active job and a bounded cursor and result per output. Service at most eight triplets per portable foreground pass, rotating through active outputs. The activation returns current progress without waiting for drain. Stop one output on its first refusal or unconfirmed submission and continue independent outputs. A full queue leaves its healthy binding available. Output loss cancels its remaining work. Loss of the initiating control binding cancels the active job's remaining work. Already-issued writes can finish. Discard retired waiting work. Never retry or replay, including to a replacement binding. No note history is needed. [MIDI Association message summary](https://midi.org/summary-of-midi-1-0-messages)
 
-Both base commands use this same CRLF response even when M1b is enabled.
+Each accepted job belongs to the exact initiating control binding and its generation. This can be the selected target's existing authorized CLI lease or the qualified current APC Panel owner. The runtime checks that owner before servicing its waiting work. A current authorized read can inspect the retained report without acquiring the job or its activation rights.
+
+One output can request 16 triplets, and a portable service pass attempts at most eight. The stage state and accepted prefix distinguish ongoing progress from a terminal partial result. The read-only command retrieves either without scheduling another action. Both base commands use the same CRLF response even when M1b is enabled.
 
 ```text
 PANIC_STAGE CC123 STATE N

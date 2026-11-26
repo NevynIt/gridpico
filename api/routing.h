@@ -235,4 +235,49 @@ typedef gridpico_result (*gridpico_apply_managed_note_transform_fn)(
     void *context, const gridpico_managed_note_transform_request *request,
     gridpico_managed_note_transform_status *out);
 
+/* Master forwarding revision is independent of the Routing revision. */
+typedef struct {
+    gridpico_revision revision;
+    bool running;
+} gridpico_forwarding_status;
+
+typedef enum {
+    GRIDPICO_PANIC_STAGE_NONE,
+    GRIDPICO_PANIC_STAGE_RUNNING,
+    GRIDPICO_PANIC_STAGE_COMPLETE,
+    GRIDPICO_PANIC_STAGE_CANCELLED
+} gridpico_panic_stage_state;
+
+typedef enum {
+    GRIDPICO_PANIC_OUTPUT_PENDING,
+    GRIDPICO_PANIC_OUTPUT_COMPLETE,
+    GRIDPICO_PANIC_OUTPUT_REFUSED,
+    GRIDPICO_PANIC_OUTPUT_CANCELLED,
+    GRIDPICO_PANIC_OUTPUT_UNCONFIRMED
+} gridpico_panic_output_state;
+
+typedef struct {
+    gridpico_connection output;
+    uint16_t requested_count;
+    uint16_t accepted_count; /* Zero when state is UNCONFIRMED. */
+    gridpico_panic_output_state state;
+} gridpico_panic_output;
+
+typedef struct {
+    gridpico_panic_stage_state state;
+    size_t count;
+    gridpico_panic_output outputs[GRIDPICO_PATCH_MAX_PORTS];
+} gridpico_panic_stage_report;
+
+/* Serialized calls borrow out for the call and leave it untouched on failure. */
+typedef gridpico_result (*gridpico_read_forwarding_fn)(
+    void *context, gridpico_forwarding_status *out);
+typedef gridpico_result (*gridpico_apply_forwarding_fn)(
+    void *context, bool running, gridpico_revision expected_revision,
+    gridpico_forwarding_status *out);
+typedef gridpico_result (*gridpico_read_panic_fn)(
+    void *context, gridpico_panic_stage_report *out);
+typedef gridpico_result (*gridpico_apply_panic_fn)(
+    void *context, gridpico_panic_stage_report *out);
+
 #endif
