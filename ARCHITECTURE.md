@@ -29,7 +29,7 @@ CodeZero/GridZero, miniMIDI and rpico-bridge are design references. Gridpico def
 | Module / implementation path | Owns | Does not own |
 | --- | --- | --- |
 | **Session/control** `core/session/` | Typed commands, queries, dispatch, coherent state snapshots/deltas and project-level coordination | Copies of every module's state; controller protocols; operating-system services |
-| **MIDI graph** `core/midi/` | Logical endpoint registry, identity binding, desired/active routes, fan-in/fan-out, delivery queues, event origin and note/sustain lifetime | USB enumeration; sequencing data; UI pages |
+| **MIDI graph** `core/midi/` | Logical endpoint registry, identity binding, desired and active routes, per-message fan-out and event origin | USB enumeration; sequencing data; UI pages |
 | **Processors** `core/processors/` | Bounded composable MIDI transformations and processor-local state | Global routes, USB/OS I/O or surface behavior |
 | **Musical time** `core/time/` | Musical position, tempo, transport, clock-source policy and scheduling/cancellation of timed events | Wall-clock/driver implementation, browser refresh or pattern content |
 | **Sequencer** `core/sequencer/` | Tracks, recording, steps, patterns, chains, scenes, automation and playback semantics | Sound generation, direct device output, APC gestures |
@@ -49,13 +49,13 @@ Application Assembly supplies the execution context. Platform callbacks submit b
 
 The basic route is **source selection → processor chain → destination(s)**. Fan-out can have independent branches and processor settings. The patch grid and advanced editing operate on this one model, not separate routing engines.
 
-Bindings use stable logical IDs and user aliases. Platform adapters report device, interface, cable and direction independently of MIDI channel, display name and attachment generation. Session keeps desired routes and placements across detach. Graph scopes cleanup to the affected generation and reconciles remaining release debt on a verified replacement. Missing or ambiguous identity leaves routes Pending. Aliases change labels only.
+Bindings use stable logical IDs and user aliases. Platform adapters report device, interface, cable and direction independently of MIDI channel, display name and attachment generation. Session keeps desired routes and placements across detach. Platform adapters discard stale queued traffic on detach and admit fresh messages on a verified generation. Missing or ambiguous identity leaves routes Pending. Aliases change labels only.
 
 The production registry starts from an Assembly-validated configuration. Runtime registration and retirement of discovered ports is the direction for dynamic Patchbay and still needs target qualification. The Linux USB selector supports verified input only. An output selector reserves its logical port and stays Pending. Operators can configure an explicit numeric ALSA output. [Verified USB replacement](api/routing.md#verified-usb-replacement)
 
 Represent cable/port, MIDI channel and device identity separately. USB packet framing belongs in adapters. The core event contract must preserve ordinary MIDI, realtime messages and bounded/streamed SysEx without assuming every message is a four-byte USB packet.
 
-The graph owns note-release correctness. It retains the delivered output obligations for each accepted Note On. Processor results carry enough association for the graph to release the original outputs after parameter changes or route edits. The [MIDI graph contract](api/README.md#midi-graph) defines overlap, cleanup and overload behavior.
+Live Managed routing evaluates each received note against the currently Active branches and current transforms. Note Off follows the same rule as Note On. Route edits and disconnects generate no MIDI. [Current-message routing](api/local-router.md#current-message-managed-routing) defines admission, overload and the implications of edits while notes sound.
 
 Detect or reject graph-local feedback cycles. External applications can create loops outside the graph's visibility; do not claim to detect those universally. PC loopback is explicit routing, never automatic all-to-all echo.
 
@@ -77,7 +77,7 @@ Sequence capacity and playback behavior belong to the supported engine profile. 
 
 ### Projects and live configuration
 
-Keep draft editing, live Apply and persistent Save distinct. Validate a whole change before activating it; a rejected change leaves the previous valid state in use. Note cleanup and scheduling cancellation participate in state transitions.
+Keep draft editing, live Apply and persistent Save distinct. Validate a whole change before activating it; a rejected change leaves the previous valid state in use. Scheduling cancellation and invalidation of stale transport work participate in state transitions.
 
 Persist desired device bindings, routing/processing configuration and, when implemented, musical projects. Do not persist the playhead or every knob movement. Physical storage adapters provide recoverable writes and communicate any required interruption. A frontend must present an interruption honestly; uninterrupted flash saves are not assumed.
 
@@ -99,7 +99,7 @@ Physical and simulated Panel MIDI reaches the production APC frontend through pl
 
 Independently running components exchange MIDI or serial CLI bytes. The CLI frontend uses one typed command registry for dispatch and help on Pico and Pi, with each runtime advertising only the forms its providers support. Serial authority follows the selected target. The Pi CLI controls the Pi router. The Pico CLI exposes readback and cooperative recovery, with typed Routing and Save unavailable. Registration, route state and accepted-delivery accounting remain inside the production runtime. [Shared terminal contract](api/pico-target.md#first-shared-cli-on-pico-and-pi)
 
-The piano frontend must remember whether a press/pedal transition was consumed or forwarded until its matching release, even across mode changes. Gesture interpretation is frontend-owned; ordinary MIDI note/sustain cleanup stays graph-owned. RGB-strip drawing describes logical feedback; the physical strip driver is a platform service.
+Frontends own the pairing of locally consumed gesture edges. Ordinary musical messages follow current dispatch. RGB-strip drawing describes logical feedback; the physical strip driver is a platform service.
 
 ### Web landing page and browser MIDI
 
@@ -113,7 +113,7 @@ Routing shares the Diagnostics terminal implementation. It displays named direct
 
 Diagnostics hosts Monitor, MIDI Log and routed LED replay. Monitor and MIDI Log bind independently to selectable MIDI inputs and consume the bytes delivered to their own port. Monitor owns its local audio, channel settings and bounded voices, which start after explicit enablement. [Browser roles](api/browser-midi.md#production-startup-and-page-roles)
 
-Track voices by destination, MIDI channel and key so two channels using the same key can sound and release independently. Muting a channel releases its voices. Disabling audio or losing the connection releases all browser voices. The graph continues to own MIDI cleanup, including releases that occur after the browser has disconnected. The Monitor uses the existing routed MIDI delivery path and runs independently of its timing and acceptance.
+Track voices by destination, MIDI channel and key so two channels using the same key can sound and release independently. Muting a channel releases its voices. Disabling audio or losing the connection releases all browser voices. That voice behavior is local to the audio receiver. The Monitor uses the existing routed MIDI delivery path and runs independently of its timing and acceptance.
 
 ### Optional instrument peers
 
@@ -154,7 +154,7 @@ The opt-in Pi boot profile provides a private LAN web listener and an independen
 Gridpico supports two product transports for production routes and selectable MIDI ports. Each has independent acceptance evidence.
 
 - **RTP-MIDI** uses native OS-presented MIDI ports. On Linux, the production router binds ALSA sequencer ports provided by `rtpmidid`. Windows uses its OS-presented endpoints when available. [Linux ALSA adapter](api/linux-midi-adapter.md) · [Windows RTP endpoints](https://microsoft.github.io/MIDI/sdk-reference/Transports/Rtp/)
-- **WebSocket MIDI** defaults to IPv4 loopback. The opt-in authenticated cross-host listener binds a configured LAN address and uses the same directional binary MIDI and cleanup rules. Its grants cover authorized MIDI roles. Serial has independent admission. [WebSocket MIDI contract](api/websocket-midi.md)
+- **WebSocket MIDI** defaults to IPv4 loopback. The opt-in authenticated cross-host listener binds a configured LAN address and uses the same directional binary MIDI and attachment rules. Its grants cover authorized MIDI roles. Serial has independent admission. [WebSocket MIDI contract](api/websocket-midi.md)
 
 [Network MIDI acceptance](ROADMAP.md#network-midi-and-browser)
 
@@ -173,7 +173,7 @@ The next native USB allocation uses one composite device.
 | CDC | Shared CLI transport and target recovery |
 | Planned read-only mass storage `GRIDPICO` | Static HTML tools and offline documentation |
 
-The three proposed MIDI pairs share one physical USB endpoint pair. Enumeration is verified. Asymmetric traffic, mode and release cleanup, target resources and verified recovery gate promotion from the current two-pair deployment. [Three-pair contract](api/pico-target.md#next-native-keys-and-patchbay-increment)
+The three proposed MIDI pairs share one physical USB endpoint pair. Enumeration is verified. Asymmetric traffic, dispatch cutover, target resources and verified recovery gate promotion from the current two-pair deployment. [Three-pair contract](api/pico-target.md#next-native-keys-and-patchbay-increment)
 
 The planned read-only `GRIDPICO` volume serves an immutable build-time image from flash with offline browser tools, documentation and a version manifest. Reject host writes at the storage protocol boundary and keep the volume separate from writable settings. Verify mounted reads, write rejection and concurrent MIDI service on Gridpico hardware. [Browser packaging](api/browser-midi.md#entry-points-and-packaging)
 
@@ -195,7 +195,7 @@ Arrows in the [architecture diagram](docs/diagrams/README.md) show data or contr
 
 Application Assembly publishes one effective capacity profile for each supported target or deterministic simulation setup, with backend input and domain validation. Optional features report availability separately. Kernel limits apply before a configuration becomes live. Queues and other performance resources have finite bounds and explicit exhaustion behavior. Frontends page endpoints and report limits using the current profile and command results. The [capacity contract](api/README.md#capacity-profiles) lists the required units and admission rules.
 
-Qualify registry, live peer admission, fan-out, held occurrences, release capacity and queue isolation per target. A larger registry grants no additional WSS publication. [Configured profile contract](api/routing.md#profile-and-admission)
+Qualify registry, live peer admission, fan-out and queue isolation per target. A larger registry grants no additional WSS publication. [Configured profile contract](api/routing.md#profile-and-admission)
 
 ## 7. Agent mapping and ownership
 
@@ -209,7 +209,7 @@ Browser Monitor verification covers a transposed note from the live destination 
 
 Maintain separate evidence for deterministic simulation, Linux x86, Linux ARM, Windows and RP2040 hardware. Test capacities/overflow, malformed configuration, SysEx concurrency, external clock transitions, device identity ambiguity and power-loss behavior where applicable.
 
-Maintain separate transport results for verified WebSocket loopback, cross-host browser and native WebSocket, Linux RTP-MIDI and Windows RTP-MIDI. Verify actual MIDI receipts and scoped cleanup. Cross-host WebSocket acceptance also exercises TLS client admission, origin checks, port authorization and isolation of the local CLI. [WebSocket MIDI acceptance](api/websocket-midi.md#integration-handoff-and-acceptance)
+Maintain separate transport results for verified WebSocket loopback, cross-host browser and native WebSocket, Linux RTP-MIDI and Windows RTP-MIDI. Verify actual MIDI receipts, scoped queue retirement and zero replay. Cross-host WebSocket acceptance also exercises TLS client admission, origin checks, port authorization and isolation of the local CLI. [WebSocket MIDI acceptance](api/websocket-midi.md#integration-handoff-and-acceptance)
 
 See [current acceptance](ROADMAP.md#current-product-status) for verified outcomes and remaining target gates.
 

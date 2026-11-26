@@ -17,28 +17,26 @@ These are behavioral contracts for the module boundaries in [Architecture](../AR
 ## Session/control
 
 - Accept intent to change a binding, route or processor setting. Return an outcome that distinguishes invalid input, unsupported features, resource limits and temporary unavailability. An accepted route may be pending if its binding is unresolved. Queries expose the reason it is pending and which routes are active.
-- Validate the whole configuration change before committing it. A rejected change leaves the applied configuration and its revision intact. A successful Apply publishes one coherent revision after reconciling the affected domains. Stage the replacement and arrange note cleanup before new traffic for affected routes can overtake it.
+- Validate the whole configuration change before committing it. A rejected change leaves the applied configuration and its revision intact. A successful Apply publishes one coherent revision after reconciling the affected domains. Apply the new configuration to subsequent ingress.
 - Read authoritative domain values through a coherent snapshot. Snapshot revisions advance for observable changes such as a device disconnect. The applied configuration can still identify the revision at which it was committed. Change notifications identify the current snapshot revision. Frontends recover from skipped notifications or reconnects by reading a snapshot and submit commands only for new intent.
 
 ## MIDI graph
 
 - Accept platform endpoint updates and normalized MIDI events. Keep logical binding, port or cable, channel where applicable, and connection lifetime distinct. Close a disconnected connection to further delivery. Reevaluate desired bindings on endpoint changes. Ambiguity leaves the corresponding routes pending until explicitly resolved.
 - Route from a source through a bounded processor chain to each selected destination. Carry event origin across transformations. Preserve per-stream order, including SysEx fragment order and realtime messages. Keep USB framing in adapters. Reject configuration changes that create a feedback cycle visible inside the graph.
-- Track each accepted note occurrence by ingress connection, channel and key, matching repeated presses to releases in arrival order. The graph keeps the bounded set of actual output obligations for each occurrence. For overlapping obligations on the same output, channel and key, emit one Note On and release the note when the last obligation ends. A release, stop, route edit or source disconnect retires only the obligations owned by the affected traffic. For profiles with sustain, held sustain from several contributors on one output channel follows the same last-contributor release rule.
-- Admit a new note only when the graph can account for its output and retain capacity for cleanup. Order cleanup with accepted output or cancel unsent note starts before releasing their obligations. A rejected press must still be accounted for if its release could match an earlier press. If accounting cannot continue reliably, quiesce the affected ingress, clean up its obligations and report the fault. Resume at a known input boundary, such as a fresh connection after disconnect.
-- If delivery of required cleanup becomes unavailable, block new performance traffic on the affected output and report the delivery fault. Retain bounded recovery obligations for that binding and reconcile them before reactivation on a verified reconnect. A replacement or ambiguous device requires explicit binding, and stale performance traffic is discarded.
+- For current live Managed routing, evaluate each Note On or Off independently against the current Active routes and transforms. Discard stale queued MIDI on disconnect. Route edits, detach and reconnect generate no release, maintain no debt and replay no traffic. [Current-message routing](local-router.md#current-message-managed-routing) defines supported kinds and error handling.
 - Keep SysEx in bounded fragments. Each destination has one active SysEx stream at a time, with realtime MIDI permitted during that stream. When a stream cannot continue within its budget, abort it explicitly at the affected destination, including terminating an already-emitted partial stream if reachable. Report the failure and free the stream slot.
 
 ## Processors
 
 - Accept a normalized event and instance configuration. Return a bounded ordered set of results, including an empty result for a filtered event. Each processor declares its supported event kinds, expansion limit and bounded state requirements before activation. The graph also enforces total expansion across the chain and fan-out.
-- Preserve event origin and expose which input occurrence generated each output note. A processor owns only its instance state. The graph keeps delivery and release accounting even when a processor is reset, removed or reconfigured.
-- The native transpose proof shifts each input key by the configured semitone offset and emits at most one corresponding note. It suppresses a note whose resulting key is out of range. The graph resolves its eventual release from the original occurrence, including an occurrence that produced no output.
+- Preserve the origin of the current event through processing. A processor owns only its instance state.
+- Transpose applies the current offset to each Managed On or Off and filters results outside the MIDI key range. The separate historical native proof retains its own release behavior.
 
 ## Musical time
 
 - Read monotonic time and request wakeups through platform services. Where transport is available, expose transport state, position and clock status through Session/control. Schedule work within the target profile and dispatch on the serialized musical context.
-- Stop, clock loss and clock-source switches cancel pending work from the affected transport run. Retire its graph obligations before accepting work from a new run. After loss or a source switch, starting follows the new source's start policy. Live routing continues independently of transport.
+- Stop, clock loss and clock-source switches cancel pending work from the affected transport run. Discard stale scheduled work before accepting events from a new run. After loss or a source switch, starting follows the new source's start policy. Live routing continues independently of transport.
 
 ## Future Sequencer boundary
 
@@ -46,7 +44,7 @@ Keep stable track and pattern identifiers independent of pad position when Seque
 
 ## Projects
 
-- Decode saved configuration into a bounded draft and validate its version and contents. Loading a draft leaves the active configuration in place. Session/control applies it through normal domain validation and cleanup. Persist desired bindings and configuration. Live connection handles, held notes and playhead position belong to runtime state.
+- Decode saved configuration into a bounded draft and validate its version and contents. Loading a draft leaves the active configuration in place. Session/control applies it through normal domain validation. Persist desired bindings and configuration. Live connection handles and playhead position belong to runtime state.
 - Save a coherent applied revision and report which revision became durable. Serialize writes for a given store. Retain the previous committed version, when present, until the replacement is durable. On restart, recover the most recent complete committed version, or report that no usable version exists. Surface any backend-required interruption through Session/control before writing. The writable store is independent of the read-only `GRIDPICO` distribution image.
 
 ## Frontend and connection boundaries
