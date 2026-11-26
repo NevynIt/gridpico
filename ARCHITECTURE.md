@@ -57,7 +57,7 @@ Represent cable/port, MIDI channel and device identity separately. USB packet fr
 
 Live Managed routing evaluates each received note against the currently Active branches and current transforms. Note Off follows the same rule as Note On. Route edits and disconnects generate no MIDI. [Current-message routing](api/local-router.md#current-message-managed-routing) defines admission, overload and the implications of edits while notes sound.
 
-Device parents group inventory. Deliberate Managed edits accept eligible directions regardless of topology. Auto leaves explicitly identified loopbacks Off by default. The shared route table uses directional eligibility and actual backing. Raw lease authority and PAT1 format and storage retain their existing boundaries. [Managed admission](api/local-router.md#production-graph)
+Device parents group inventory. Deliberate Managed edits accept eligible directions regardless of topology. Auto leaves exact input-to-output pairs declared as loopbacks in routing or wiring Off by default. The shared route table uses directional eligibility and actual backing. Raw lease authority and PAT1 format and storage retain their existing boundaries. [Managed admission](api/local-router.md#production-graph)
 
 Processors include filters, transpose, key/velocity splits, channel and controller mapping, curves, relative/absolute conversion and bounded stateful operations. Extensibility is a goal; unrestricted scripting or unbounded generated traffic is not a requirement. The precise extension mechanism belongs to Architect after resource discussion.
 
