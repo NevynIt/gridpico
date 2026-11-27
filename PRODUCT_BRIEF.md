@@ -47,7 +47,10 @@ This is the target design for hardware work and a later architecture review. The
 | OLED | I²C monochrome 64 × 128 display. |
 | UART | Expose 3.3 V TX, RX and ground, with no power pin. Defer 5 V level shifting until needed. |
 
-Build a minimal carrier for ordinary DEV use. Power SD and OLED from the RP2040-Zero 3.3 V rail within its usable current budget. Use four-signal USB connectors or breakouts (ground, D+, D− and 5 V) and confirm any required USB-C CC parts on the actual connector. Prioritize protection of the laptop and attached MIDI devices, including prevention of backfeed and unsafe downstream current. Accept local Pico risk. Keep all four USB 2 connector roles and the listed power paths. U3 uses only U1. U4 can draw protected 5 V from U1 or U2. Select the module's SYS5 supply automatically from the protected U1 or U2 feeds. Keep only the control and protection circuitry needed for those power paths, the laptop and the attached devices.
+Build four-port carriers for ordinary DEV use. Power SD and OLED from the RP2040-Zero 3.3 V rail within its usable current budget. Use four-signal USB connectors or breakouts (ground, D+, D− and 5 V) and confirm any required USB-C CC parts on the actual connector. Select SYS5 automatically from the protected U1 or U2 feeds. Retain power-fault and reverse-current protection for the laptop and attached devices. Accept local Pico risk.
+
+- **Protected four-port.** U3 uses only U1. U4 draws protected power from U1 or U2 through the source selector, with hardware USB data isolation and connector protection.
+- **Minimal four-port.** Remove IC8 and feed the U4 output protection from joined A5 and current-limited B_U4. U2 may also power U3 on this variant. Omit IC10 through IC15 and the carrier USB data-line protection. Rely on the Pico and attached devices for data-line protection. Verify the joined power paths, current limiting and permitted use before fitting.
 
 Draw the actual pinout and schematic against the RP2040-Zero module. Evaluate the suggested low-drop paths from U1 to U3, U1 to U4 and U2 to U4 against voltage drop and current for a chain of up to three Picos. Check source isolation, USB power roles and downstream protection on the actual wiring before choosing the power circuit.
 
