@@ -1,4 +1,0 @@
-9 sheets | 180 references | 112 nets | 45 intentional NC groups
-PASS unique reference/pin, no one-ended named nets, exact power rail terminal sets, U1/U3 data NC
-Connectivity checks only. These checks do not evaluate electrical behavior or compliance.
-PASS nine parallel PDF/SVG sheets, valid XML, PDF text inside bounds and no detected text collisions.

@@ -1,0 +1,39 @@
+PASS exact sheet 1 connectivity comparison
+30 component references; 90 source pin groups; 18 named nets; 10 intentional no-connects
+94 orthogonal wire segments; 19 marked junctions
+Unlabeled local nets traced by continuous wires: DV1, DV2, DV4, EN1, EN2, EN4, IL1, IL2, IL4, OV1, OV2
+Matching normalized ledger SHA-256: 5dc13d8842329ccb664cec63270906e957a83c92f4dfe80ab663d4a911d245c2
+Verified terminal/net membership and drawing geometry only. No electrical qualification or native EDA ERC.
+Rejected substituted label B5 for A5.
+Rejected opened wire at IC1.9.
+Rejected deleted deliberate no-connect mark.
+
+PASS exact sheet 2 connectivity comparison
+27 component references; 78 source pin groups; 22 named nets; 3 intentional no-connects
+93 orthogonal wire segments; 17 marked junctions
+Unlabeled local nets traced by continuous wires: B_HOST, DV6, DV6_C, EN_SRC_60, EN_SRC_70, IL6, IL7, PG_60, PG_70
+Matching normalized ledger SHA-256: da50e15c139314503b275418835041a4b88369f6733e5bfc12fc9ddd17d43c76
+Verified terminal/net membership and drawing geometry only. No electrical qualification or native EDA ERC.
+Rejected substituted label B5 for A5.
+Rejected opened wire at IC6.9.
+Rejected deleted deliberate no-connect mark.
+
+PASS exact sheet 3 connectivity comparison
+27 component references; 89 source pin groups; 23 named nets; 4 intentional no-connects
+106 orthogonal wire segments; 18 marked junctions
+Unlabeled local nets traced by continuous wires: C2_DM, C2_DP, HP_DM, HP_DP, U2_DWELL, U2_SNS, U4_DWELL, U4_SNS
+Matching normalized ledger SHA-256: 47aa61bc91df593f2e2dab5ea8f997b2d112e6a116688f433cb38a82106a85dd
+Verified terminal/net membership and drawing geometry only. No electrical qualification or native EDA ERC.
+Rejected substituted label N_DM for N_DP.
+Rejected opened wire at IC11.5.
+Rejected deleted deliberate no-connect mark.
+
+PASS exact sheet 4 connectivity comparison
+18 component references; 83 source pin groups; 27 named nets; 16 intentional no-connects
+69 orthogonal wire segments; 7 marked junctions
+Unlabeled local nets traced by continuous wires: OLED_SCL, OLED_SDA, RGB_A, RGB_DATA, SD_CLK, SD_CLK_A, SD_CS, SD_DAT1, SD_DAT2, SD_MISO, SD_MOSI, UART_RX, UART_RX_A, UART_TX, UART_TX_A
+Matching normalized ledger SHA-256: 4561b98d817a71d59c3cfcd3fb7bbe60be75c9a3c5edafe85836d7bbaf3c940b
+Verified terminal/net membership and drawing geometry only. No electrical qualification or native EDA ERC.
+Rejected substituted label N_DM for N_DP.
+Rejected opened wire at M1.P1.11.
+Rejected deleted deliberate no-connect mark.

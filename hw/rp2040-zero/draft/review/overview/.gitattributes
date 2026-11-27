@@ -1,3 +1,0 @@
-# Preserve the approved review files byte for byte.
-gridpico-carrier-at-a-glance.pdf binary !eol
-components.csv -text !eol whitespace=cr-at-eol

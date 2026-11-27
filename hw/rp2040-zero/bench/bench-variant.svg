@@ -1,0 +1,170 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1584" height="912" viewBox="0 0 1584 912" role="img">
+<rect x="0" y="0" width="1584" height="912" stroke="#ffffff" stroke-width="1" fill="#ffffff"/>
+<rect x="0" y="0" width="1584" height="91" stroke="#162638" stroke-width="1" fill="#162638"/>
+<text x="38" y="30" fill="#aed3d7" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="700">GRIDPICO / BENCH VARIANT</text>
+<text x="38" y="69" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="35" text-anchor="start" font-weight="700">RP2040-Zero two-port bench schematic</text>
+<text x="1546" y="69" fill="#aed3d7" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="700">PAPER REVIEW</text>
+<text x="38" y="118" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="17" text-anchor="start" font-weight="400">Native USB to PC  /  PIO USB to a separately powered hub  /  SPI microSD  /  I²C OLED</text>
+<rect x="38" y="198" width="218" height="192" stroke="#162638" stroke-width="1.5" fill="#f5f9fc"/>
+<rect x="38" y="198" width="218" height="58" stroke="#162638" stroke-width="1.2" fill="#eaf1f7"/>
+<text x="53" y="223" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="17" text-anchor="start" font-weight="700">PC / laptop</text>
+<text x="53" y="244" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Native USB cable</text>
+<rect x="375" y="172" width="286" height="524" stroke="#162638" stroke-width="1.5" fill="#f5f9fc"/>
+<rect x="375" y="172" width="286" height="58" stroke="#162638" stroke-width="1.2" fill="#eaf1f7"/>
+<text x="390" y="197" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="17" text-anchor="start" font-weight="700">M1  Waveshare RP2040-Zero</text>
+<text x="390" y="218" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Stock module and native USB-C retained</text>
+<text x="390" y="252" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">U2  NATIVE USB-C</text>
+<text x="242" y="283" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">5 V VBUS</text>
+<text x="389" y="283" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">VBUS</text>
+<line x1="256" y1="278" x2="375" y2="278" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="242" y="312" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">D+</text>
+<text x="389" y="312" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">A6/B6  D+</text>
+<line x1="256" y1="307" x2="375" y2="307" stroke="#225e67" stroke-width="1.5"/>
+<text x="242" y="341" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">D-</text>
+<text x="389" y="341" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">A7/B7  D-</text>
+<line x1="256" y1="336" x2="375" y2="336" stroke="#225e67" stroke-width="1.5"/>
+<text x="242" y="370" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GND</text>
+<text x="389" y="370" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">GND</text>
+<line x1="256" y1="365" x2="375" y2="365" stroke="#225e67" stroke-width="1.5"/>
+<text x="390" y="390" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">PC is the only power source for M1.</text>
+<rect x="861" y="172" width="200" height="190" stroke="#162638" stroke-width="1.5" fill="#f5f9fc"/>
+<rect x="861" y="172" width="200" height="58" stroke="#162638" stroke-width="1.2" fill="#eaf1f7"/>
+<text x="876" y="197" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="17" text-anchor="start" font-weight="700">J4  U4 breakout</text>
+<text x="876" y="218" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Bench USB-C, verify CC</text>
+<rect x="1276" y="172" width="270" height="190" stroke="#162638" stroke-width="1.5" fill="#f5f9fc"/>
+<rect x="1276" y="172" width="270" height="58" stroke="#162638" stroke-width="1.2" fill="#eaf1f7"/>
+<text x="1291" y="197" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="17" text-anchor="start" font-weight="700">Self-powered USB hub</text>
+<text x="1291" y="218" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Use its matched upstream cable</text>
+<rect x="1276" y="377" width="270" height="39" stroke="#162638" stroke-width="1.5" fill="#f5f9fc"/>
+<rect x="1276" y="377" width="270" height="39" stroke="#162638" stroke-width="1.2" fill="#eaf1f7"/>
+<text x="1291" y="402" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="17" text-anchor="start" font-weight="700">Hub DC adapter only</text>
+<line x1="1411" y1="377" x2="1411" y2="362" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="568" y="263" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GP14</text>
+<text x="644" y="263" fill="#385066" font-family="monospace" font-size="14" text-anchor="end" font-weight="400">P1.15</text>
+<text x="875" y="263" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">D+</text>
+<text x="1290" y="263" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">D+</text>
+<line x1="1061" y1="258" x2="1276" y2="258" stroke="#225e67" stroke-width="1.5"/>
+<text x="568" y="292" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GP15</text>
+<text x="644" y="292" fill="#385066" font-family="monospace" font-size="14" text-anchor="end" font-weight="400">P1.16</text>
+<text x="875" y="292" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">D-</text>
+<text x="1290" y="292" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">D-</text>
+<line x1="1061" y1="287" x2="1276" y2="287" stroke="#225e67" stroke-width="1.5"/>
+<text x="568" y="321" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GND</text>
+<text x="644" y="321" fill="#385066" font-family="monospace" font-size="14" text-anchor="end" font-weight="400">P1.22</text>
+<text x="875" y="321" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">GND</text>
+<text x="1290" y="321" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">GND</text>
+<line x1="1061" y1="316" x2="1276" y2="316" stroke="#225e67" stroke-width="1.5"/>
+<text x="875" y="350" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">VBUS</text>
+<text x="1290" y="350" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">VBUS</text>
+<line x1="1061" y1="345" x2="1276" y2="345" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="661" y1="258" x2="736" y2="258" stroke="#225e67" stroke-width="1.5"/>
+<rect x="736" y="251" width="50" height="14" stroke="#162638" stroke-width="1.5" fill="#ffffff"/>
+<line x1="786" y1="258" x2="861" y2="258" stroke="#225e67" stroke-width="1.5"/>
+<text x="761" y="246" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="middle" font-weight="700">R1  22 ohms</text>
+<line x1="661" y1="287" x2="736" y2="287" stroke="#225e67" stroke-width="1.5"/>
+<rect x="736" y="280" width="50" height="14" stroke="#162638" stroke-width="1.5" fill="#ffffff"/>
+<line x1="786" y1="287" x2="861" y2="287" stroke="#225e67" stroke-width="1.5"/>
+<text x="761" y="307" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="middle" font-weight="700">R2  22 ohms</text>
+<line x1="661" y1="316" x2="861" y2="316" stroke="#225e67" stroke-width="1.5"/>
+<line x1="702" y1="316" x2="702" y2="331" stroke="#225e67" stroke-width="1.5"/>
+<line x1="694" y1="331" x2="710" y2="331" stroke="#225e67" stroke-width="1.5"/>
+<line x1="697" y1="335" x2="707" y2="335" stroke="#225e67" stroke-width="1.5"/>
+<line x1="700" y1="339" x2="704" y2="339" stroke="#225e67" stroke-width="1.5"/>
+<line x1="700" y1="316" x2="704" y2="316" stroke="#225e67" stroke-width="4"/>
+<line x1="861" y1="345" x2="829" y2="345" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="824" y1="340" x2="834" y2="350" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="824" y1="350" x2="834" y2="340" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="819" y="350" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="700">OPEN</text>
+<text x="1168" y="246" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="700">UPSTREAM CABLE</text>
+<rect x="861" y="374" width="228" height="202" stroke="#162638" stroke-width="1.5" fill="#f5f9fc"/>
+<rect x="861" y="374" width="228" height="58" stroke="#162638" stroke-width="1.2" fill="#eaf1f7"/>
+<text x="876" y="399" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="17" text-anchor="start" font-weight="700">J5  3.3 V microSD</text>
+<text x="876" y="420" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">SPI breakout • card contacts shown</text>
+<text x="568" y="454" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GP10  SPI1 SCK</text>
+<text x="644" y="454" fill="#385066" font-family="monospace" font-size="14" text-anchor="end" font-weight="400">P1.11</text>
+<text x="875" y="454" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">5  CLK</text>
+<line x1="661" y1="449" x2="861" y2="449" stroke="#225e67" stroke-width="1.5"/>
+<text x="568" y="478" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GP11  SPI1 TX</text>
+<text x="644" y="478" fill="#385066" font-family="monospace" font-size="14" text-anchor="end" font-weight="400">P1.12</text>
+<text x="875" y="478" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">3  CMD / DI</text>
+<line x1="661" y1="473" x2="861" y2="473" stroke="#225e67" stroke-width="1.5"/>
+<text x="568" y="502" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GP12  SPI1 RX</text>
+<text x="644" y="502" fill="#385066" font-family="monospace" font-size="14" text-anchor="end" font-weight="400">P1.13</text>
+<text x="875" y="502" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">7  DAT0 / DO</text>
+<line x1="661" y1="497" x2="861" y2="497" stroke="#225e67" stroke-width="1.5"/>
+<text x="568" y="526" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GP13  SPI1 CS</text>
+<text x="644" y="526" fill="#385066" font-family="monospace" font-size="14" text-anchor="end" font-weight="400">P1.14</text>
+<text x="875" y="526" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">2  DAT3 / CS</text>
+<line x1="661" y1="521" x2="861" y2="521" stroke="#225e67" stroke-width="1.5"/>
+<text x="1075" y="550" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">4  VDD</text>
+<text x="1075" y="570" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">6  VSS</text>
+<line x1="1089" y1="545" x2="1133" y2="545" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="1133" y1="545" x2="1133" y2="528" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="1125" y1="528" x2="1141" y2="528" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="1133" y="521" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="700">3V3</text>
+<line x1="1089" y1="565" x2="1111" y2="565" stroke="#225e67" stroke-width="1.5"/>
+<line x1="1111" y1="565" x2="1111" y2="580" stroke="#225e67" stroke-width="1.5"/>
+<line x1="1103" y1="580" x2="1119" y2="580" stroke="#225e67" stroke-width="1.5"/>
+<line x1="1106" y1="584" x2="1116" y2="584" stroke="#225e67" stroke-width="1.5"/>
+<line x1="1109" y1="588" x2="1113" y2="588" stroke="#225e67" stroke-width="1.5"/>
+<rect x="861" y="598" width="228" height="98" stroke="#162638" stroke-width="1.5" fill="#f5f9fc"/>
+<rect x="861" y="598" width="228" height="39" stroke="#162638" stroke-width="1.2" fill="#eaf1f7"/>
+<text x="876" y="623" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="17" text-anchor="start" font-weight="700">J6  3.3 V I²C OLED</text>
+<text x="568" y="659" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GP4  I²C0 SDA</text>
+<text x="644" y="659" fill="#385066" font-family="monospace" font-size="14" text-anchor="end" font-weight="400">P1.5</text>
+<text x="875" y="659" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">SDA</text>
+<line x1="661" y1="654" x2="861" y2="654" stroke="#225e67" stroke-width="1.5"/>
+<text x="568" y="685" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GP5  I²C0 SCL</text>
+<text x="644" y="685" fill="#385066" font-family="monospace" font-size="14" text-anchor="end" font-weight="400">P1.6</text>
+<text x="875" y="685" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">SCL</text>
+<line x1="661" y1="680" x2="861" y2="680" stroke="#225e67" stroke-width="1.5"/>
+<text x="1075" y="659" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">VDD</text>
+<text x="1075" y="685" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">GND</text>
+<line x1="1089" y1="654" x2="1133" y2="654" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="1133" y1="654" x2="1133" y2="637" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="1125" y1="637" x2="1141" y2="637" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="1133" y="630" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="700">3V3</text>
+<line x1="1089" y1="680" x2="1111" y2="680" stroke="#225e67" stroke-width="1.5"/>
+<line x1="1111" y1="680" x2="1111" y2="695" stroke="#225e67" stroke-width="1.5"/>
+<line x1="1103" y1="695" x2="1119" y2="695" stroke="#225e67" stroke-width="1.5"/>
+<line x1="1106" y1="699" x2="1116" y2="699" stroke="#225e67" stroke-width="1.5"/>
+<line x1="1109" y1="703" x2="1113" y2="703" stroke="#225e67" stroke-width="1.5"/>
+<text x="389" y="550" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">P1.21   3V3 out</text>
+<line x1="301" y1="545" x2="375" y2="545" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="301" y1="545" x2="301" y2="528" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="293" y1="528" x2="309" y2="528" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="301" y="521" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="700">3V3</text>
+<text x="389" y="572" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">P1.23   5 V pad</text>
+<line x1="375" y1="567" x2="344" y2="567" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="339" y1="562" x2="349" y2="572" stroke="#9e3d14" stroke-width="1.5"/>
+<line x1="339" y1="572" x2="349" y2="562" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="334" y="572" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="700">UNUSED</text>
+<text x="390" y="591" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">P1.23 is tied to U2 VBUS on M1.</text>
+<rect x="1187" y="444" width="359" height="252" stroke="#d6e0e9" stroke-width="1.3" fill="#f5f9fc"/>
+<text x="1203" y="472" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="17" text-anchor="start" font-weight="700">Fit gates</text>
+<text x="1203" y="501" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">Hub / cable / CC</text>
+<text x="1203" y="521" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">Use the recorded data-only hookup if the exact</text>
+<text x="1203" y="541" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">combo attaches with U4 VBUS open. Hold fit if</text>
+<text x="1203" y="561" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">it needs VBUS or drives an unpowered Pico.</text>
+<text x="1203" y="598" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">SD / OLED</text>
+<text x="1203" y="618" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">Verify pad order and 3.3 V power and logic.</text>
+<text x="1203" y="638" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">Require SD pulls and bypass, plus OLED I²C</text>
+<text x="1203" y="658" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">pull-ups to the same module 3V3 rail.</text>
+<rect x="38" y="725" width="1508" height="140" stroke="#d6e0e9" stroke-width="1.3" fill="#f5f9fc"/>
+<text x="54" y="752" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="17" text-anchor="start" font-weight="700">Build and check after hardware authorization</text>
+<text x="54" y="780" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="700">1</text>
+<text x="76" y="780" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13.0" text-anchor="start" font-weight="400">Match module, hub, cable, CC and breakout revisions.</text>
+<text x="76" y="802" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13.0" text-anchor="start" font-weight="400">Verify U4 VBUS is open and P1.23 is unused.</text>
+<text x="431" y="780" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="700">2</text>
+<text x="453" y="780" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13.0" text-anchor="start" font-weight="400">With PC unplugged, check hub upstream VBUS and</text>
+<text x="453" y="802" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13.0" text-anchor="start" font-weight="400">data and confirm no rise on the Pico rails.</text>
+<text x="808" y="780" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="700">3</text>
+<text x="830" y="780" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13.0" text-anchor="start" font-weight="400">Check native and downstream attach in both power</text>
+<text x="830" y="802" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13.0" text-anchor="start" font-weight="400">sequences. Verify full-speed PIO with short leads.</text>
+<text x="1185" y="780" fill="#9e3d14" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="700">4</text>
+<text x="1207" y="780" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13.0" text-anchor="start" font-weight="400">Check combined USB current at attach, SD write and</text>
+<text x="1207" y="802" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13.0" text-anchor="start" font-weight="400">suspend. Verify regulator margin with both modules.</text>
+<text x="54" y="843" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Added discrete parts  •  R1 and R2, 22 ohms each     /     Matching 3V3 and ground symbols denote shared module rails.</text>
+<text x="38" y="894" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">Open X marks an intentionally unconnected pad. Ground is common to PC, Pico and hub.</text>
+<text x="1546" y="894" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="700">TWO-PORT BENCH VARIANT  /  1 OF 1</text>
+</svg>

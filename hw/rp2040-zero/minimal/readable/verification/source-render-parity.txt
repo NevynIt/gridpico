@@ -1,0 +1,4 @@
+PASS all 24 current minimum-package files before and after replay.
+PASS 16 PDF/SVG links and 11 PDF/SVG role captions. Audited link placement and targets.
+PASS SVG wires, junctions, labels, returns and no-connect marks and PDF text audit. All eight comparison pages raster-match their source pages.
+PASS byte-identical regenerated PDF, SVGs, part/link index and endpoint ledgers.

@@ -1,0 +1,470 @@
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="1584" height="1090" viewBox="0 0 1584 1090" role="img">
+<rect x="0" y="0" width="1584" height="1090" stroke="#ffffff" stroke-width="1" fill="#ffffff"/>
+<rect x="0" y="0" width="1584" height="98" stroke="#162638" stroke-width="1" fill="#162638"/>
+<text x="38" y="36" fill="#a7cbd1" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">GRIDPICO / MINIMUM CARRIER REV A</text>
+<text x="38" y="75" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="33" text-anchor="start" font-weight="700">U4 PIO host power and cutoff</text>
+<text x="1546" y="73" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="18" text-anchor="end" font-weight="700">Drawing review  /  02 of 04</text>
+<text x="38" y="124" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Protected U2 branch and U1 feed converge at IC8. IC6 protects the selected supply at J4.</text>
+<line x1="38" y1="143" x2="1546" y2="143" stroke="#cedbe3" stroke-width="1.5"/>
+<line x1="38" y1="1022" x2="1546" y2="1022" stroke="#cedbe3" stroke-width="1.5"/>
+<text x="38" y="1043" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Matching rail and remote labels are electrical joins. GND symbols share GND. X marks a deliberate no-connect.</text>
+<text x="38" y="1061" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">Blue values open manufacturer documents. * Exact manufacturer or order code open.</text>
+<text x="38" y="1078" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">Published electrical basis dae330c / c664df16. Existing review holds apply.</text>
+<text x="50" y="175" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="19" text-anchor="start" font-weight="700">U2 current-limited branch</text>
+<text x="505" y="175" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="19" text-anchor="start" font-weight="700">Source selector</text>
+<text x="850" y="175" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="19" text-anchor="start" font-weight="700">Final breaker, slew and output</text>
+<rect x="174" y="230" width="146" height="185" stroke="#162638" stroke-width="1.5" fill="#f4f8fb"/>
+<text data-ref="IC7" x="143.3100003004074" y="203" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="21" text-anchor="start" font-weight="700">IC7</text>
+<text data-role-for="IC7" x="184.98600018024445" y="203" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">Limits U2 branch current</text>
+<text data-part-value="IC7" x="247.0" y="221" fill="#075b9a" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">TPS2553DBVR-1</text>
+<line x1="199.98400020599365" y1="223" x2="294.01599979400635" y2="223" stroke="#075b9a" stroke-width="0.85"/>
+<a data-part="IC7" aria-label="Texas Instruments TPS2553DBVR-1 (recorded order code)" href="https://www.ti.com/lit/ds/symlink/tps2553.pdf" xlink:href="https://www.ti.com/lit/ds/symlink/tps2553.pdf"><title>Texas Instruments TPS2553DBVR-1 (recorded order code)</title><rect x="199.98400020599365" y="208.64" width="94.0319995880127" height="15.96" fill="transparent" pointer-events="all" style="cursor:pointer"/></a>
+<line x1="174" y1="270" x2="156" y2="270" stroke="#162638" stroke-width="1.5"/>
+<text x="182" y="274" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">1  IN</text>
+<line x1="174" y1="365" x2="156" y2="365" stroke="#162638" stroke-width="1.5"/>
+<text x="182" y="369" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">3  EN</text>
+<line x1="320" y1="270" x2="338" y2="270" stroke="#162638" stroke-width="1.5"/>
+<text x="312" y="274" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">OUT  6</text>
+<line x1="320" y1="365" x2="338" y2="365" stroke="#162638" stroke-width="1.5"/>
+<text x="312" y="369" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">FAULT_N  4</text>
+<line x1="211" y1="415" x2="211" y2="433" stroke="#162638" stroke-width="1.5"/>
+<text x="211" y="399" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">GND</text>
+<text x="211" y="411" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="middle" font-weight="400">2</text>
+<line x1="279" y1="415" x2="279" y2="433" stroke="#162638" stroke-width="1.5"/>
+<text x="279" y="399" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">ILIM</text>
+<text x="279" y="411" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="middle" font-weight="400">5</text>
+<rect x="514" y="230" width="154" height="226" stroke="#162638" stroke-width="1.5" fill="#f4f8fb"/>
+<text data-ref="IC8" x="512.1950003504753" y="203" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="21" text-anchor="start" font-weight="700">IC8</text>
+<text data-role-for="IC8" x="553.8710002303123" y="203" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">Selects U4 power</text>
+<text data-part-value="IC8" x="591.0" y="221" fill="#075b9a" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">TPS2116DRLR</text>
+<line x1="549.6540001630783" y1="223" x2="632.3459998369217" y2="223" stroke="#075b9a" stroke-width="0.85"/>
+<a data-part="IC8" aria-label="Texas Instruments TPS2116DRLR (recorded order code)" href="https://www.ti.com/lit/ds/symlink/tps2116.pdf" xlink:href="https://www.ti.com/lit/ds/symlink/tps2116.pdf"><title>Texas Instruments TPS2116DRLR (recorded order code)</title><rect x="549.6540001630783" y="208.64" width="82.69199967384338" height="15.96" fill="transparent" pointer-events="all" style="cursor:pointer"/></a>
+<line x1="514" y1="270" x2="496" y2="270" stroke="#162638" stroke-width="1.5"/>
+<text x="522" y="274" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">3  VIN1</text>
+<line x1="514" y1="310" x2="496" y2="310" stroke="#162638" stroke-width="1.5"/>
+<text x="522" y="314" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">6  VIN2</text>
+<line x1="514" y1="414" x2="496" y2="414" stroke="#162638" stroke-width="1.5"/>
+<text x="522" y="418" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">4  PR1</text>
+<line x1="668" y1="326" x2="686" y2="326" stroke="#162638" stroke-width="1.5"/>
+<text x="660" y="330" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">MODE  5</text>
+<line x1="553" y1="456" x2="553" y2="474" stroke="#162638" stroke-width="1.5"/>
+<text x="553" y="440" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">GND</text>
+<text x="553" y="452" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="middle" font-weight="400">1</text>
+<line x1="668" y1="270" x2="686" y2="270" stroke="#162638" stroke-width="1.5"/>
+<text x="660" y="274" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">VOUT  2,7</text>
+<line x1="668" y1="365" x2="686" y2="365" stroke="#162638" stroke-width="1.5"/>
+<text x="660" y="369" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">ST  8</text>
+<rect x="855" y="230" width="215" height="198" stroke="#162638" stroke-width="1.5" fill="#f4f8fb"/>
+<text data-ref="IC6" x="879.0470001101494" y="203" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="21" text-anchor="start" font-weight="700">IC6</text>
+<text data-role-for="IC6" x="920.7229999899864" y="203" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">Protects U4 output</text>
+<text data-part-value="IC6" x="962.5" y="221" fill="#075b9a" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">TPS259474LRPWR</text>
+<line x1="909.1480002403259" y1="223" x2="1015.8519997596741" y2="223" stroke="#075b9a" stroke-width="0.85"/>
+<a data-part="IC6" aria-label="Texas Instruments TPS259474LRPWR (recorded order code)" href="https://www.ti.com/lit/ds/symlink/tps25947.pdf" xlink:href="https://www.ti.com/lit/ds/symlink/tps25947.pdf"><title>Texas Instruments TPS259474LRPWR (recorded order code)</title><rect x="909.1480002403259" y="208.64" width="106.70399951934814" height="15.96" fill="transparent" pointer-events="all" style="cursor:pointer"/></a>
+<line x1="855" y1="270" x2="837" y2="270" stroke="#162638" stroke-width="1.5"/>
+<text x="863" y="274" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">5  IN</text>
+<line x1="855" y1="375" x2="837" y2="375" stroke="#162638" stroke-width="1.5"/>
+<text x="863" y="379" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">1  EN/UVLO</text>
+<line x1="1070" y1="270" x2="1088" y2="270" stroke="#162638" stroke-width="1.5"/>
+<text x="1062" y="274" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">OUT  6</text>
+<line x1="1070" y1="350" x2="1088" y2="350" stroke="#162638" stroke-width="1.5"/>
+<text x="1062" y="354" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">PG  3</text>
+<line x1="1070" y1="379" x2="1088" y2="379" stroke="#162638" stroke-width="1.5"/>
+<text x="1062" y="383" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">ITIMER  10</text>
+<line x1="876" y1="428" x2="876" y2="446" stroke="#162638" stroke-width="1.5"/>
+<text x="876" y="412" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">OVLO</text>
+<text x="876" y="424" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="middle" font-weight="400">2</text>
+<line x1="914" y1="428" x2="914" y2="446" stroke="#162638" stroke-width="1.5"/>
+<text x="914" y="412" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">GND</text>
+<text x="914" y="424" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="middle" font-weight="400">8</text>
+<line x1="952" y1="428" x2="952" y2="446" stroke="#162638" stroke-width="1.5"/>
+<text x="952" y="412" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">PGTH</text>
+<text x="952" y="424" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="middle" font-weight="400">4</text>
+<line x1="996" y1="428" x2="996" y2="446" stroke="#162638" stroke-width="1.5"/>
+<text x="996" y="412" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">ILM</text>
+<text x="996" y="424" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="middle" font-weight="400">9</text>
+<line x1="1046" y1="428" x2="1046" y2="446" stroke="#162638" stroke-width="1.5"/>
+<text x="1046" y="412" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">DVDT</text>
+<text x="1046" y="424" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="middle" font-weight="400">7</text>
+<rect x="1387" y="230" width="95" height="184" stroke="#162638" stroke-width="1.5" fill="#f4f8fb"/>
+<text data-ref="J4" x="1434.5" y="203" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="21" text-anchor="middle" font-weight="700">J4*</text>
+<text x="1434.5" y="221" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">USB-A receptacle</text>
+<line x1="1387" y1="270" x2="1369" y2="270" stroke="#162638" stroke-width="1.5"/>
+<text x="1395" y="274" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">1  VBUS</text>
+<line x1="1482" y1="328" x2="1500" y2="328" stroke="#162638" stroke-width="1.5"/>
+<text x="1474" y="332" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">D-  2</text>
+<line x1="1482" y1="365" x2="1500" y2="365" stroke="#162638" stroke-width="1.5"/>
+<text x="1474" y="369" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">D+  3</text>
+<line x1="1410" y1="414" x2="1410" y2="432" stroke="#162638" stroke-width="1.5"/>
+<text x="1410" y="398" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">GND</text>
+<text x="1410" y="410" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="middle" font-weight="400">4</text>
+<line x1="1459" y1="414" x2="1459" y2="432" stroke="#162638" stroke-width="1.5"/>
+<text x="1459" y="398" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">Shell</text>
+<text x="1459" y="410" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="middle" font-weight="400">S</text>
+<line x1="86" y1="302" x2="86" y2="322" stroke="#162638" stroke-width="1.5"/>
+<line x1="86" y1="330" x2="86" y2="350" stroke="#162638" stroke-width="1.5"/>
+<line x1="76" y1="322" x2="96" y2="322" stroke="#162638" stroke-width="2"/>
+<line x1="76" y1="330" x2="96" y2="330" stroke="#162638" stroke-width="2"/>
+<text data-ref="C72" x="100" y="322" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">C72*</text>
+<text x="100" y="339" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">100nF, 16V</text>
+<line data-wire="true" x1="86" y1="242" x2="86" y2="270" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="86" y1="270" x2="156" y2="270" stroke="#22635f" stroke-width="2.0"/>
+<line x1="86" y1="242" x2="86" y2="228" stroke="#9a4c27" stroke-width="1.8"/>
+<line x1="78" y1="228" x2="94" y2="228" stroke="#9a4c27" stroke-width="1.8"/>
+<text x="86" y="222" fill="#9a4c27" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="middle" font-weight="700">B5</text>
+<line data-wire="true" x1="86" y1="270" x2="86" y2="302" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="86" cy="270" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="86" y1="350" x2="86" y2="360" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="86" y1="360" x2="86" y2="370" stroke="#22635f" stroke-width="1.8"/>
+<line x1="76" y1="370" x2="96" y2="370" stroke="#22635f" stroke-width="1.5"/>
+<line x1="79" y1="374" x2="93" y2="374" stroke="#22635f" stroke-width="1.5"/>
+<line x1="83" y1="378" x2="89" y2="378" stroke="#22635f" stroke-width="1.5"/>
+<line data-wire="true" x1="103" y1="396" x2="134" y2="396" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="134" y1="396" x2="134" y2="365" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="134" y1="365" x2="156" y2="365" stroke="#22635f" stroke-width="2.0"/>
+<text x="103" y="388" fill="#22635f" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="700">EN7</text>
+<line data-wire="true" x1="211" y1="433" x2="211" y2="474" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="211" y1="474" x2="211" y2="484" stroke="#22635f" stroke-width="1.8"/>
+<line x1="201" y1="484" x2="221" y2="484" stroke="#22635f" stroke-width="1.5"/>
+<line x1="204" y1="488" x2="218" y2="488" stroke="#22635f" stroke-width="1.5"/>
+<line x1="208" y1="492" x2="214" y2="492" stroke="#22635f" stroke-width="1.5"/>
+<line x1="279" y1="463" x2="279" y2="474" stroke="#162638" stroke-width="1.5"/>
+<line x1="279" y1="500" x2="279" y2="511" stroke="#162638" stroke-width="1.5"/>
+<polyline points="273,474 285,474 285,500 273,500 273,474" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R75" x="293" y="483" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">R75*</text>
+<text x="293" y="500" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">105k, 1%</text>
+<line data-wire="true" x1="279" y1="433" x2="279" y2="463" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="279" y1="511" x2="279" y2="525" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="279" y1="525" x2="279" y2="535" stroke="#22635f" stroke-width="1.8"/>
+<line x1="269" y1="535" x2="289" y2="535" stroke="#22635f" stroke-width="1.5"/>
+<line x1="272" y1="539" x2="286" y2="539" stroke="#22635f" stroke-width="1.5"/>
+<line x1="276" y1="543" x2="282" y2="543" stroke="#22635f" stroke-width="1.5"/>
+<line data-wire="true" x1="338" y1="270" x2="369" y2="270" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="369" y1="270" x2="496" y2="270" stroke="#22635f" stroke-width="2.0"/>
+<line x1="369" y1="285" x2="369" y2="305" stroke="#162638" stroke-width="1.5"/>
+<line x1="369" y1="313" x2="369" y2="333" stroke="#162638" stroke-width="1.5"/>
+<line x1="359" y1="305" x2="379" y2="305" stroke="#162638" stroke-width="2"/>
+<line x1="359" y1="313" x2="379" y2="313" stroke="#162638" stroke-width="2"/>
+<text data-ref="C71" x="383" y="305" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">C71*</text>
+<text x="383" y="322" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">2.2uF, 16V</text>
+<line data-wire="true" x1="369" y1="270" x2="369" y2="285" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="369" cy="270" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="369" y1="333" x2="369" y2="341" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="369" y1="341" x2="369" y2="351" stroke="#22635f" stroke-width="1.8"/>
+<line x1="359" y1="351" x2="379" y2="351" stroke="#22635f" stroke-width="1.5"/>
+<line x1="362" y1="355" x2="376" y2="355" stroke="#22635f" stroke-width="1.5"/>
+<line x1="366" y1="359" x2="372" y2="359" stroke="#22635f" stroke-width="1.5"/>
+<line x1="399" y1="412" x2="399" y2="423" stroke="#162638" stroke-width="1.5"/>
+<line x1="399" y1="449" x2="399" y2="460" stroke="#162638" stroke-width="1.5"/>
+<polyline points="393,423 405,423 405,449 393,449 393,423" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R76" x="413" y="432" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">R76*</text>
+<text x="413" y="449" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">47k</text>
+<line data-wire="true" x1="338" y1="365" x2="399" y2="365" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="399" y1="365" x2="493" y2="365" stroke="#22635f" stroke-width="2.0"/>
+<text x="493" y="357" fill="#22635f" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="700">U4_B_FAULT_N</text>
+<line data-wire="true" x1="399" y1="365" x2="399" y2="412" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="399" cy="365" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="399" y1="460" x2="399" y2="485" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="399" y1="485" x2="470" y2="485" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="470" y1="485" x2="470" y2="473" stroke="#22635f" stroke-width="2.0"/>
+<line x1="470" y1="473" x2="470" y2="459" stroke="#9a4c27" stroke-width="1.8"/>
+<line x1="462" y1="459" x2="478" y2="459" stroke="#9a4c27" stroke-width="1.8"/>
+<text x="470" y="453" fill="#9a4c27" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="middle" font-weight="700">3V3_AON</text>
+<line data-wire="true" x1="434" y1="310" x2="496" y2="310" stroke="#22635f" stroke-width="2.0"/>
+<text x="434" y="302" fill="#9a4c27" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="700">A5</text>
+<line data-wire="true" x1="460" y1="414" x2="496" y2="414" stroke="#22635f" stroke-width="2.0"/>
+<text x="496" y="406" fill="#22635f" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="700">U4_B_GRANT</text>
+<line data-wire="true" x1="686" y1="326" x2="710" y2="326" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="710" y1="326" x2="710" y2="312" stroke="#22635f" stroke-width="2.0"/>
+<line x1="710" y1="312" x2="710" y2="298" stroke="#9a4c27" stroke-width="1.8"/>
+<line x1="702" y1="298" x2="718" y2="298" stroke="#9a4c27" stroke-width="1.8"/>
+<text x="710" y="292" fill="#9a4c27" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="middle" font-weight="700">3V3_AON</text>
+<line data-wire="true" x1="553" y1="474" x2="553" y2="478" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="553" y1="478" x2="553" y2="488" stroke="#22635f" stroke-width="1.8"/>
+<line x1="543" y1="488" x2="563" y2="488" stroke="#22635f" stroke-width="1.5"/>
+<line x1="546" y1="492" x2="560" y2="492" stroke="#22635f" stroke-width="1.5"/>
+<line x1="550" y1="496" x2="556" y2="496" stroke="#22635f" stroke-width="1.5"/>
+<line data-nc-x="686" data-nc-y="365" x1="683" y1="362" x2="689" y2="368" stroke="#5a6570" stroke-width="1.1"/>
+<line data-nc-x="686" data-nc-y="365" x1="683" y1="368" x2="689" y2="362" stroke="#5a6570" stroke-width="1.1"/>
+<line data-wire="true" x1="686" y1="270" x2="752" y2="270" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="752" y1="270" x2="837" y2="270" stroke="#22635f" stroke-width="2.0"/>
+<text x="752" y="262" fill="#9a4c27" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="700">HOST_PRE</text>
+<line x1="752" y1="299" x2="752" y2="319" stroke="#162638" stroke-width="1.5"/>
+<line x1="752" y1="327" x2="752" y2="347" stroke="#162638" stroke-width="1.5"/>
+<line x1="742" y1="319" x2="762" y2="319" stroke="#162638" stroke-width="2"/>
+<line x1="742" y1="327" x2="762" y2="327" stroke="#162638" stroke-width="2"/>
+<text data-ref="C81" x="766" y="319" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">C81*</text>
+<text x="766" y="336" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">2.2uF, 16V</text>
+<line data-wire="true" x1="752" y1="270" x2="752" y2="299" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="752" cy="270" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="752" y1="347" x2="752" y2="360" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="752" y1="360" x2="752" y2="370" stroke="#22635f" stroke-width="1.8"/>
+<line x1="742" y1="370" x2="762" y2="370" stroke="#22635f" stroke-width="1.5"/>
+<line x1="745" y1="374" x2="759" y2="374" stroke="#22635f" stroke-width="1.5"/>
+<line x1="749" y1="378" x2="755" y2="378" stroke="#22635f" stroke-width="1.5"/>
+<line data-wire="true" x1="775" y1="395" x2="810" y2="395" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="810" y1="395" x2="810" y2="375" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="810" y1="375" x2="837" y2="375" stroke="#22635f" stroke-width="2.0"/>
+<text x="775" y="387" fill="#22635f" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="700">EN6</text>
+<line data-nc-x="1088" data-nc-y="350" x1="1085" y1="347" x2="1091" y2="353" stroke="#5a6570" stroke-width="1.1"/>
+<line data-nc-x="1088" data-nc-y="350" x1="1085" y1="353" x2="1091" y2="347" stroke="#5a6570" stroke-width="1.1"/>
+<line data-nc-x="1088" data-nc-y="379" x1="1085" y1="376" x2="1091" y2="382" stroke="#5a6570" stroke-width="1.1"/>
+<line data-nc-x="1088" data-nc-y="379" x1="1085" y1="382" x2="1091" y2="376" stroke="#5a6570" stroke-width="1.1"/>
+<line data-wire="true" x1="876" y1="446" x2="876" y2="478" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="914" y1="446" x2="914" y2="478" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="952" y1="446" x2="952" y2="478" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="876" y1="478" x2="914" y2="478" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="914" y1="478" x2="952" y2="478" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="914" cy="478" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="914" y1="478" x2="914" y2="504" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="914" y1="504" x2="914" y2="514" stroke="#22635f" stroke-width="1.8"/>
+<line x1="904" y1="514" x2="924" y2="514" stroke="#22635f" stroke-width="1.5"/>
+<line x1="907" y1="518" x2="921" y2="518" stroke="#22635f" stroke-width="1.5"/>
+<line x1="911" y1="522" x2="917" y2="522" stroke="#22635f" stroke-width="1.5"/>
+<line x1="996" y1="489" x2="996" y2="500" stroke="#162638" stroke-width="1.5"/>
+<line x1="996" y1="526" x2="996" y2="537" stroke="#162638" stroke-width="1.5"/>
+<polyline points="990,500 1002,500 1002,526 990,526 990,500" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R61" x="982" y="509" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="end" font-weight="700">R61*</text>
+<text x="982" y="526" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="end" font-weight="400">5.36k, 1%</text>
+<line data-wire="true" x1="996" y1="446" x2="996" y2="489" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="996" y1="537" x2="996" y2="554" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="996" y1="554" x2="996" y2="564" stroke="#22635f" stroke-width="1.8"/>
+<line x1="986" y1="564" x2="1006" y2="564" stroke="#22635f" stroke-width="1.5"/>
+<line x1="989" y1="568" x2="1003" y2="568" stroke="#22635f" stroke-width="1.5"/>
+<line x1="993" y1="572" x2="999" y2="572" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1046" y1="489" x2="1046" y2="500" stroke="#162638" stroke-width="1.5"/>
+<line x1="1046" y1="526" x2="1046" y2="537" stroke="#162638" stroke-width="1.5"/>
+<polyline points="1040,500 1052,500 1052,526 1040,526 1040,500" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R67" x="1060" y="509" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">R67*</text>
+<text x="1060" y="526" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">100R, 1%</text>
+<line x1="1046" y1="562" x2="1046" y2="582" stroke="#162638" stroke-width="1.5"/>
+<line x1="1046" y1="590" x2="1046" y2="610" stroke="#162638" stroke-width="1.5"/>
+<line x1="1036" y1="582" x2="1056" y2="582" stroke="#162638" stroke-width="2"/>
+<line x1="1036" y1="590" x2="1056" y2="590" stroke="#162638" stroke-width="2"/>
+<text data-ref="C61" x="1060" y="582" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">C61</text>
+<text data-part-value="C61" x="1060" y="599" fill="#075b9a" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">39nF, 5%, C0G</text>
+<line x1="1060" y1="601" x2="1139.2579995393753" y2="601" stroke="#075b9a" stroke-width="0.85"/>
+<a data-part="C61" aria-label="Murata GRM2195C2A393JE01 (catalog basis)" href="https://pim.murata.com/asset/pim4/ceramicCapacitorSMD/GRM2195C2A393JE01-01A-EN_PDF_CERAMICCAPACITORSMD" xlink:href="https://pim.murata.com/asset/pim4/ceramicCapacitorSMD/GRM2195C2A393JE01-01A-EN_PDF_CERAMICCAPACITORSMD"><title>Murata GRM2195C2A393JE01 (catalog basis)</title><rect x="1060" y="587.155" width="79.2579995393753" height="15.295000000000002" fill="transparent" pointer-events="all" style="cursor:pointer"/></a>
+<line data-wire="true" x1="1046" y1="446" x2="1046" y2="489" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1046" y1="537" x2="1046" y2="562" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1046" y1="610" x2="1046" y2="625" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="1046" y1="625" x2="1046" y2="635" stroke="#22635f" stroke-width="1.8"/>
+<line x1="1036" y1="635" x2="1056" y2="635" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1039" y1="639" x2="1053" y2="639" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1043" y1="643" x2="1049" y2="643" stroke="#22635f" stroke-width="1.5"/>
+<line data-wire="true" x1="1088" y1="270" x2="1148" y2="270" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1148" y1="270" x2="1253" y2="270" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1253" y1="270" x2="1317" y2="270" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1317" y1="270" x2="1369" y2="270" stroke="#22635f" stroke-width="2.0"/>
+<text x="1253" y="262" fill="#9a4c27" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="700">U4_VBUS</text>
+<line x1="1148" y1="322" x2="1148" y2="342" stroke="#162638" stroke-width="1.5"/>
+<line x1="1148" y1="350" x2="1148" y2="370" stroke="#162638" stroke-width="1.5"/>
+<line x1="1138" y1="342" x2="1158" y2="342" stroke="#162638" stroke-width="2"/>
+<line x1="1138" y1="350" x2="1158" y2="350" stroke="#162638" stroke-width="2"/>
+<text x="1131" y="334" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">+</text>
+<text data-ref="C62" x="1148" y="413" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="middle" font-weight="700">C62</text>
+<text data-part-value="C62" x="1148" y="430" fill="#075b9a" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="middle" font-weight="400">270uF polymer candidate</text>
+<line x1="1083.1227503865957" y1="432" x2="1212.8772496134043" y2="432" stroke="#075b9a" stroke-width="0.85"/>
+<a data-part="C62" aria-label="Panasonic 16SVPF270M (conditional candidate)" href="https://industrial.panasonic.com/cdbs/www-data/pdf/AAB8000/AAB8000C177.pdf" xlink:href="https://industrial.panasonic.com/cdbs/www-data/pdf/AAB8000/AAB8000C177.pdf"><title>Panasonic 16SVPF270M (conditional candidate)</title><rect x="1083.1227503865957" y="418.155" width="129.75449922680855" height="15.295000000000002" fill="transparent" pointer-events="all" style="cursor:pointer"/></a>
+<line data-wire="true" x1="1148" y1="270" x2="1148" y2="322" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="1148" cy="270" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="1148" y1="370" x2="1148" y2="376" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="1148" y1="376" x2="1148" y2="386" stroke="#22635f" stroke-width="1.8"/>
+<line x1="1138" y1="386" x2="1158" y2="386" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1141" y1="390" x2="1155" y2="390" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1145" y1="394" x2="1151" y2="394" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1253" y1="322" x2="1253" y2="342" stroke="#162638" stroke-width="1.5"/>
+<line x1="1253" y1="350" x2="1253" y2="370" stroke="#162638" stroke-width="1.5"/>
+<line x1="1243" y1="342" x2="1263" y2="342" stroke="#162638" stroke-width="2"/>
+<line x1="1243" y1="350" x2="1263" y2="350" stroke="#162638" stroke-width="2"/>
+<text data-ref="C63" x="1253" y="413" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="middle" font-weight="700">C63*</text>
+<text x="1253" y="430" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="middle" font-weight="400">1uF, 16V</text>
+<line data-wire="true" x1="1253" y1="270" x2="1253" y2="322" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="1253" cy="270" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="1253" y1="370" x2="1253" y2="376" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="1253" y1="376" x2="1253" y2="386" stroke="#22635f" stroke-width="1.8"/>
+<line x1="1243" y1="386" x2="1263" y2="386" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1246" y1="390" x2="1260" y2="390" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1250" y1="394" x2="1256" y2="394" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1317" y1="322" x2="1317" y2="333" stroke="#162638" stroke-width="1.5"/>
+<line x1="1317" y1="359" x2="1317" y2="370" stroke="#162638" stroke-width="1.5"/>
+<polyline points="1311,333 1323,333 1323,359 1311,359 1311,333" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R66" x="1317" y="413" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="middle" font-weight="700">R66*</text>
+<text x="1317" y="430" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="middle" font-weight="400">4.70k, 1%</text>
+<line data-wire="true" x1="1317" y1="270" x2="1317" y2="322" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="1317" cy="270" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="1317" y1="370" x2="1317" y2="376" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="1317" y1="376" x2="1317" y2="386" stroke="#22635f" stroke-width="1.8"/>
+<line x1="1307" y1="386" x2="1327" y2="386" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1310" y1="390" x2="1324" y2="390" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1314" y1="394" x2="1320" y2="394" stroke="#22635f" stroke-width="1.5"/>
+<line data-wire="true" x1="1500" y1="328" x2="1544" y2="328" stroke="#22635f" stroke-width="2.0"/>
+<text x="1544" y="320" fill="#22635f" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="700">H_DM</text>
+<line data-wire="true" x1="1500" y1="365" x2="1544" y2="365" stroke="#22635f" stroke-width="2.0"/>
+<text x="1544" y="357" fill="#22635f" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="700">H_DP</text>
+<line data-wire="true" x1="1410" y1="432" x2="1410" y2="451" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1410" y1="451" x2="1459" y2="451" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1459" y1="451" x2="1459" y2="432" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1410" y1="451" x2="1410" y2="483" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="1410" cy="451" r="2.5" fill="#22635f"/>
+<line data-ground="true" x1="1410" y1="483" x2="1410" y2="493" stroke="#22635f" stroke-width="1.8"/>
+<line x1="1400" y1="493" x2="1420" y2="493" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1403" y1="497" x2="1417" y2="497" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1407" y1="501" x2="1413" y2="501" stroke="#22635f" stroke-width="1.5"/>
+<text x="50" y="593" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">GP8 requires an independently authorized U2 budget. B-branch settled ceiling is proposed at 200 mA.</text>
+<text x="50" y="614" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">Drop GP9 before a source change. Establish the new source and actual VBUS clearance before a fresh attach.</text>
+<line x1="38" y1="659" x2="1546" y2="659" stroke="#cedbe3" stroke-width="1.5"/>
+<text x="45" y="692" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="19" text-anchor="start" font-weight="700">GP8 branch grant from B5</text>
+<text x="824" y="692" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="19" text-anchor="start" font-weight="700">GP9 port veto and enable from HOST_PRE</text>
+<rect x="225" y="828" width="88" height="72" stroke="#162638" stroke-width="1.4" fill="#f4f8fb"/>
+<text data-ref="Q70A" x="269" y="846" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">Q70A*</text>
+<text x="269" y="887" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">2N7002</text>
+<line x1="209" y1="863" x2="225" y2="863" stroke="#162638" stroke-width="1.5"/>
+<line x1="313" y1="863" x2="329" y2="863" stroke="#162638" stroke-width="1.5"/>
+<text x="232" y="867" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="start" font-weight="400">1 G</text>
+<text x="306" y="867" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="end" font-weight="400">D 3</text>
+<line x1="269" y1="900" x2="269" y2="917" stroke="#162638" stroke-width="1.5"/>
+<text x="280" y="915" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="start" font-weight="400">2 S</text>
+<rect x="442" y="828" width="88" height="72" stroke="#162638" stroke-width="1.4" fill="#f4f8fb"/>
+<text data-ref="Q70B" x="486" y="846" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">Q70B*</text>
+<text x="486" y="887" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">BSS84</text>
+<line x1="426" y1="863" x2="442" y2="863" stroke="#162638" stroke-width="1.5"/>
+<line x1="530" y1="863" x2="546" y2="863" stroke="#162638" stroke-width="1.5"/>
+<text x="449" y="867" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="start" font-weight="400">1 G</text>
+<text x="523" y="867" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="end" font-weight="400">D 3</text>
+<line x1="486" y1="828" x2="486" y2="811" stroke="#162638" stroke-width="1.5"/>
+<text x="497" y="823" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="start" font-weight="400">2 S</text>
+<line x1="140" y1="889" x2="140" y2="900" stroke="#162638" stroke-width="1.5"/>
+<line x1="140" y1="926" x2="140" y2="937" stroke="#162638" stroke-width="1.5"/>
+<polyline points="134,900 146,900 146,926 134,926 134,900" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R701" x="154" y="909" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">R701*</text>
+<text x="154" y="926" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">100k</text>
+<line x1="377" y1="793" x2="377" y2="804" stroke="#162638" stroke-width="1.5"/>
+<line x1="377" y1="830" x2="377" y2="841" stroke="#162638" stroke-width="1.5"/>
+<polyline points="371,804 383,804 383,830 371,830 371,804" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R702" x="391" y="813" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">R702*</text>
+<text x="391" y="830" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">100k</text>
+<line x1="565" y1="863" x2="576" y2="863" stroke="#162638" stroke-width="1.5"/>
+<line x1="602" y1="863" x2="613" y2="863" stroke="#162638" stroke-width="1.5"/>
+<polyline points="576,857 576,869 602,869 602,857 576,857" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R703" x="589" y="842" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="middle" font-weight="700">R703*</text>
+<text x="589" y="883" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="middle" font-weight="400">10.0k</text>
+<line x1="655" y1="897" x2="655" y2="908" stroke="#162638" stroke-width="1.5"/>
+<line x1="655" y1="934" x2="655" y2="945" stroke="#162638" stroke-width="1.5"/>
+<polyline points="649,908 661,908 661,934 649,934 649,908" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R704" x="669" y="917" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">R704*</text>
+<text x="669" y="934" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">10.0k</text>
+<line data-wire="true" x1="67" y1="863" x2="140" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="140" y1="863" x2="209" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<text x="67" y="855" fill="#22635f" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="700">U4_B_GRANT</text>
+<line data-wire="true" x1="140" y1="863" x2="140" y2="889" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="140" cy="863" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="140" y1="937" x2="140" y2="962" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="140" y1="962" x2="140" y2="972" stroke="#22635f" stroke-width="1.8"/>
+<line x1="130" y1="972" x2="150" y2="972" stroke="#22635f" stroke-width="1.5"/>
+<line x1="133" y1="976" x2="147" y2="976" stroke="#22635f" stroke-width="1.5"/>
+<line x1="137" y1="980" x2="143" y2="980" stroke="#22635f" stroke-width="1.5"/>
+<line data-wire="true" x1="269" y1="917" x2="269" y2="962" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="269" y1="962" x2="269" y2="972" stroke="#22635f" stroke-width="1.8"/>
+<line x1="259" y1="972" x2="279" y2="972" stroke="#22635f" stroke-width="1.5"/>
+<line x1="262" y1="976" x2="276" y2="976" stroke="#22635f" stroke-width="1.5"/>
+<line x1="266" y1="980" x2="272" y2="980" stroke="#22635f" stroke-width="1.5"/>
+<line data-wire="true" x1="329" y1="863" x2="377" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="377" y1="863" x2="426" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="377" y1="841" x2="377" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="377" cy="863" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="377" y1="793" x2="377" y2="768" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="377" y1="768" x2="486" y2="768" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="486" y1="768" x2="486" y2="811" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="486" y1="768" x2="486" y2="753" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="486" cy="768" r="2.5" fill="#22635f"/>
+<line x1="486" y1="753" x2="486" y2="739" stroke="#9a4c27" stroke-width="1.8"/>
+<line x1="478" y1="739" x2="494" y2="739" stroke="#9a4c27" stroke-width="1.8"/>
+<text x="486" y="733" fill="#9a4c27" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="middle" font-weight="700">B5</text>
+<line data-wire="true" x1="546" y1="863" x2="565" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="613" y1="863" x2="655" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="655" y1="863" x2="744" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<text x="744" y="855" fill="#22635f" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="700">EN7</text>
+<line data-wire="true" x1="655" y1="863" x2="655" y2="897" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="655" cy="863" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="655" y1="945" x2="655" y2="974" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="655" y1="974" x2="655" y2="984" stroke="#22635f" stroke-width="1.8"/>
+<line x1="645" y1="984" x2="665" y2="984" stroke="#22635f" stroke-width="1.5"/>
+<line x1="648" y1="988" x2="662" y2="988" stroke="#22635f" stroke-width="1.5"/>
+<line x1="652" y1="992" x2="658" y2="992" stroke="#22635f" stroke-width="1.5"/>
+<rect x="999" y="828" width="88" height="72" stroke="#162638" stroke-width="1.4" fill="#f4f8fb"/>
+<text data-ref="Q60A" x="1043" y="846" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">Q60A*</text>
+<text x="1043" y="887" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">2N7002</text>
+<line x1="983" y1="863" x2="999" y2="863" stroke="#162638" stroke-width="1.5"/>
+<line x1="1087" y1="863" x2="1103" y2="863" stroke="#162638" stroke-width="1.5"/>
+<text x="1006" y="867" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="start" font-weight="400">1 G</text>
+<text x="1080" y="867" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="end" font-weight="400">D 3</text>
+<line x1="1043" y1="900" x2="1043" y2="917" stroke="#162638" stroke-width="1.5"/>
+<text x="1054" y="915" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="start" font-weight="400">2 S</text>
+<rect x="1216" y="828" width="88" height="72" stroke="#162638" stroke-width="1.4" fill="#f4f8fb"/>
+<text data-ref="Q60B" x="1260" y="846" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">Q60B*</text>
+<text x="1260" y="887" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="middle" font-weight="400">BSS84</text>
+<line x1="1200" y1="863" x2="1216" y2="863" stroke="#162638" stroke-width="1.5"/>
+<line x1="1304" y1="863" x2="1320" y2="863" stroke="#162638" stroke-width="1.5"/>
+<text x="1223" y="867" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="start" font-weight="400">1 G</text>
+<text x="1297" y="867" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="11" text-anchor="end" font-weight="400">D 3</text>
+<line x1="1260" y1="828" x2="1260" y2="811" stroke="#162638" stroke-width="1.5"/>
+<text x="1271" y="823" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="10" text-anchor="start" font-weight="400">2 S</text>
+<line x1="914" y1="889" x2="914" y2="900" stroke="#162638" stroke-width="1.5"/>
+<line x1="914" y1="926" x2="914" y2="937" stroke="#162638" stroke-width="1.5"/>
+<polyline points="908,900 920,900 920,926 908,926 908,900" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R601" x="928" y="909" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">R601*</text>
+<text x="928" y="926" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">100k</text>
+<line x1="1151" y1="793" x2="1151" y2="804" stroke="#162638" stroke-width="1.5"/>
+<line x1="1151" y1="830" x2="1151" y2="841" stroke="#162638" stroke-width="1.5"/>
+<polyline points="1145,804 1157,804 1157,830 1145,830 1145,804" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R602" x="1165" y="813" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">R602*</text>
+<text x="1165" y="830" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">100k</text>
+<line x1="1339" y1="863" x2="1350" y2="863" stroke="#162638" stroke-width="1.5"/>
+<line x1="1376" y1="863" x2="1387" y2="863" stroke="#162638" stroke-width="1.5"/>
+<polyline points="1350,857 1350,869 1376,869 1376,857 1350,857" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R603" x="1363" y="842" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="middle" font-weight="700">R603*</text>
+<text x="1363" y="883" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="middle" font-weight="400">24.9k</text>
+<line x1="1429" y1="897" x2="1429" y2="908" stroke="#162638" stroke-width="1.5"/>
+<line x1="1429" y1="934" x2="1429" y2="945" stroke="#162638" stroke-width="1.5"/>
+<polyline points="1423,908 1435,908 1435,934 1423,934 1423,908" fill="none" stroke="#162638" stroke-width="1.55"/>
+<text data-ref="R604" x="1443" y="917" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="700">R604*</text>
+<text x="1443" y="934" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="11.5" text-anchor="start" font-weight="400">10.0k</text>
+<line data-wire="true" x1="841" y1="863" x2="914" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="914" y1="863" x2="983" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<text x="841" y="855" fill="#22635f" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="700">U4_PORT_EN</text>
+<line data-wire="true" x1="914" y1="863" x2="914" y2="889" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="914" cy="863" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="914" y1="937" x2="914" y2="962" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="914" y1="962" x2="914" y2="972" stroke="#22635f" stroke-width="1.8"/>
+<line x1="904" y1="972" x2="924" y2="972" stroke="#22635f" stroke-width="1.5"/>
+<line x1="907" y1="976" x2="921" y2="976" stroke="#22635f" stroke-width="1.5"/>
+<line x1="911" y1="980" x2="917" y2="980" stroke="#22635f" stroke-width="1.5"/>
+<line data-wire="true" x1="1043" y1="917" x2="1043" y2="962" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="1043" y1="962" x2="1043" y2="972" stroke="#22635f" stroke-width="1.8"/>
+<line x1="1033" y1="972" x2="1053" y2="972" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1036" y1="976" x2="1050" y2="976" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1040" y1="980" x2="1046" y2="980" stroke="#22635f" stroke-width="1.5"/>
+<line data-wire="true" x1="1103" y1="863" x2="1151" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1151" y1="863" x2="1200" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1151" y1="841" x2="1151" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="1151" cy="863" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="1151" y1="793" x2="1151" y2="768" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1151" y1="768" x2="1260" y2="768" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1260" y1="768" x2="1260" y2="811" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1260" y1="768" x2="1260" y2="753" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="1260" cy="768" r="2.5" fill="#22635f"/>
+<line x1="1260" y1="753" x2="1260" y2="739" stroke="#9a4c27" stroke-width="1.8"/>
+<line x1="1252" y1="739" x2="1268" y2="739" stroke="#9a4c27" stroke-width="1.8"/>
+<text x="1260" y="733" fill="#9a4c27" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="middle" font-weight="700">HOST_PRE</text>
+<line data-wire="true" x1="1320" y1="863" x2="1339" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1387" y1="863" x2="1429" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<line data-wire="true" x1="1429" y1="863" x2="1518" y2="863" stroke="#22635f" stroke-width="2.0"/>
+<text x="1518" y="855" fill="#22635f" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="700">EN6</text>
+<line data-wire="true" x1="1429" y1="863" x2="1429" y2="897" stroke="#22635f" stroke-width="2.0"/>
+<circle cx="1429" cy="863" r="2.5" fill="#22635f"/>
+<line data-wire="true" x1="1429" y1="945" x2="1429" y2="974" stroke="#22635f" stroke-width="2.0"/>
+<line data-ground="true" x1="1429" y1="974" x2="1429" y2="984" stroke="#22635f" stroke-width="1.8"/>
+<line x1="1419" y1="984" x2="1439" y2="984" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1422" y1="988" x2="1436" y2="988" stroke="#22635f" stroke-width="1.5"/>
+<line x1="1426" y1="992" x2="1432" y2="992" stroke="#22635f" stroke-width="1.5"/>
+</svg>

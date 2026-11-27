@@ -1,0 +1,12 @@
+Manufacturer document and recorded part coverage
+Representative ref | recorded code | audit method | document SHA-256 (direct downloads) | manufacturer URL
+IC1 | TPS259474LRPWR | Direct HTTP 200, PDF, 75 pages, recorded code found | 8f96de389903091650d4f462dcfad3210071c3ae7093623a7978f34baf8a65b4 | https://www.ti.com/lit/ds/symlink/tps25947.pdf
+IC7 | TPS2553DBVR-1 | Direct HTTP 200, PDF, 46 pages, recorded code found | b6a2d18ce02fb21eafcc7e1f1d8c4d69074cac38fad44d496682f3393f26445e | https://www.ti.com/lit/ds/symlink/tps2553.pdf
+IC8 | TPS2116DRLR | Direct HTTP 200, PDF, 25 pages, recorded code found | 5babd88afb84e2e65c9c0da23b75f85758c0c730e34102a0fb746ac9573ed1d5 | https://www.ti.com/lit/ds/symlink/tps2116.pdf
+IC10 | TMUXHS221FRSWR | Direct HTTP 200, PDF, 25 pages, recorded code found | b463121690a7068af812c523b8f4165c8903786830da7829ae19d232dc219cc6 | https://www.ti.com/lit/ds/symlink/tmuxhs221f.pdf
+IC11 | TPS389001DSER | Direct HTTP 200, PDF, 27 pages, recorded code found | ee79599730e7606ba9718d9820b411020e3dcd9ff7d44572f8ee63fead15b9d0 | https://www.ti.com/lit/ds/symlink/tps3890.pdf
+IC26 | 74AUP2G132DC | Official PDF opened and exact suffix verified in ordering table through web reader. Direct terminal fetch returned HTTP 403. |  | https://assets.nexperia.com/documents/data-sheet/74AUP2G132.pdf
+D101 | TPD2E2U06QDBZRQ1 | Direct HTTP 200, PDF, 24 pages, recorded code found | dca8b4e0bc48d8fceac96882eb49bd629c3c627ee259196ec19a42a115b1a0c6 | https://www.ti.com/lit/ds/symlink/tpd2e2u06-q1.pdf
+C61 | GRM2195C2A393JE01 | Direct HTTP 200, PDF, 33 pages, recorded code found | 54e0b785d9e7ff0203db528b6d871ad0a4f51b4d1816c156663760bda06f0a7b | https://pim.murata.com/asset/pim4/ceramicCapacitorSMD/GRM2195C2A393JE01-01A-EN_PDF_CERAMICCAPACITORSMD
+C62 | 16SVPF270M | Direct HTTP 200, PDF, 6 pages, recorded code found | d9884e348623832afb8cbb12bbe979e4972fe4463f332ccbd3c0d173e2b03861 | https://industrial.panasonic.com/cdbs/www-data/pdf/AAB8000/AAB8000C177.pdf
+M1 | RP2040-Zero | Direct HTTP 200, PDF, 1 pages, recorded code found | bab8e6fecb8b1da565392a7510eaa8921529c4121f43a0505f708a06f1c1362e | https://files.waveshare.com/upload/4/4c/RP2040_Zero.pdf
