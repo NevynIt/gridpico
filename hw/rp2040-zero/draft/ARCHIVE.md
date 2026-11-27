@@ -20,6 +20,6 @@ The original [design manifest](SHA256SUMS) has SHA-256 **25dbfc048bc370898640e84
 
 The historical product topology review's **Three units** discussion is a separate receipt, SHA-256 **fe4c4094c7fe09b8d2e7dbeb0fcd152d95d492cf08893f3e5efc58de9311e495**, based on Product Brief blob **ce218fb3c23753587b7c5b39f632b3af495729d2**. It describes PC host to Pico A and independent USB host/device hops from A to B and B to C. Each hop has its own verified roles and deliberate routes. USB or CLI access to B or C requires a separately scoped carrier. The schematic and HAL review own electrical qualification.
 
-The intended repository location for the clarified product review is design/reviews/pico-pc-web.md once published. That path is absent on the import base. The draft-specific review is the locally archived HAL receipt above, SHA-256 **cc9a8538db466484301464201076db8fffca3ef358299695114c49f52e0d1653**.
+The [clarified product topology review](../../../design/reviews/pico-pc-web.md) records the later Cable 2 and direct PC control decisions. The draft-specific review is the locally archived HAL receipt above, SHA-256 **cc9a8538db466484301464201076db8fffca3ef358299695114c49f52e0d1653**.
 
 Some exact original review notes cite their scratch evidence paths. The local links above locate the retained review documents and source. They carry the historical findings forward without changing their bytes.
