@@ -20,4 +20,4 @@ da50e15c139314503b275418835041a4b88369f6733e5bfc12fc9ddd17d43c76  ./verification
 4561b98d817a71d59c3cfcd3fb7bbe60be75c9a3c5edafe85836d7bbaf3c940b  ./verification/sheet-4-after-connectivity.csv
 4561b98d817a71d59c3cfcd3fb7bbe60be75c9a3c5edafe85836d7bbaf3c940b  ./verification/sheet-4-before-connectivity.csv
 f385a8c5e6bed9eb2efef68e30c327ce506860708ef46a23c807b004000e89ca  ./verification/source-render-parity.txt
-ed0fec674ae290a3dad1a5254f43726966445b37fa07866df4d6863e9eda8c7d  ./verify-readable.sh
+1e0374050a672f6ebe94472f0398d48205188dbb11aec43cd514a69f846bcd83  ./verify-readable.sh

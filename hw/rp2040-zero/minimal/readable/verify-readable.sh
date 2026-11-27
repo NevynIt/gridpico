@@ -13,7 +13,7 @@ cp -a "$baseline_dir/"*.{py,csv,txt,md,pdf,svg} "$baseline_dir/SHA256SUMS"     "
 cp -a "$drawing_dir/"*.py "$replay_dir/readable/"
 (
     cd -- "$replay_dir"
-    test "$(sha256sum SHA256SUMS | cut -d ' ' -f 1)" =         f3fb48a66b668eee909210acc3944bb5537095314d2a35f49475eee1373aacbb
+    test "$(sha256sum SHA256SUMS | cut -d ' ' -f 1)" =         8806ef5ef703656d940dc3c66647c9088d40b27525f135001966e54e1762031f
     sha256sum --quiet -c SHA256SUMS
     python3 render.py
     python3 overview.py
