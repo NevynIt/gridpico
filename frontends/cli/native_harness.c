@@ -47,6 +47,12 @@ typedef struct {
     gridpico_result panic_apply_result;
     size_t panic_reads;
     size_t panic_applies;
+    gridpico_panic_sweep_status sweep_status;
+    gridpico_result sweep_read_result;
+    gridpico_result sweep_apply_result;
+    bool sweep_apply_ignore_guard;
+    size_t sweep_reads;
+    size_t sweep_applies;
 } forwarding_fixture;
 
 static gridpico_result unused_snapshot(void *context, gridpico_patch_snapshot *out);
@@ -95,6 +101,28 @@ static gridpico_result apply_panic(void *context, gridpico_panic_stage_report *o
     ++fixture->panic_applies;
     if (fixture->panic_apply_result != GRIDPICO_OK) return fixture->panic_apply_result;
     *out = fixture->panic_report;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result read_panic_sweep(void *context,
+                                        gridpico_panic_sweep_status *out)
+{
+    forwarding_fixture *fixture = context;
+    ++fixture->sweep_reads;
+    if (fixture->sweep_read_result != GRIDPICO_OK) return fixture->sweep_read_result;
+    *out = fixture->sweep_status;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result apply_panic_sweep(void *context, uint64_t expected_cycle,
+                                         gridpico_panic_sweep_status *out)
+{
+    forwarding_fixture *fixture = context;
+    ++fixture->sweep_applies;
+    if (fixture->sweep_apply_result != GRIDPICO_OK) return fixture->sweep_apply_result;
+    if (!fixture->sweep_apply_ignore_guard &&
+        expected_cycle != fixture->sweep_status.cycle) return GRIDPICO_UNAVAILABLE;
+    *out = fixture->sweep_status;
     return GRIDPICO_OK;
 }
 
@@ -394,6 +422,284 @@ static void test_forwarding_cli(transcript *terminal)
     compare_terminal_reply(&cli, terminal, "forwarding", GRIDPICO_OK);
     compare_terminal_reply(&cli, terminal, "forwarding running if 18446744073709551615",
                            GRIDPICO_OK);
+}
+
+static void test_panic_sweep_cli(transcript *terminal)
+{
+    forwarding_fixture fixture = {
+        .status = {.revision = 4, .running = true},
+        .read_result = GRIDPICO_OK,
+        .apply_result = GRIDPICO_OK,
+        .panic_read_result = GRIDPICO_OK,
+        .panic_apply_result = GRIDPICO_OK,
+        .sweep_read_result = GRIDPICO_OK,
+        .sweep_apply_result = GRIDPICO_OK,
+        .panic_report = {.state = GRIDPICO_PANIC_STAGE_COMPLETE},
+        .sweep_status = {
+            .cycle = 0,
+            .window = GRIDPICO_PANIC_IDLE,
+            .cc123 = {.state = GRIDPICO_PANIC_STAGE_NONE},
+            .sweep = {.state = GRIDPICO_PANIC_STAGE_NONE},
+        },
+    };
+    gridpico_cli_frontend cli;
+    assert(gridpico_cli_init(&cli, &fixture, unused_snapshot, NULL, NULL,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
+    gridpico_panic_stage_report panic_scratch = {0};
+    gridpico_panic_sweep_status sweep_scratch = {0};
+
+    /* Recognized well-formed forms are unavailable until every M1a/M1b
+     * callback and caller-owned report is bound; malformed remains INVALID. */
+    gridpico_cli_bind_musical_control(&cli, &fixture, read_forwarding,
+                                      apply_forwarding, read_panic, apply_panic,
+                                      &panic_scratch);
+    gridpico_cli_bind_panic_sweep(&cli, read_panic_sweep, NULL, &sweep_scratch);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help panic", capture, terminal) == GRIDPICO_OK);
+    assert(!contains(terminal, "panic sweep"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(fixture.sweep_reads == 0 && fixture.sweep_applies == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 0", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    assert(fixture.sweep_reads == 0 && fixture.sweep_applies == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 18446744073709551616",
+                                    capture, terminal) == GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+
+    gridpico_cli_bind_panic_sweep(&cli, read_panic_sweep, apply_panic_sweep,
+                                  &sweep_scratch);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help panic", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "panic sweep status | panic sweep if <cycle>"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_WINDOW 0 IDLE - -\r\n"
+                  "PANIC_STAGE CC123 NONE 0\r\n"
+                  "PANIC_STAGE SWEEP NONE 0\r\n"
+                  "OK\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_STAGE CC123 COMPLETE 0\r\nOK\r\n") == 0);
+
+    fixture.sweep_status = (gridpico_panic_sweep_status){
+        .cycle = 9,
+        .window = GRIDPICO_PANIC_WAIT,
+        .wait_us = 1000001,
+        .remaining_us = 10000000,
+        .cc123 = {
+            .state = GRIDPICO_PANIC_STAGE_RUNNING,
+            .count = 1,
+            .outputs = {{{5, 7}, 16, 3, GRIDPICO_PANIC_OUTPUT_PENDING}},
+        },
+        .sweep = {.state = GRIDPICO_PANIC_STAGE_NONE},
+    };
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_WINDOW 9 WAIT 1000001 10000000\r\n"
+                  "PANIC_STAGE CC123 RUNNING 1\r\n"
+                  "PANIC_OUT 5 7 16 3 PENDING\r\n"
+                  "PANIC_STAGE SWEEP NONE 0\r\n"
+                  "OK\r\n") == 0);
+
+    /* At the first admitted tick, CC123 can still be in flight. A status read
+     * remains valid; activation is delegated to the provider and may refuse
+     * busy without changing the last committed CLI scratch snapshot. */
+    fixture.sweep_status = (gridpico_panic_sweep_status){
+        .cycle = 1,
+        .window = GRIDPICO_PANIC_OPEN,
+        .remaining_us = 8999999,
+        .cc123 = {
+            .state = GRIDPICO_PANIC_STAGE_RUNNING,
+            .count = 1,
+            .outputs = {{{5, 7}, 16, 3, GRIDPICO_PANIC_OUTPUT_PENDING}},
+        },
+        .sweep = {.state = GRIDPICO_PANIC_STAGE_NONE},
+    };
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_WINDOW 1 OPEN 0 8999999\r\n"
+                  "PANIC_STAGE CC123 RUNNING 1\r\n"
+                  "PANIC_OUT 5 7 16 3 PENDING\r\n"
+                  "PANIC_STAGE SWEEP NONE 0\r\n"
+                  "OK\r\n") == 0);
+    const gridpico_panic_sweep_status open_scratch = sweep_scratch;
+    fixture.sweep_apply_result = GRIDPICO_UNAVAILABLE;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 1", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(memcmp(&open_scratch, &sweep_scratch, sizeof open_scratch) == 0);
+    fixture.sweep_apply_result = GRIDPICO_OK;
+
+    fixture.sweep_status = (gridpico_panic_sweep_status){
+        .cycle = 9,
+        .window = GRIDPICO_PANIC_CLOSED,
+        .remaining_us = 712,
+        .cc123 = {
+            .state = GRIDPICO_PANIC_STAGE_COMPLETE,
+            .count = 1,
+            .outputs = {{{5, 7}, 16, 16, GRIDPICO_PANIC_OUTPUT_COMPLETE}},
+        },
+        .sweep = {
+            .state = GRIDPICO_PANIC_STAGE_RUNNING,
+            .count = 1,
+            .outputs = {{{8, 12}, 2048, 9, GRIDPICO_PANIC_OUTPUT_PENDING}},
+        },
+    };
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 9", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_WINDOW 9 CLOSED - 712\r\n"
+                  "PANIC_STAGE CC123 COMPLETE 1\r\n"
+                  "PANIC_OUT 5 7 16 16 COMPLETE\r\n"
+                  "PANIC_STAGE SWEEP RUNNING 1\r\n"
+                  "PANIC_OUT 8 12 2048 9 PENDING\r\n"
+                  "OK\r\n") == 0);
+    assert(fixture.sweep_applies == 2);
+
+    fixture.sweep_status.cc123.state = GRIDPICO_PANIC_STAGE_RUNNING;
+    fixture.sweep_status.cc123.outputs[0].state = GRIDPICO_PANIC_OUTPUT_PENDING;
+    fixture.sweep_apply_ignore_guard = true;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 9", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    fixture.sweep_status.cc123.state = GRIDPICO_PANIC_STAGE_COMPLETE;
+    fixture.sweep_status.cc123.outputs[0].state = GRIDPICO_PANIC_OUTPUT_COMPLETE;
+    fixture.sweep_apply_ignore_guard = false;
+
+    fixture.sweep_status.sweep.state = GRIDPICO_PANIC_STAGE_NONE;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 9", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    fixture.sweep_status.sweep.state = GRIDPICO_PANIC_STAGE_RUNNING;
+
+    /* UNCONFIRMED is the only row whose accepted count renders as '-'. */
+    fixture.sweep_status.sweep.state = GRIDPICO_PANIC_STAGE_COMPLETE;
+    fixture.sweep_status.sweep.outputs[0] = (gridpico_panic_output){
+        .output = {8, 12}, .requested_count = 2048,
+        .accepted_count = 0, .state = GRIDPICO_PANIC_OUTPUT_UNCONFIRMED,
+    };
+    fixture.sweep_status.cc123.state = GRIDPICO_PANIC_STAGE_CANCELLED;
+    fixture.sweep_status.cc123.outputs[0].state = GRIDPICO_PANIC_OUTPUT_CANCELLED;
+    fixture.sweep_status.cc123.outputs[0].accepted_count = 4;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(contains(terminal, "PANIC_OUT 8 12 2048 - UNCONFIRMED\r\n"));
+
+    /* Provider failures and false successful values never leak partial rows. */
+    fixture.sweep_apply_result = GRIDPICO_UNAVAILABLE;
+    const gridpico_panic_sweep_status saved_apply_scratch = sweep_scratch;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 22", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(memcmp(&saved_apply_scratch, &sweep_scratch,
+                  sizeof saved_apply_scratch) == 0);
+    fixture.sweep_apply_result = GRIDPICO_OK;
+
+    fixture.sweep_read_result = GRIDPICO_UNAVAILABLE;
+    const gridpico_panic_sweep_status saved_scratch = sweep_scratch;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(memcmp(&saved_scratch, &sweep_scratch, sizeof saved_scratch) == 0);
+    fixture.sweep_read_result = GRIDPICO_OK;
+    fixture.sweep_status.window = GRIDPICO_PANIC_OPEN;
+    fixture.sweep_status.wait_us = 1;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    fixture.sweep_status.window = GRIDPICO_PANIC_CLOSED;
+    fixture.sweep_status.wait_us = 0;
+    fixture.sweep_status.sweep.outputs[0].requested_count = 2047;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    fixture.sweep_status.sweep.outputs[0].requested_count = 2048;
+    fixture.sweep_status.cycle = 23;
+    fixture.sweep_apply_ignore_guard = true;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 22", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    fixture.sweep_apply_ignore_guard = false;
+    fixture.sweep_status.cycle = 22;
+
+    /* The full portable cohort uses the documented 76-record/3728-byte
+     * machine envelope; every record validates before the first write. */
+    fixture.sweep_status = (gridpico_panic_sweep_status){
+        .cycle = 22, .window = GRIDPICO_PANIC_CLOSED,
+        .cc123 = {.state = GRIDPICO_PANIC_STAGE_COMPLETE,
+                  .count = GRIDPICO_PATCH_MAX_PORTS},
+        .sweep = {.state = GRIDPICO_PANIC_STAGE_COMPLETE,
+                  .count = GRIDPICO_PATCH_MAX_PORTS},
+    };
+    for (size_t i = 0; i < GRIDPICO_PATCH_MAX_PORTS; ++i) {
+        fixture.sweep_status.cc123.outputs[i] = (gridpico_panic_output){
+            .output = {(gridpico_port_id)(i + 1), UINT32_MAX},
+            .requested_count = 16, .accepted_count = 0,
+            .state = GRIDPICO_PANIC_OUTPUT_REFUSED,
+        };
+        fixture.sweep_status.sweep.outputs[i] = (gridpico_panic_output){
+            .output = {(gridpico_port_id)(i + 1), UINT32_MAX},
+            .requested_count = 2048, .accepted_count = 0,
+            .state = GRIDPICO_PANIC_OUTPUT_REFUSED,
+        };
+    }
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(terminal->size <= 3728);
+    size_t rows = 0;
+    for (const char *cursor = terminal->output;
+         (cursor = strstr(cursor, "PANIC_OUT ")) != NULL; cursor += 10) ++rows;
+    assert(rows == GRIDPICO_PATCH_MAX_PORTS * 2);
+
+    /* Human negotiation and prose conversion remain session-local. */
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "format human", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT HUMAN\r\nOK\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(terminal->size <= 8192);
+    assert(contains(terminal, "Panic timing window: PANIC_WINDOW 22 CLOSED - 0\r\n"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "All-notes-off stage: PANIC_STAGE CC123 COMPLETE 0\r\n"
+                  "Done.\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(contains(terminal, "Panic timing window: PANIC_WINDOW 22 CLOSED - 0\r\n"));
+    assert(contains(terminal, "Done.\r\n"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "format machine", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT MACHINE\r\nOK\r\n") == 0);
 }
 
 static void initialize_monitor_inventory(gridpico_patch_inventory *inventory)
@@ -1356,5 +1662,6 @@ int main(void)
     test_guarded_route_cli(&terminal);
     test_platform_cli(&terminal);
     test_forwarding_cli(&terminal);
+    test_panic_sweep_cli(&terminal);
     return 0;
 }

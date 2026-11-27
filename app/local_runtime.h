@@ -49,7 +49,7 @@ typedef struct {
     gridpico_revision forwarding_revision;
     uint8_t bytes[GRIDPICO_LOCAL_MESSAGE_BYTES];
     bool fault;
-    bool panic;
+    uint32_t panic_owner;
 } local_output;
 
 typedef struct {
@@ -106,6 +106,20 @@ typedef struct {
     bool edit_accepted;
 } local_apc_surface;
 
+typedef bool (*local_panic_clock_fn)(void *context, uint64_t *now_us);
+
+typedef struct {
+    local_panic_clock_fn clock;
+    void *clock_context;
+    gridpico_panic_stage_report report;
+    gridpico_panic_sweep_status scratch;
+    uint64_t cycle;
+    uint64_t origin_us;
+    uint64_t last_clock_us;
+    uint64_t last_pass_us;
+    bool owner_lost;
+} local_panic_sweep;
+
 typedef struct {
     gridpico_patch_graph graph;
     gridpico_patch_session session;
@@ -134,6 +148,7 @@ typedef struct {
     local_binding serial;
     gridpico_panic_stage_report panic_report;
     gridpico_panic_stage_report panic_scratch;
+    local_panic_sweep panic_sweep;
     uint32_t panic_owner;
     size_t panic_cursor;
     size_t panic_pending;
@@ -209,6 +224,9 @@ gridpico_result local_runtime_serial_detach(local_runtime *runtime, uint32_t gen
 gridpico_result local_runtime_serial(local_runtime *runtime, uint32_t generation,
                                     const char *bytes, size_t size);
 void local_runtime_service_panic(local_runtime *runtime);
+/* Private opt-in before serial attach. The borrowed clock must be monotonic. */
+gridpico_result local_runtime_enable_panic_sweep(local_runtime *runtime,
+                                               local_panic_clock_fn clock, void *context);
 gridpico_result local_runtime_expire(local_runtime *runtime);
 gridpico_result local_runtime_retire(local_runtime *runtime);
 

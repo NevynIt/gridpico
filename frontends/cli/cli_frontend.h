@@ -64,10 +64,15 @@ typedef struct {
     void *musical_control_context;
     gridpico_read_forwarding_fn read_forwarding;
     gridpico_apply_forwarding_fn apply_forwarding;
-    /* M1a Panic providers stay unbound in the forwarding-only candidate. */
+    /* Shared M1a Panic providers, optionally extended by M1b. */
     gridpico_read_panic_fn read_panic;
     gridpico_apply_panic_fn apply_panic;
     gridpico_panic_stage_report *panic_scratch;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    gridpico_read_panic_sweep_fn read_panic_sweep;
+    gridpico_apply_panic_sweep_fn apply_panic_sweep;
+    gridpico_panic_sweep_status *panic_sweep_scratch;
+#endif
     unsigned platform_capabilities;
     gridpico_cli_start_platform_fn start_platform;
     void *platform_context;
@@ -155,6 +160,15 @@ void gridpico_cli_bind_musical_control(
     gridpico_read_panic_fn read_panic,
     gridpico_apply_panic_fn apply_panic,
     gridpico_panic_stage_report *panic_scratch);
+
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+/* Bind the optional M1b extension on the existing musical-control context. */
+void gridpico_cli_bind_panic_sweep(
+    gridpico_cli_frontend *frontend,
+    gridpico_read_panic_sweep_fn read_sweep,
+    gridpico_apply_panic_sweep_fn apply_sweep,
+    gridpico_panic_sweep_status *sweep_scratch);
+#endif
 
 /* Execute a complete UTF-8 command line. Diagnostics and serial terminal
  * command callbacks use this same handler. Synchronous commands emit CRLF

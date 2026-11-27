@@ -153,7 +153,7 @@ static gridpico_result stage_midi(local_runtime *runtime, gridpico_connection to
     }
     local_output *row = &runtime->output[runtime->output_count++];
     *row = (local_output){.destination = to, .forwarding_revision = forwarding_revision,
-                          .panic = panic};
+                          .panic_owner = panic ? runtime->panic_owner : 0};
     memcpy(row->bytes, bytes, sizeof(row->bytes));
     ++sink->queued;
     return GRIDPICO_OK;
@@ -633,7 +633,14 @@ static gridpico_result apply_forwarding(void *context, bool running, gridpico_re
     return read_forwarding(context, out);
 }
 
-enum { PANIC_CHANNELS = 16, PANIC_PASS_TRIPLETS = 8 };
+enum {
+    PANIC_CHANNELS = 16,
+    PANIC_PASS_TRIPLETS = 8,
+    PANIC_KEYS = 128,
+    PANIC_SWEEP_INTERVAL_US = 1000,
+    PANIC_SWEEP_FIRST_US = 1000001,
+    PANIC_SWEEP_EXPIRES_US = 10000000,
+};
 
 static bool panic_serial_current(const local_runtime *runtime)
 {
@@ -649,6 +656,29 @@ static bool panic_output_eligible(const local_runtime *runtime, size_t slot)
            sink->attached && !sink->fault;
 }
 
+static bool panic_owner_current(const local_runtime *runtime)
+{
+    return panic_serial_current(runtime) && runtime->serial.generation == runtime->panic_owner &&
+           !runtime->panic_sweep.owner_lost;
+}
+
+static bool panic_clock_sample(const local_panic_sweep *sweep, uint64_t *now)
+{
+    return sweep->clock != NULL && sweep->clock(sweep->clock_context, now) &&
+           *now >= sweep->last_clock_us;
+}
+
+gridpico_result local_runtime_enable_panic_sweep(local_runtime *runtime,
+                                               local_panic_clock_fn clock, void *context)
+{
+    if (runtime == NULL || clock == NULL) return GRIDPICO_INVALID;
+    if (!runtime->configured || !runtime->profile->passive_surface || runtime->recording_enabled ||
+        runtime->serial.generation != 0 || runtime->panic_sweep.clock != NULL) return GRIDPICO_UNAVAILABLE;
+    runtime->panic_sweep.clock = clock;
+    runtime->panic_sweep.clock_context = context;
+    return GRIDPICO_OK;
+}
+
 static gridpico_result read_panic(void *context, gridpico_panic_stage_report *out)
 {
     const local_runtime *runtime = context;
@@ -657,37 +687,119 @@ static gridpico_result read_panic(void *context, gridpico_panic_stage_report *ou
     return GRIDPICO_OK;
 }
 
-static gridpico_result start_panic(void *context, gridpico_panic_stage_report *out)
+static gridpico_result snapshot_panic_outputs(const local_runtime *runtime, uint16_t requests,
+                                             gridpico_panic_stage_report *report)
 {
-    local_runtime *runtime = context;
-    if (!panic_serial_current(runtime) || runtime->panic_report.state == GRIDPICO_PANIC_STAGE_RUNNING) {
-        return GRIDPICO_UNAVAILABLE;
-    }
-
-    gridpico_panic_stage_report report = {.state = GRIDPICO_PANIC_STAGE_COMPLETE};
+    *report = (gridpico_panic_stage_report){.state = GRIDPICO_PANIC_STAGE_COMPLETE};
     const gridpico_patch_inventory *inventory = &runtime->graph.inventory;
     for (size_t i = 0; i < inventory->port_count; ++i) {
         if (!panic_output_eligible(runtime, i)) continue;
-        if (report.count == GRIDPICO_PATCH_MAX_PORTS) return GRIDPICO_CAPACITY;
+        if (report->count == GRIDPICO_PATCH_MAX_PORTS) return GRIDPICO_CAPACITY;
         const gridpico_port_id id = inventory->ports[i].id;
-        size_t slot = report.count++;
-        while (slot != 0 && report.outputs[slot - 1].output.endpoint > id) {
-            report.outputs[slot] = report.outputs[slot - 1];
+        size_t slot = report->count++;
+        while (slot != 0 && report->outputs[slot - 1].output.endpoint > id) {
+            report->outputs[slot] = report->outputs[slot - 1];
             --slot;
         }
-        report.outputs[slot] = (gridpico_panic_output){
+        report->outputs[slot] = (gridpico_panic_output){
             .output = {id, runtime->bindings[i].generation},
-            .requested_count = PANIC_CHANNELS,
+            .requested_count = requests,
             .state = GRIDPICO_PANIC_OUTPUT_PENDING,
         };
     }
+    if (report->count != 0) report->state = GRIDPICO_PANIC_STAGE_RUNNING;
+    return GRIDPICO_OK;
+}
 
-    /* The activation reply must fit before the job starts accepting MIDI. */
-    const size_t reply_bound = sizeof("PANIC_STAGE CC123 COMPLETE 65535\r\nOK\r\n") - 1 +
-        report.count * (sizeof("PANIC_OUT 65535 4294967295 16 16 PENDING\r\n") - 1);
-    if (reply_bound > sizeof(runtime->serial_bytes) - runtime->serial_count) return GRIDPICO_CAPACITY;
+typedef struct {
+    const gridpico_panic_stage_report *cc123;
+    const gridpico_panic_sweep_status *timed;
+    size_t bytes;
+} panic_reply_preview;
 
-    if (report.count != 0) report.state = GRIDPICO_PANIC_STAGE_RUNNING;
+static gridpico_result preview_cc123(void *context, gridpico_panic_stage_report *out)
+{
+    const panic_reply_preview *preview = context;
+    *out = *preview->cc123;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result preview_sweep(void *context, gridpico_panic_sweep_status *out)
+{
+    const panic_reply_preview *preview = context;
+    *out = *preview->timed;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result unavailable_preview_apply(void *context, uint64_t cycle,
+                                                gridpico_panic_sweep_status *out)
+{
+    (void)context;
+    (void)cycle;
+    (void)out;
+    return GRIDPICO_UNAVAILABLE;
+}
+
+static void count_panic_reply(void *context, const char *bytes, size_t size)
+{
+    (void)bytes;
+    panic_reply_preview *preview = context;
+    preview->bytes += size;
+}
+
+static gridpico_result preflight_timed_panic_reply(local_runtime *runtime,
+                                                  const gridpico_panic_stage_report *cc123,
+                                                  const gridpico_panic_sweep_status *timed)
+{
+    panic_reply_preview preview = {.cc123 = cc123, .timed = timed};
+    gridpico_panic_stage_report base_scratch;
+    gridpico_panic_sweep_status timed_scratch;
+    /* Measure with the actual CLI renderer and a detached, read-only binding.
+     * The live writer already counted echo and CRLF. Human still owes a prompt. */
+    gridpico_cli_frontend renderer = {
+        .read_snapshot = read_snapshot, .machine_format = runtime->cli.machine_format,
+        .musical_control_context = &preview, .read_panic = preview_cc123,
+        .apply_panic = preview_cc123, .panic_scratch = &base_scratch,
+        .read_panic_sweep = preview_sweep, .apply_panic_sweep = unavailable_preview_apply,
+        .panic_sweep_scratch = &timed_scratch,
+    };
+    const gridpico_result result = gridpico_cli_execute_line(
+        &renderer, timed != NULL ? "panic sweep status" : "panic status", count_panic_reply, &preview);
+    if (result != GRIDPICO_OK) return result;
+    const size_t prompt = renderer.machine_format ? 0 : sizeof("> ") - 1;
+    return preview.bytes + prompt <= sizeof(runtime->serial_bytes) - runtime->serial_count
+        ? GRIDPICO_OK : GRIDPICO_CAPACITY;
+}
+
+static gridpico_result start_panic(void *context, gridpico_panic_stage_report *out)
+{
+    local_runtime *runtime = context;
+    local_panic_sweep *sweep = &runtime->panic_sweep;
+    if (!panic_serial_current(runtime) || runtime->panic_report.state == GRIDPICO_PANIC_STAGE_RUNNING ||
+        sweep->report.state == GRIDPICO_PANIC_STAGE_RUNNING) return GRIDPICO_UNAVAILABLE;
+
+    uint64_t now = 0;
+    if (sweep->clock != NULL) {
+        if (!panic_clock_sample(sweep, &now) ||
+            (sweep->cycle != 0 && now - sweep->origin_us < PANIC_SWEEP_EXPIRES_US))
+            return GRIDPICO_UNAVAILABLE;
+        if (sweep->cycle == UINT64_MAX) return GRIDPICO_CAPACITY;
+    }
+    gridpico_panic_stage_report report;
+    const gridpico_result snapshot = snapshot_panic_outputs(runtime, PANIC_CHANNELS, &report);
+    if (snapshot != GRIDPICO_OK) return snapshot;
+    if (sweep->clock != NULL) {
+        const gridpico_result preflight = preflight_timed_panic_reply(runtime, &report, NULL);
+        if (preflight != GRIDPICO_OK) return preflight;
+        ++sweep->cycle;
+        sweep->origin_us = sweep->last_clock_us = now;
+        sweep->owner_lost = false;
+        sweep->report = (gridpico_panic_stage_report){0};
+    } else {
+        const size_t reply_bound = sizeof("PANIC_STAGE CC123 COMPLETE 65535\r\nOK\r\n") - 1 +
+            report.count * (sizeof("PANIC_OUT 65535 4294967295 16 16 PENDING\r\n") - 1);
+        if (reply_bound > sizeof(runtime->serial_bytes) - runtime->serial_count) return GRIDPICO_CAPACITY;
+    }
     runtime->panic_report = report;
     runtime->panic_owner = runtime->serial.generation;
     runtime->panic_cursor = 0;
@@ -696,22 +808,92 @@ static gridpico_result start_panic(void *context, gridpico_panic_stage_report *o
     return GRIDPICO_OK;
 }
 
-static void finish_panic_output(local_runtime *runtime, gridpico_panic_output *row,
+static gridpico_panic_sweep_status panic_sweep_status(const local_runtime *runtime, uint64_t now)
+{
+    const local_panic_sweep *sweep = &runtime->panic_sweep;
+    gridpico_panic_sweep_status status = {
+        .cycle = sweep->cycle, .cc123 = runtime->panic_report, .sweep = sweep->report,
+    };
+    if (sweep->cycle == 0) return status;
+    const uint64_t elapsed = now - sweep->origin_us;
+    if (elapsed < PANIC_SWEEP_EXPIRES_US)
+        status.remaining_us = (uint32_t)(PANIC_SWEEP_EXPIRES_US - elapsed);
+    if (status.remaining_us == 0 || status.sweep.state != GRIDPICO_PANIC_STAGE_NONE ||
+        !panic_owner_current(runtime)) {
+        status.window = GRIDPICO_PANIC_CLOSED;
+    } else if (elapsed < PANIC_SWEEP_FIRST_US) {
+        status.window = GRIDPICO_PANIC_WAIT;
+        status.wait_us = (uint32_t)(PANIC_SWEEP_FIRST_US - elapsed);
+    } else {
+        status.window = GRIDPICO_PANIC_OPEN;
+    }
+    return status;
+}
+
+static gridpico_result read_panic_sweep(void *context, gridpico_panic_sweep_status *out)
+{
+    local_runtime *runtime = context;
+    uint64_t now;
+    if (!panic_serial_current(runtime) || !panic_clock_sample(&runtime->panic_sweep, &now))
+        return GRIDPICO_UNAVAILABLE;
+    *out = panic_sweep_status(runtime, now);
+    runtime->panic_sweep.last_clock_us = now;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result apply_panic_sweep(void *context, uint64_t expected_cycle,
+                                        gridpico_panic_sweep_status *out)
+{
+    local_runtime *runtime = context;
+    local_panic_sweep *sweep = &runtime->panic_sweep;
+    if (expected_cycle == 0) return GRIDPICO_INVALID;
+    if (expected_cycle != sweep->cycle || !panic_owner_current(runtime) ||
+        runtime->panic_report.state == GRIDPICO_PANIC_STAGE_RUNNING) return GRIDPICO_UNAVAILABLE;
+    uint64_t now;
+    if (!panic_clock_sample(sweep, &now)) return GRIDPICO_UNAVAILABLE;
+    gridpico_panic_sweep_status next = panic_sweep_status(runtime, now);
+    if (next.window != GRIDPICO_PANIC_OPEN) return GRIDPICO_UNAVAILABLE;
+    const gridpico_result snapshot =
+        snapshot_panic_outputs(runtime, PANIC_CHANNELS * PANIC_KEYS, &next.sweep);
+    if (snapshot != GRIDPICO_OK) return snapshot;
+    next.window = GRIDPICO_PANIC_CLOSED;
+    const gridpico_result preflight = preflight_timed_panic_reply(runtime, &next.cc123, &next);
+    if (preflight != GRIDPICO_OK) return preflight;
+
+    sweep->report = next.sweep;
+    sweep->last_clock_us = sweep->last_pass_us = now;
+    runtime->panic_cursor = 0;
+    runtime->panic_pending = next.sweep.count;
+    *out = next;
+    return GRIDPICO_OK;
+}
+
+static gridpico_panic_stage_report *active_panic_report(local_runtime *runtime)
+{
+    if (runtime->panic_report.state == GRIDPICO_PANIC_STAGE_RUNNING) return &runtime->panic_report;
+    if (runtime->panic_sweep.report.state == GRIDPICO_PANIC_STAGE_RUNNING)
+        return &runtime->panic_sweep.report;
+    return NULL;
+}
+
+static void finish_panic_output(local_runtime *runtime, gridpico_panic_stage_report *report,
+                                gridpico_panic_output *row,
                                 gridpico_panic_output_state state)
 {
     row->state = state;
-    if (--runtime->panic_pending == 0) runtime->panic_report.state = GRIDPICO_PANIC_STAGE_COMPLETE;
+    if (--runtime->panic_pending == 0) report->state = GRIDPICO_PANIC_STAGE_COMPLETE;
 }
 
 static void cancel_panic_output(local_runtime *runtime, gridpico_connection connection)
 {
-    if (runtime->panic_report.state != GRIDPICO_PANIC_STAGE_RUNNING) return;
-    for (size_t i = 0; i < runtime->panic_report.count; ++i) {
-        gridpico_panic_output *row = &runtime->panic_report.outputs[i];
+    gridpico_panic_stage_report *report = active_panic_report(runtime);
+    if (report == NULL) return;
+    for (size_t i = 0; i < report->count; ++i) {
+        gridpico_panic_output *row = &report->outputs[i];
         if (row->state == GRIDPICO_PANIC_OUTPUT_PENDING &&
             row->output.endpoint == connection.endpoint &&
             row->output.generation == connection.generation) {
-            finish_panic_output(runtime, row, GRIDPICO_PANIC_OUTPUT_CANCELLED);
+            finish_panic_output(runtime, report, row, GRIDPICO_PANIC_OUTPUT_CANCELLED);
             return;
         }
     }
@@ -719,8 +901,9 @@ static void cancel_panic_output(local_runtime *runtime, gridpico_connection conn
 
 static void cancel_panic(local_runtime *runtime)
 {
-    gridpico_panic_stage_report *report = &runtime->panic_report;
-    if (report->state != GRIDPICO_PANIC_STAGE_RUNNING) return;
+    if (runtime->panic_sweep.cycle != 0) runtime->panic_sweep.owner_lost = true;
+    gridpico_panic_stage_report *report = active_panic_report(runtime);
+    if (report == NULL) return;
     for (size_t i = 0; i < report->count; ++i) {
         if (report->outputs[i].state == GRIDPICO_PANIC_OUTPUT_PENDING) {
             report->outputs[i].state = GRIDPICO_PANIC_OUTPUT_CANCELLED;
@@ -732,11 +915,18 @@ static void cancel_panic(local_runtime *runtime)
 
 void local_runtime_service_panic(local_runtime *runtime)
 {
-    gridpico_panic_stage_report *report = &runtime->panic_report;
-    if (report->state != GRIDPICO_PANIC_STAGE_RUNNING) return;
-    if (!panic_serial_current(runtime) || runtime->serial.generation != runtime->panic_owner) {
+    gridpico_panic_stage_report *report = active_panic_report(runtime);
+    if (report == NULL) return;
+    if (!panic_owner_current(runtime)) {
         cancel_panic(runtime);
         return;
+    }
+    local_panic_sweep *sweep = &runtime->panic_sweep;
+    const bool individual = report == &sweep->report;
+    if (individual) {
+        uint64_t now;
+        if (!panic_clock_sample(sweep, &now) || now - sweep->last_pass_us < PANIC_SWEEP_INTERVAL_US) return;
+        sweep->last_clock_us = sweep->last_pass_us = now;
     }
     for (unsigned attempts = 0; runtime->panic_pending != 0 && attempts < PANIC_PASS_TRIPLETS;) {
         gridpico_panic_output *row = &report->outputs[runtime->panic_cursor];
@@ -745,15 +935,18 @@ void local_runtime_service_panic(local_runtime *runtime)
         const size_t slot = port_index(runtime, row->output.endpoint);
         if (!panic_output_eligible(runtime, slot) ||
             runtime->bindings[slot].generation != row->output.generation) {
-            finish_panic_output(runtime, row, GRIDPICO_PANIC_OUTPUT_CANCELLED);
+            finish_panic_output(runtime, report, row, GRIDPICO_PANIC_OUTPUT_CANCELLED);
             continue;
         }
-        const uint8_t bytes[] = {(uint8_t)(0xb0u + row->accepted_count), 123, 0};
+        const uint8_t bytes[] = {
+            (uint8_t)(individual ? 0x80u | (row->accepted_count / PANIC_KEYS) : 0xb0u + row->accepted_count),
+            (uint8_t)(individual ? row->accepted_count % PANIC_KEYS : 123u), 0,
+        };
         ++attempts;
         if (stage_midi(runtime, row->output, bytes, 0, true) != GRIDPICO_OK) {
-            finish_panic_output(runtime, row, GRIDPICO_PANIC_OUTPUT_REFUSED);
+            finish_panic_output(runtime, report, row, GRIDPICO_PANIC_OUTPUT_REFUSED);
         } else if (++row->accepted_count == row->requested_count) {
-            finish_panic_output(runtime, row, GRIDPICO_PANIC_OUTPUT_COMPLETE);
+            finish_panic_output(runtime, report, row, GRIDPICO_PANIC_OUTPUT_COMPLETE);
         }
     }
 }
@@ -1494,6 +1687,9 @@ gridpico_result local_runtime_serial_bind(local_runtime *runtime, uint32_t gener
         if (runtime->forwarding_enabled) {
             gridpico_cli_bind_musical_control(&runtime->cli, runtime, read_forwarding, apply_forwarding,
                                               read_panic, start_panic, &runtime->panic_scratch);
+            if (runtime->panic_sweep.clock != NULL)
+                gridpico_cli_bind_panic_sweep(&runtime->cli, read_panic_sweep, apply_panic_sweep,
+                                             &runtime->panic_sweep.scratch);
         }
         runtime->serial = (local_binding){.generation = generation, .attached = true};
         gridpico_cli_process(&runtime->cli);

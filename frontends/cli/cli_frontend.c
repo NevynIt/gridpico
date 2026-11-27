@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
 
 _Static_assert(GRIDPICO_CLI_LINE_BYTES <= UINT16_MAX,
                "embedded-cli uses 16-bit configured capacities");
@@ -268,6 +269,9 @@ static bool human_render_record(human_reply_writer *writer,
     else if (length >= sizeof("PANIC_OUT ") - 1 &&
              memcmp(line, "PANIC_OUT ", sizeof("PANIC_OUT ") - 1) == 0)
         format = "All-notes-off output";
+    else if (length >= sizeof("PANIC_WINDOW ") - 1 &&
+             memcmp(line, "PANIC_WINDOW ", sizeof("PANIC_WINDOW ") - 1) == 0)
+        format = "Panic timing window";
     else if (length >= sizeof("TRANSFORM ") - 1 &&
              memcmp(line, "TRANSFORM ", sizeof("TRANSFORM ") - 1) == 0)
         format = "Route transform";
@@ -394,6 +398,10 @@ static const cli_help_entry help_panic = {
     CLI_COMMAND_PANIC, "panic", "panic | panic status -- start CC123 All Notes Off or read its stage"};
 static const cli_help_entry help_panic_readonly = {
     CLI_COMMAND_PANIC, "panic", "panic status -- read the current CC123 All Notes Off stage"};
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+static const cli_help_entry help_panic_sweep = {
+    CLI_COMMAND_PANIC, "panic", "panic | panic status | panic sweep status | panic sweep if <cycle> -- start/read CC123 or read/guard the timed Note Off sweep"};
+#endif
 static const cli_help_entry help_trace = {
     CLI_COMMAND_TRACE, "trace", "trace -- request platform TRACE diagnostics"};
 static const cli_help_entry help_hubtrace = {
@@ -489,6 +497,15 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
     }
     if (frontend->read_panic != NULL && frontend->panic_scratch != NULL &&
         count < capacity) {
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+        const bool sweep_available = frontend->apply_panic != NULL &&
+            frontend->read_panic_sweep != NULL &&
+            frontend->apply_panic_sweep != NULL &&
+            frontend->panic_sweep_scratch != NULL;
+        if (sweep_available)
+            entries[count++] = &help_panic_sweep;
+        else
+#endif
         entries[count++] = frontend->apply_panic != NULL ? &help_panic
                                                           : &help_panic_readonly;
     }
@@ -1833,7 +1850,8 @@ static const char *panic_output_state_name(gridpico_panic_output_state state)
     return NULL;
 }
 
-static bool panic_stage_valid(const gridpico_panic_stage_report *report)
+static bool panic_stage_valid_limit(const gridpico_panic_stage_report *report,
+                                   uint16_t max_requested)
 {
     if (report == NULL || panic_stage_state_name(report->state) == NULL ||
         report->count > GRIDPICO_PATCH_MAX_PORTS ||
@@ -1844,7 +1862,8 @@ static bool panic_stage_valid(const gridpico_panic_stage_report *report)
         const gridpico_panic_output *output = &report->outputs[i];
         if (output->output.endpoint == 0 || output->output.endpoint <= previous ||
             output->output.generation == 0 || output->requested_count == 0 ||
-            output->requested_count > 16 || output->accepted_count > output->requested_count ||
+            output->requested_count > max_requested ||
+            output->accepted_count > output->requested_count ||
             panic_output_state_name(output->state) == NULL) return false;
         if (output->state == GRIDPICO_PANIC_OUTPUT_COMPLETE &&
             output->accepted_count != output->requested_count) return false;
@@ -1855,6 +1874,11 @@ static bool panic_stage_valid(const gridpico_panic_stage_report *report)
         previous = output->output.endpoint;
     }
     return true;
+}
+
+static bool panic_stage_valid(const gridpico_panic_stage_report *report)
+{
+    return panic_stage_valid_limit(report, 16);
 }
 
 static bool panic_response_add(panic_response *response,
@@ -1931,6 +1955,14 @@ static gridpico_result read_or_start_panic(gridpico_cli_frontend *frontend,
                ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
 }
 
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+static gridpico_result execute_panic_sweep(gridpico_cli_frontend *frontend,
+                                           const char *line,
+                                           gridpico_cli_write_fn write,
+                                           void *context,
+                                           bool *response_emitted);
+#endif
+
 static gridpico_result execute_panic(gridpico_cli_frontend *frontend,
                                      const char *line,
                                      gridpico_cli_write_fn write,
@@ -1939,6 +1971,13 @@ static gridpico_result execute_panic(gridpico_cli_frontend *frontend,
 {
     if (response_emitted == NULL) return GRIDPICO_INVALID;
     *response_emitted = false;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    if (strncmp(line, "panic sweep", sizeof("panic sweep") - 1) == 0 &&
+        (line[sizeof("panic sweep") - 1] == '\0' ||
+         line[sizeof("panic sweep") - 1] == ' '))
+        return execute_panic_sweep(frontend, line, write, context,
+                                   response_emitted);
+#endif
     if (strcmp(line, "panic") == 0) {
         /* Keep the no-provider path out of the staged-reply frame. */
         if (frontend->read_panic == NULL || frontend->apply_panic == NULL ||
@@ -1959,6 +1998,258 @@ static gridpico_result execute_panic(gridpico_cli_frontend *frontend,
     }
     return GRIDPICO_INVALID;
 }
+
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+enum {
+    CLI_PANIC_M1B_MACHINE_BYTES = 3728,
+    CLI_PANIC_M1B_RECORDS = 76,
+    CLI_PANIC_M1B_REPLY_BYTES = 8192,
+    CLI_PANIC_M1B_HUMAN_EXTRA_PER_RECORD = 26
+};
+
+_Static_assert(GRIDPICO_PATCH_MAX_PORTS <= 36,
+               "M1b Panic transcript bound assumes at most 36 outputs");
+_Static_assert(CLI_PANIC_M1B_MACHINE_BYTES +
+                   CLI_PANIC_M1B_RECORDS * CLI_PANIC_M1B_HUMAN_EXTRA_PER_RECORD <=
+                   CLI_PANIC_M1B_REPLY_BYTES,
+               "M1b Human transcript must fit the bounded 8 KiB reply");
+_Static_assert(GRIDPICO_PATCH_MAX_PORTS * 2 + 4 <= CLI_PANIC_M1B_RECORDS,
+               "M1b Panic transcript record bound is too small");
+
+typedef struct {
+    char bytes[CLI_PANIC_M1B_MACHINE_BYTES];
+    size_t size;
+    size_t records;
+} panic_m1b_reply;
+
+typedef struct {
+    char bytes[CLI_PANIC_M1B_REPLY_BYTES];
+    size_t size;
+    bool overflow;
+} panic_m1b_human_capture;
+
+static const char *panic_window_name(gridpico_panic_window window)
+{
+    switch (window) {
+    case GRIDPICO_PANIC_IDLE: return "IDLE";
+    case GRIDPICO_PANIC_WAIT: return "WAIT";
+    case GRIDPICO_PANIC_OPEN: return "OPEN";
+    case GRIDPICO_PANIC_CLOSED: return "CLOSED";
+    }
+    return NULL;
+}
+
+static bool panic_sweep_stage_valid(const gridpico_panic_stage_report *report)
+{
+    if (!panic_stage_valid_limit(report, 2048)) return false;
+    for (size_t i = 0; i < report->count; ++i) {
+        const uint16_t requested = report->outputs[i].requested_count;
+        if (requested < 128 || requested > 2048 || requested % 128 != 0)
+            return false;
+    }
+    return true;
+}
+
+static bool panic_sweep_status_valid(const gridpico_panic_sweep_status *status)
+{
+    if (status == NULL || panic_window_name(status->window) == NULL ||
+        !panic_stage_valid(&status->cc123) ||
+        !panic_sweep_stage_valid(&status->sweep)) return false;
+
+    switch (status->window) {
+    case GRIDPICO_PANIC_IDLE:
+        return status->cycle == 0 && status->wait_us == 0 &&
+               status->remaining_us == 0 &&
+               status->cc123.state == GRIDPICO_PANIC_STAGE_NONE &&
+               status->sweep.state == GRIDPICO_PANIC_STAGE_NONE;
+    case GRIDPICO_PANIC_WAIT:
+        return status->cycle != 0 && status->wait_us != 0 &&
+               status->wait_us <= 1000001u &&
+               status->remaining_us > status->wait_us &&
+               status->remaining_us <= 10000000u &&
+               status->sweep.state == GRIDPICO_PANIC_STAGE_NONE;
+    case GRIDPICO_PANIC_OPEN:
+        return status->cycle != 0 && status->wait_us == 0 &&
+               status->remaining_us != 0 && status->remaining_us < 9000000u &&
+               status->cc123.state != GRIDPICO_PANIC_STAGE_NONE &&
+               status->sweep.state == GRIDPICO_PANIC_STAGE_NONE;
+    case GRIDPICO_PANIC_CLOSED:
+        return status->cycle != 0 && status->wait_us == 0 &&
+               status->remaining_us <= 10000000u;
+    }
+    return false;
+}
+
+static bool panic_m1b_add(panic_m1b_reply *reply,
+                          const char *record, size_t length)
+{
+    if (reply == NULL || record == NULL ||
+        reply->records >= CLI_PANIC_M1B_RECORDS ||
+        reply->size > CLI_PANIC_M1B_MACHINE_BYTES ||
+        length > CLI_PANIC_M1B_MACHINE_BYTES - reply->size ||
+        2 > CLI_PANIC_M1B_MACHINE_BYTES - reply->size - length) return false;
+    memcpy(reply->bytes + reply->size, record, length);
+    reply->size += length;
+    memcpy(reply->bytes + reply->size, "\r\n", 2);
+    reply->size += 2;
+    ++reply->records;
+    return true;
+}
+
+static bool panic_m1b_format(panic_m1b_reply *reply,
+                             unsigned port, unsigned generation,
+                             unsigned requested, unsigned accepted,
+                             const char *state)
+{
+    char record[GRIDPICO_CLI_RECORD_BYTES];
+    int length;
+    if (accepted == UINT_MAX) {
+        length = snprintf(record, sizeof record, "PANIC_OUT %u %u %u - %s",
+                          port, generation, requested, state);
+    } else {
+        length = snprintf(record, sizeof record, "PANIC_OUT %u %u %u %u %s",
+                          port, generation, requested, accepted, state);
+    }
+    return length >= 0 && (size_t)length < sizeof record &&
+           panic_m1b_add(reply, record, (size_t)length);
+}
+
+static bool panic_m1b_add_window(panic_m1b_reply *reply,
+                                 const gridpico_panic_sweep_status *status)
+{
+    char record[GRIDPICO_CLI_RECORD_BYTES];
+    int length;
+    if (status->window == GRIDPICO_PANIC_IDLE) {
+        length = snprintf(record, sizeof record, "PANIC_WINDOW 0 IDLE - -");
+    } else if (status->window == GRIDPICO_PANIC_WAIT ||
+               status->window == GRIDPICO_PANIC_OPEN) {
+        length = snprintf(record, sizeof record, "PANIC_WINDOW %llu %s %u %u",
+                          (unsigned long long)status->cycle,
+                          panic_window_name(status->window), status->wait_us,
+                          status->remaining_us);
+    } else {
+        length = snprintf(record, sizeof record, "PANIC_WINDOW %llu CLOSED - %u",
+                          (unsigned long long)status->cycle,
+                          status->remaining_us);
+    }
+    return length >= 0 && (size_t)length < sizeof record &&
+           panic_m1b_add(reply, record, (size_t)length);
+}
+
+static bool panic_m1b_add_stage(panic_m1b_reply *reply, const char *name,
+                                const gridpico_panic_stage_report *stage)
+{
+    char record[GRIDPICO_CLI_RECORD_BYTES];
+    const int length = snprintf(record, sizeof record, "PANIC_STAGE %s %s %u",
+                                name, panic_stage_state_name(stage->state),
+                                (unsigned)stage->count);
+    if (length < 0 || (size_t)length >= sizeof record ||
+        !panic_m1b_add(reply, record, (size_t)length)) return false;
+    for (size_t i = 0; i < stage->count; ++i) {
+        const gridpico_panic_output *output = &stage->outputs[i];
+        const bool unknown = output->state == GRIDPICO_PANIC_OUTPUT_UNCONFIRMED;
+        if (!panic_m1b_format(reply, (unsigned)output->output.endpoint,
+                              (unsigned)output->output.generation,
+                              (unsigned)output->requested_count,
+                              unknown ? UINT_MAX : (unsigned)output->accepted_count,
+                              panic_output_state_name(output->state))) return false;
+    }
+    return true;
+}
+
+static void panic_m1b_capture_write(void *context, const char *bytes, size_t size)
+{
+    panic_m1b_human_capture *capture = context;
+    if (capture == NULL || capture->overflow) return;
+    if (capture->size > sizeof capture->bytes ||
+        size > sizeof capture->bytes - capture->size) {
+        capture->overflow = true;
+        return;
+    }
+    memcpy(capture->bytes + capture->size, bytes, size);
+    capture->size += size;
+}
+
+static gridpico_result emit_panic_sweep_status(
+    gridpico_cli_frontend *frontend, gridpico_cli_write_fn write, void *context)
+{
+    const gridpico_panic_sweep_status *status = frontend->panic_sweep_scratch;
+    if (!panic_sweep_status_valid(status)) return GRIDPICO_INVALID;
+    panic_m1b_reply reply = {0};
+    if (!panic_m1b_add_window(&reply, status) ||
+        !panic_m1b_add_stage(&reply, "CC123", &status->cc123) ||
+        !panic_m1b_add_stage(&reply, "SWEEP", &status->sweep) ||
+        !panic_m1b_add(&reply, "OK", 2)) return GRIDPICO_CAPACITY;
+
+    if (frontend->machine_format)
+        return write_bytes(write, context, reply.bytes, reply.size)
+                   ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
+
+    panic_m1b_human_capture human_capture = {0};
+    human_reply_writer human = {
+        .frontend = frontend,
+        .write = panic_m1b_capture_write,
+        .context = &human_capture,
+    };
+    human_reply_write(&human, reply.bytes, reply.size);
+    if (human.overflow || human_capture.overflow) return GRIDPICO_CAPACITY;
+    return write_bytes(write, context, human_capture.bytes, human_capture.size)
+               ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
+}
+
+static bool panic_sweep_bound(const gridpico_cli_frontend *frontend)
+{
+    return frontend->read_panic != NULL && frontend->apply_panic != NULL &&
+           frontend->panic_scratch != NULL &&
+           frontend->read_panic_sweep != NULL &&
+           frontend->apply_panic_sweep != NULL &&
+           frontend->panic_sweep_scratch != NULL;
+}
+
+static gridpico_result execute_panic_sweep(gridpico_cli_frontend *frontend,
+                                           const char *line,
+                                           gridpico_cli_write_fn write,
+                                           void *context,
+                                           bool *response_emitted)
+{
+    *response_emitted = false;
+    if (strcmp(line, "panic sweep status") == 0) {
+        if (!panic_sweep_bound(frontend)) return GRIDPICO_UNAVAILABLE;
+        const gridpico_result result = frontend->read_panic_sweep(
+            frontend->musical_control_context, frontend->panic_sweep_scratch);
+        if (result != GRIDPICO_OK) return result;
+        const gridpico_result emitted =
+            emit_panic_sweep_status(frontend, write, context);
+        *response_emitted = emitted == GRIDPICO_OK;
+        return emitted;
+    }
+
+    static const char prefix[] = "panic sweep if ";
+    if (strncmp(line, prefix, sizeof prefix - 1) == 0) {
+        uint64_t cycle = 0;
+        const char *guard = line + sizeof prefix - 1;
+        if (!parse_unsigned_decimal(guard, strlen(guard), &cycle) || cycle == 0)
+            return GRIDPICO_INVALID;
+        if (!panic_sweep_bound(frontend)) return GRIDPICO_UNAVAILABLE;
+        const gridpico_result result = frontend->apply_panic_sweep(
+            frontend->musical_control_context, cycle,
+            frontend->panic_sweep_scratch);
+        if (result != GRIDPICO_OK) return result;
+        const gridpico_panic_sweep_status *status = frontend->panic_sweep_scratch;
+        if (!panic_sweep_status_valid(status) || status->cycle != cycle ||
+            status->window != GRIDPICO_PANIC_CLOSED ||
+            status->cc123.state == GRIDPICO_PANIC_STAGE_NONE ||
+            status->cc123.state == GRIDPICO_PANIC_STAGE_RUNNING ||
+            status->sweep.state == GRIDPICO_PANIC_STAGE_NONE)
+            return GRIDPICO_INVALID;
+        const gridpico_result emitted =
+            emit_panic_sweep_status(frontend, write, context);
+        *response_emitted = emitted == GRIDPICO_OK;
+        return emitted;
+    }
+    return GRIDPICO_INVALID;
+}
+#endif
 
 static const char *apc_role_state_name(gridpico_apc_role_state state, bool led)
 {
@@ -2678,6 +2969,20 @@ void gridpico_cli_bind_musical_control(
     frontend->apply_panic = apply_panic;
     frontend->panic_scratch = panic_scratch;
 }
+
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+void gridpico_cli_bind_panic_sweep(
+    gridpico_cli_frontend *frontend,
+    gridpico_read_panic_sweep_fn read_sweep,
+    gridpico_apply_panic_sweep_fn apply_sweep,
+    gridpico_panic_sweep_status *sweep_scratch)
+{
+    if (frontend == NULL) return;
+    frontend->read_panic_sweep = read_sweep;
+    frontend->apply_panic_sweep = apply_sweep;
+    frontend->panic_sweep_scratch = sweep_scratch;
+}
+#endif
 
 void gridpico_cli_receive(gridpico_cli_frontend *frontend, const char *bytes, size_t size)
 {

@@ -395,13 +395,13 @@ static bool write_records(local_runtime *runtime)
                 !state.attached || state.generation != generation) continue;
             if (row->forwarding_revision != 0 && (!runtime->forwarding_running ||
                 row->forwarding_revision != runtime->forwarding_revision)) continue;
-            if (row->panic && (!runtime->serial.attached || runtime->serial.fault ||
-                runtime->serial.generation != runtime->panic_owner)) continue;
+            if (row->panic_owner != 0 && (!runtime->serial.attached || runtime->serial.fault ||
+                runtime->serial.generation != row->panic_owner)) continue;
             if (printf("midi %u %" PRIu32 " ", port, generation) < 0) return false;
             if (runtime->forwarding_enabled) {
                 const int prefix = row->forwarding_revision != 0
                     ? printf("ordinary %" PRIu64 " ", row->forwarding_revision)
-                    : fputs(row->panic ? "panic - " : "control - ", stdout);
+                    : fputs(row->panic_owner != 0 ? "panic - " : "control - ", stdout);
                 if (prefix < 0) return false;
             }
             if (!write_hex((const char *)row->bytes, sizeof(row->bytes)) || putchar('\n') == EOF) return false;
@@ -531,7 +531,8 @@ static bool service_adapter(local_runtime *runtime, const local_router_service *
 
 static bool service_panic(local_runtime *runtime, uint64_t now)
 {
-    if (runtime->panic_report.state != GRIDPICO_PANIC_STAGE_RUNNING) return true;
+    if (runtime->panic_report.state != GRIDPICO_PANIC_STAGE_RUNNING &&
+        runtime->panic_sweep.report.state != GRIDPICO_PANIC_STAGE_RUNNING) return true;
     local_runtime_begin(runtime, now);
     local_runtime_service_panic(runtime);
     return runtime->output_count == 0 || write_event(runtime);
@@ -555,6 +556,8 @@ static bool serve(local_runtime *runtime, const local_router_service *service, f
             wait = service->interval_ms;
         }
         if (runtime->panic_report.state == GRIDPICO_PANIC_STAGE_RUNNING) wait = 0;
+        else if (runtime->panic_sweep.report.state == GRIDPICO_PANIC_STAGE_RUNNING &&
+                 (wait < 0 || wait > 1)) wait = 1;
         struct pollfd input = {.fd = STDIN_FILENO, .events = POLLIN};
         const int ready = poll(&input, 1, wait);
         if (ready == 0 || (ready < 0 && errno == EINTR)) {
@@ -639,11 +642,24 @@ int local_router_run(local_runtime *runtime, const local_router_service *service
 }
 
 #ifndef GRIDPICO_LOCAL_ROUTER_RUNNER_ONLY
+static bool panic_monotonic_us(void *context, uint64_t *now)
+{
+    (void)context;
+    struct timespec sample;
+    if (clock_gettime(CLOCK_MONOTONIC, &sample) != 0 || sample.tv_sec < 0 ||
+        sample.tv_nsec < 0 || sample.tv_nsec >= 1000000000L) return false;
+    const uint64_t microseconds = (uint64_t)sample.tv_nsec / 1000u;
+    if ((uint64_t)sample.tv_sec > (UINT64_MAX - microseconds) / 1000000u) return false;
+    *now = (uint64_t)sample.tv_sec * 1000000u + microseconds;
+    return true;
+}
+
 int main(int argc, char **argv)
 {
     bool web_ui = false;
     bool recorder = false;
     bool ui_descriptor = false;
+    bool sweep_fixture = false;
     const char *path = NULL;
     for (int i = 1; i < argc; ++i) {
         if (!web_ui && strcmp(argv[i], "--web-ui") == 0) {
@@ -652,6 +668,8 @@ int main(int argc, char **argv)
             recorder = true;
         } else if (!ui_descriptor && strcmp(argv[i], "--ui-descriptor") == 0) {
             ui_descriptor = true;
+        } else if (!sweep_fixture && strcmp(argv[i], "--panic-sweep-fixture") == 0) {
+            sweep_fixture = true;
         } else if (path == NULL && i + 1 < argc && strcmp(argv[i], "--profile") == 0 &&
                    strncmp(argv[i + 1], "--", 2) != 0) {
             path = argv[++i];
@@ -674,6 +692,11 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
     }
+    if (sweep_fixture && (path == NULL || !profile.passive_surface || !web_ui ||
+                          !ui_descriptor || recorder)) {
+        fputs("Panic sweep fixture requires prepared Web UI and an explicit passive profile\n", stderr);
+        return EXIT_FAILURE;
+    }
     local_runtime runtime;
     const bool fm_prepared = path != NULL && web_ui && ui_descriptor && !recorder && profile.passive_surface;
     const gridpico_result initialized = fm_prepared
@@ -693,6 +716,8 @@ int main(int argc, char **argv)
     }
     local_runtime_enable_desktop_note_transform(&runtime);
     runtime.forwarding_transport = ui_descriptor && !recorder;
+    if (sweep_fixture && local_runtime_enable_panic_sweep(&runtime, panic_monotonic_us, NULL) != GRIDPICO_OK)
+        return EXIT_FAILURE;
     return run(&runtime, NULL, ui_descriptor, fm_prepared);
 }
 #endif

@@ -280,4 +280,25 @@ typedef gridpico_result (*gridpico_read_panic_fn)(
 typedef gridpico_result (*gridpico_apply_panic_fn)(
     void *context, gridpico_panic_stage_report *out);
 
+typedef enum {
+    GRIDPICO_PANIC_IDLE,
+    GRIDPICO_PANIC_WAIT,
+    GRIDPICO_PANIC_OPEN,
+    GRIDPICO_PANIC_CLOSED
+} gridpico_panic_window;
+
+typedef struct {
+    uint64_t cycle;
+    gridpico_panic_window window;
+    uint32_t wait_us;
+    uint32_t remaining_us;
+    gridpico_panic_stage_report cc123;
+    gridpico_panic_stage_report sweep;
+} gridpico_panic_sweep_status;
+
+typedef gridpico_result (*gridpico_read_panic_sweep_fn)(
+    void *context, gridpico_panic_sweep_status *out);
+typedef gridpico_result (*gridpico_apply_panic_sweep_fn)(
+    void *context, uint64_t expected_cycle, gridpico_panic_sweep_status *out);
+
 #endif
