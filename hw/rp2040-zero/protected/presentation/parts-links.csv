@@ -1,0 +1,86 @@
+reference,sheet,published_value,role,status,manufacturer,manufacturer_code_or_model,manufacturer_document
+C10,1,"1uF, 16V",,exact_part_open,,,
+C101,3,100nF,,exact_part_open,,,
+C11,1,"3.3nF, 5%",,exact_part_open,,,
+C111,3,100nF,,exact_part_open,,,
+C12,1,"4.7uF, 10V",,exact_part_open,,,
+C121,3,100nF,,exact_part_open,,,
+C131,3,100nF,,exact_part_open,,,
+C141,3,100nF,,exact_part_open,,,
+C151,3,100nF,,exact_part_open,,,
+C20,1,"1uF, 16V",,exact_part_open,,,
+C21,1,"2.2nF, 5%",,exact_part_open,,,
+C22,1,"2.2uF, 16V",,exact_part_open,,,
+C31,2,"4.7uF, 10V",,exact_part_open,,,
+C41,1,"3.3nF, 5%",,exact_part_open,,,
+C42,1,"10uF, 16V",,exact_part_open,,,
+C61,2,"39nF, 5%, C0G",,catalog_basis,Murata,GRM2195C2A393JE01,https://pim.murata.com/asset/pim4/ceramicCapacitorSMD/GRM2195C2A393JE01-01A-EN_PDF_CERAMICCAPACITORSMD
+C62,2,270uF polymer candidate,,conditional_candidate,Panasonic,16SVPF270M,https://industrial.panasonic.com/cdbs/www-data/pdf/AAB8000/AAB8000C177.pdf
+C63,2,"1uF, 16V",,exact_part_open,,,
+C71,2,"2.2uF, 16V",,exact_part_open,,,
+C72,2,"100nF, 16V",,exact_part_open,,,
+C81,2,"2.2uF, 16V",,exact_part_open,,,
+D10,1,"SMF6.0A, exact vendor open",,exact_part_open,,,
+D101,3,TPD2E2U06QDBZRQ1,,recorded_order_code,Texas Instruments,TPD2E2U06QDBZRQ1,https://www.ti.com/lit/ds/symlink/tpd2e2u06-q1.pdf
+D121,3,TPD2E2U06QDBZRQ1,,recorded_order_code,Texas Instruments,TPD2E2U06QDBZRQ1,https://www.ti.com/lit/ds/symlink/tpd2e2u06-q1.pdf
+IC1,1,TPS259474LRPWR,Protects U1 input,recorded_order_code,Texas Instruments,TPS259474LRPWR,https://www.ti.com/lit/ds/symlink/tps25947.pdf
+IC10,3,TMUXHS221FRSWR,Connects U2 data,recorded_order_code,Texas Instruments,TMUXHS221FRSWR,https://www.ti.com/lit/ds/symlink/tmuxhs221f.pdf
+IC11,3,TLV3012BIDBVR,Checks U2 VBUS,recorded_order_code,Texas Instruments,TLV3012BIDBVR,https://www.ti.com/lit/ds/symlink/tlv3011.pdf
+IC12,3,TMUXHS221FRSWR,Connects U4 data,recorded_order_code,Texas Instruments,TMUXHS221FRSWR,https://www.ti.com/lit/ds/symlink/tmuxhs221f.pdf
+IC13,3,TLV3012BIDBVR,Checks U4 power-good,recorded_order_code,Texas Instruments,TLV3012BIDBVR,https://www.ti.com/lit/ds/symlink/tlv3011.pdf
+IC14,3,SN74LVC1G175DBVR,Resets U2 permission,recorded_order_code,Texas Instruments,SN74LVC1G175DBVR,https://www.ti.com/lit/ds/symlink/sn74lvc1g175.pdf
+IC15,3,SN74LVC1G08DBVR,Allows U2 to power U4,recorded_order_code,Texas Instruments,SN74LVC1G08DBVR,https://www.ti.com/lit/ds/symlink/sn74lvc1g08.pdf
+IC2,1,TPS259474LRPWR,Protects U2 input,recorded_order_code,Texas Instruments,TPS259474LRPWR,https://www.ti.com/lit/ds/symlink/tps25947.pdf
+IC4,1,TPS259474LRPWR,Protects U3 output,recorded_order_code,Texas Instruments,TPS259474LRPWR,https://www.ti.com/lit/ds/symlink/tps25947.pdf
+IC6,2,TPS259474LRPWR,Protects U4 output,recorded_order_code,Texas Instruments,TPS259474LRPWR,https://www.ti.com/lit/ds/symlink/tps25947.pdf
+IC7,2,TPS2553DBVR-1,Limits U2 branch current,recorded_order_code,Texas Instruments,TPS2553DBVR-1,https://www.ti.com/lit/ds/symlink/tps2553.pdf
+IC8,2,TPS2116DRLR,Selects U4 power,recorded_order_code,Texas Instruments,TPS2116DRLR,https://www.ti.com/lit/ds/symlink/tps2116.pdf
+IC9,2,TPS2116DRLR,Selects Pico power,recorded_order_code,Texas Instruments,TPS2116DRLR,https://www.ti.com/lit/ds/symlink/tps2116.pdf
+J1,1,Dedicated 4-signal U1 power interface,,exact_part_open,,,
+J2,3,Upstream 4-signal device interface,,exact_part_open,,,
+J3,1,USB-A receptacle,,exact_part_open,,,
+J4,2,USB-A receptacle,,exact_part_open,,,
+J5,4,"3.3 V SPI microSD breakout, exact fit open",,exact_part_open,,,
+J6,4,3.3 V I2C OLED,,exact_part_open,,,
+J7,4,3.3 V UART header,,exact_part_open,,,
+J8,4,3.3 V RGB data header,,exact_part_open,,,
+M1,4,"Waveshare RP2040-Zero, exact revision pending",,model_schematic_revision_open,Waveshare,RP2040-Zero,https://files.waveshare.com/upload/4/4c/RP2040_Zero.pdf
+R11,1,"2.67k, 1%",,exact_part_open,,,
+R112,3,"23.7k, 0.1%",,exact_part_open,,,
+R113,3,"10.0k, 0.1%",,exact_part_open,,,
+R114,3,100k,,exact_part_open,,,
+R12,1,"32.4k, 0.1%",,exact_part_open,,,
+R121,3,22R,,exact_part_open,,,
+R122,3,22R,,exact_part_open,,,
+R123,3,"15k, 1%",,exact_part_open,,,
+R124,3,"15k, 1%",,exact_part_open,,,
+R13,1,"2.87k, 0.1%",,exact_part_open,,,
+R131,3,"47.5k, 1%",,exact_part_open,,,
+R134,3,100k,,exact_part_open,,,
+R141,3,100k,,exact_part_open,,,
+R16,1,"10.0k, 0.1%",,exact_part_open,,,
+R21,1,"6.57k, 0.1%",,exact_part_open,,,
+R22,1,"34.0k, 0.1%",,exact_part_open,,,
+R23,1,"3.57k, 0.1%",,exact_part_open,,,
+R26,1,"10.0k, 0.1%",,exact_part_open,,,
+R41,1,"6.57k, 0.1%",,exact_part_open,,,
+R44,1,"24.9k, 1%",,exact_part_open,,,
+R45,1,"10.0k, 1%",,exact_part_open,,,
+R46,1,4.7k,,exact_part_open,,,
+R56,4,22R,,exact_part_open,,,
+R61,2,"5.36k, 1%",,exact_part_open,,,
+R66,2,"4.70k, 1%",,exact_part_open,,,
+R67,2,"100R, 1%",,exact_part_open,,,
+R68,2,"24.9k, 1%",,exact_part_open,,,
+R681,2,"28.0k, 0.1%",,exact_part_open,,,
+R682,2,"10.0k, 0.1%",,exact_part_open,,,
+R69,2,"10.0k, 1%",,exact_part_open,,,
+R71,4,100R,,exact_part_open,,,
+R72,4,100R,,exact_part_open,,,
+R75,2,"105k, 1%",,exact_part_open,,,
+R77,2,100k,,exact_part_open,,,
+R801,2,"34.8k, 0.1%",,exact_part_open,,,
+R802,2,"10.0k, 0.1%",,exact_part_open,,,
+R81,4,100R,,exact_part_open,,,
+R901,2,"34.8k, 0.1%",,exact_part_open,,,
+R902,2,"10.0k, 0.1%",,exact_part_open,,,

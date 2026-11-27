@@ -1,0 +1,4 @@
+PASS 44-file electrical candidate and independent HAL receipt.
+PASS all 13 role captions and 18 placed manufacturer links in PDF and SVG.
+PASS regenerated PDF/SVG, parts link index, all four graph ledgers and electrical wire/junction/NC positions.
+PASS reviewed fault-matrix wording and relocated relative links.

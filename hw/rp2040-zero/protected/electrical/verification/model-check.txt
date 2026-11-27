@@ -1,0 +1,2 @@
+PASS 102 -> 85 refs, 303 pin groups, 62 named nets.
+PASS U1-only U3, separated SYS5 and gated B-to-U4, stock VBUS lands isolated from J2.

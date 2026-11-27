@@ -1,0 +1,8 @@
+PASS electrical and rendering basis unchanged between b0b6cd1 and 0b431a9.
+Exact 0b431a9 Git objects copied into baseline/
+3517e3737b0a984728e723d00cfbd96227cbd7e0c0780d4d693511268e1f72c0  baseline/board.py
+292f17acd8d9bf840b2f80b0aa5361d71283058272c222735c3237752c420247  baseline/render.py
+bdbd797557995194ba6c7fe8702c9a7db9d7896e876abccdb6c22561dc2410d4  baseline/bom.csv
+15975daa560cdb5d737e85df19ab144d5125e7aa90bf5ea8feca2e3eb7ac5fb4  baseline/pin-netlist.csv
+31bda93eab694173181b71337d1d5c8627754d246d8f3bf241e1ab7b45337227  baseline/REVIEW.md
+31fe89ca9140ed7a8d3a6f85338f24c70111b6da1cf357b377a9bfb538906df1  baseline/HAL.md

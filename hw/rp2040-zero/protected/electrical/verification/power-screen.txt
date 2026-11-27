@@ -1,0 +1,22 @@
+U1 UVLO rise                4.149 to 4.314 V
+U1 OVLO rise                5.340 to 5.552 V
+U2 UVLO rise                4.135 to 4.299 V
+U2 OVLO rise                5.612 to 5.834 V
+A mux PR1 boundary          4.115 to 4.846 V
+J4 PGTH rise                4.486 to 4.663 V
+J4 PGTH fall                4.080 to 4.255 V
+J2 comparator screen*       4.032 to 4.340 V
+* Use 1.208 to 1.276 V reference spread plus an explicit +/-10 mV screen for offset and hysteresis.
+PG invalid up to 1.000 V under the TI test conditions. J4 PG qualifier screen is 1.198 to 1.286 V.
+No proof of zero data drive during an unqualified supply ramp or forced external J4 VBUS.
+B forwarding silicon drop 62.8 mV at 200 mA before trace/contact drop.
+J2 4.75 V gives J4 4.687 V before trace/contact drop or dynamic droop.
+J2 5.10 V gives J4 5.037 V before trace/contact drop or dynamic droop.
+Inherited B switch minimum ~220.8 mA. 200 mA plus 37.3 mA prior ramp allowance and 2 mA exceeds it.
+Prove limited startup or reduce the admitted steady load. This screen grants no USB current.
+IC1/R11 nominal circuit breaker current by TI Eq. 5 = 1.249 A.
+IC2/R21 nominal circuit breaker current by TI Eq. 5 = 0.507 A.
+IC4/R41 nominal circuit breaker current by TI Eq. 5 = 0.507 A.
+IC6/R61 nominal circuit breaker current by TI Eq. 5 = 0.622 A.
+Local J4 output capacitor energy at 5.25 V = 2.34 to 5.51 mJ.
+R66 nominal unloaded J4 decay from 5.25 to 0.80 V is 1.50 to 3.54 seconds.
