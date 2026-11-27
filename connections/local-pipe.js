@@ -6,6 +6,7 @@ const deadlineMs = 5000;
 const maxLineBytes = 544;
 const errorCodes = new Set(["INVALID", "CAPACITY", "UNAVAILABLE"]);
 const maxGeneration = 0xffffffff;
+const apcPageFrames = 53;
 const defaultMidiPeers = 6;
 const maxMidiPeers = 65535; // Directional port ID space.
 const uiDirections = new Map([
@@ -28,16 +29,26 @@ function bytes(hex, maxBytes, exact = false) {
   return Buffer.from(hex, "hex");
 }
 
-function revision(text) {
+function revision(text, label = "forwarding revision") {
   if (!/^[1-9][0-9]{0,19}$/.test(text) || BigInt(text) > 0xffffffffffffffffn) {
-    throw new Error("Invalid router forwarding revision");
+    throw new Error(`Invalid router ${label}`);
   }
   return BigInt(text);
 }
 
-function recordFrom(line, forwardingEnabled) {
+function recordFrom(line, forwardingEnabled, editableApc) {
   const fields = line.split(" ");
   const [kind, first, second, third] = fields;
+  if (editableApc && kind === "apc-page" && fields.length === 7) {
+    return {
+      kind, panel: unsigned(first, 65535), panelGeneration: unsigned(second, maxGeneration),
+      led: unsigned(third, 65535), ledGeneration: unsigned(fields[4], maxGeneration),
+      token: revision(fields[5], "APC page token"), data: bytes(fields[6], apcPageFrames * 3, true),
+    };
+  }
+  if (editableApc && kind === "apc-gesture-refused" && fields.length === 4 && errorCodes.has(third)) {
+    return { kind, port: unsigned(first, 65535), generation: unsigned(second, maxGeneration), code: third };
+  }
   if (kind === "forwarding-state" && forwardingEnabled) {
     if (fields.length !== 3 || (second !== "running" && second !== "paused")) {
       throw new Error("Invalid router forwarding state");
@@ -103,7 +114,7 @@ function uiRolesFrom(line) {
   return roles;
 }
 
-function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false, probeForwarding = false, fmEpoch } = {}) {
+function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false, probeForwarding = false, fmEpoch, allowEditableApc = false } = {}) {
   const runner = spawn(executable, args, { stdio: ["pipe", "pipe", "inherit"], detached: process.platform !== "win32" });
   let ready = false;
   let startupComplete = false;
@@ -115,6 +126,11 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
   let fmJoinEnabled = false;
   let fmRecord;
   let uiRoles;
+  let apcRequired = false;
+  let apcEnabled = false;
+  let apcProbeLimit;
+  let apcInitialState = false;
+  let apcPageSeen = false;
   let stopped = false;
   let response;
   let inEvent = false;
@@ -142,11 +158,22 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
       if (stopped) return;
       if (partial) return fail("Unexpected partial router startup record");
       startupComplete = true;
-      try { handlers.onReady(limit, uiRoles, forwardingEnabled, fmJoinEnabled); } catch (error) { fail(error.message); }
+      try { handlers.onReady(limit, uiRoles, forwardingEnabled, fmJoinEnabled, apcEnabled); } catch (error) { fail(error.message); }
     });
   }
 
   function finishForwarding(limit) {
+    if (apcRequired) {
+      if (!forwardingEnabled) throw new Error("Editable APC requires the forwarding transport");
+      setImmediate(() => {
+        if (stopped) return;
+        if (partial) return fail("Unexpected partial router startup record");
+        apcProbeLimit = limit;
+        timer = setTimeout(() => fail("Router APC page negotiation timed out"), deadlineMs);
+        runner.stdin.write("apc-page-bind apc-page-v1\n");
+      });
+      return;
+    }
     if (fmEpoch === undefined) {
       announceReady(limit);
       return;
@@ -163,8 +190,16 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
   function readLine(line) {
     if (line.length > maxLineBytes) throw new Error("Router line too long");
     if (line === "ui-roles" || line.startsWith("ui-roles ")) {
-      if (!expectUiRoles || ready || uiRoles) throw new Error("Unexpected router UI role advertisement");
+      if (!expectUiRoles || ready || uiRoles || apcRequired) throw new Error("Unexpected router UI role advertisement");
       uiRoles = uiRolesFrom(line);
+      return;
+    }
+    if (line.startsWith("apc-page-required")) {
+      if (line !== "apc-page-required apc-page-v1" || ready || apcRequired || !allowEditableApc ||
+          uiRoles?.get("panel")?.direction !== "in" || uiRoles?.get("led")?.direction !== "out") {
+        throw new Error("Unexpected editable APC advertisement");
+      }
+      apcRequired = true;
       return;
     }
     if (!ready) {
@@ -173,6 +208,7 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
         throw new Error("Invalid router readiness");
       }
       if (expectUiRoles && !uiRoles) throw new Error("Router did not advertise UI roles");
+      if (apcRequired && !match) throw new Error("Editable APC requires a configured router");
       forwardingEnabled = Boolean(match?.[2]);
       ready = true;
       clearTimeout(timer);
@@ -207,6 +243,19 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
       finishForwarding(limit);
       return;
     }
+    if (apcProbeLimit !== undefined) {
+      if (!apcInitialState && line === "apc-page-ready apc-page-v1") {
+        apcInitialState = true;
+        return;
+      }
+      if (!apcInitialState || line !== "ok") throw new Error("Router APC page negotiation failed");
+      clearTimeout(timer);
+      const limit = apcProbeLimit;
+      apcProbeLimit = undefined;
+      apcEnabled = true;
+      announceReady(limit);
+      return;
+    }
     if (fmProbeLimit !== undefined) {
       if (!fmInitialState && line === `fm-join-ready fm-v1 ${fmEpoch}`) {
         fmInitialState = true;
@@ -229,6 +278,7 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
     }
     if (line === "end" && inEvent) {
       inEvent = false;
+      apcPageSeen = false;
       return;
     }
     if (!inEvent && !response) throw new Error("Unsolicited router response");
@@ -239,17 +289,22 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
       response = undefined;
       fmRecord = undefined;
       replyStarted = false;
+      apcPageSeen = false;
       clearTimeout(timer);
       finish(code);
       return;
     }
+    if (apcPageSeen) throw new Error("Unexpected record after an APC page");
     if (!inEvent) replyStarted = true;
     if (line.startsWith("fm-")) {
       if (!fmJoinEnabled || inEvent || !fmRecord) throw new Error("Unexpected router FM metadata");
       fmRecord(line);
       return;
     }
-    handlers.onRecord(recordFrom(line, forwardingEnabled));
+    const record = recordFrom(line, forwardingEnabled, apcEnabled);
+    if (record.kind === "apc-gesture-refused" && inEvent) throw new Error("Unscoped APC gesture refusal");
+    apcPageSeen = record.kind === "apc-page";
+    handlers.onRecord(record);
   }
 
   runner.stdout.on("data", (chunk) => {
@@ -287,4 +342,4 @@ function startLocalPipe(executable, handlers, args = [], { expectUiRoles = false
   };
 }
 
-module.exports = { maxGeneration, startLocalPipe };
+module.exports = { apcPageFrames, maxGeneration, startLocalPipe };

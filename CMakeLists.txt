@@ -50,6 +50,7 @@ add_library(gridpico_local_runtime STATIC
     core/midi/patch_graph.c
     core/session/patch_session.c
     frontends/apc/apc_patch.c
+    frontends/apc/apc_physical.c
     frontends/apc/apc_protocol.c
     frontends/cli/cli_frontend.c
 )

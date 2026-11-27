@@ -5,6 +5,7 @@
 #include "core/midi/patch_graph.h"
 #include "core/session/patch_session.h"
 #include "frontends/apc/apc_patch.h"
+#include "frontends/apc/apc_physical.h"
 #include "frontends/cli/cli_frontend.h"
 
 enum {
@@ -80,9 +81,36 @@ typedef struct {
 } local_fm_allocation;
 
 typedef struct {
+    gridpico_connection panel;
+    gridpico_connection led;
+    uint64_t token;
+    uint64_t epoch;
+    gridpico_apc_physical_page_version version;
+} local_apc_flight;
+
+typedef struct {
+    gridpico_apc_physical frontend;
+    gridpico_apc_patch_snapshot snapshot;
+    gridpico_apc_surface_message latest[GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES];
+    gridpico_apc_physical_page_version latest_version;
+    local_apc_flight flight;
+    uint64_t last_token;
+    uint64_t epoch;
+    uint64_t refresh_deadline_ms;
+    gridpico_port_id panel_port;
+    gridpico_connection refused_owner;
+    gridpico_result refusal;
+    bool enabled;
+    bool latest_valid;
+    bool inhibited;
+    bool edit_accepted;
+} local_apc_surface;
+
+typedef struct {
     gridpico_patch_graph graph;
     gridpico_patch_session session;
     gridpico_apc_patch apc;
+    local_apc_surface editable_apc;
     gridpico_cli_frontend cli;
     gridpico_local_routing_snapshot routing_scratch;
     const local_router_profile *profile;
@@ -153,6 +181,11 @@ gridpico_result local_runtime_enable_recorder_route(local_runtime *runtime);
 /* Desktop assembly checks the validated profile before serial ingress. */
 void local_runtime_enable_desktop_note_transform(local_runtime *runtime);
 gridpico_result local_runtime_bind_forwarding_transport(local_runtime *runtime);
+gridpico_result local_runtime_bind_apc_transport(local_runtime *runtime);
+const local_apc_flight *local_runtime_take_apc_page(
+    local_runtime *runtime, const gridpico_apc_surface_message **messages);
+gridpico_result local_runtime_complete_apc_page(local_runtime *runtime, gridpico_connection panel,
+                                               gridpico_connection led, uint64_t token, bool written);
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms);
 gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result result);
 gridpico_result local_runtime_bind(local_runtime *runtime, gridpico_connection connection,

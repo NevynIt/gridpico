@@ -13,7 +13,7 @@
 #include <time.h>
 #include <unistd.h>
 
-enum { MAX_LINE_BYTES = 544, MAX_FIELDS = 6, SERVICE_BATCH = 16, FM_RESERVATION_MS = 5000 };
+enum { MAX_LINE_BYTES = 544, MAX_FIELDS = 7, SERVICE_BATCH = 16, FM_RESERVATION_MS = 5000 };
 
 typedef struct {
     uint64_t rid;
@@ -42,6 +42,7 @@ typedef struct {
     gridpico_patch_direction direction;
     unsigned limit;
     bool bound;
+    bool apc_ready;
     fm_reply_kind fm_kind;
     fm_pipe_owner *fm_owner;
 } reply;
@@ -127,7 +128,7 @@ static size_t split_fields(char *line, char *fields[MAX_FIELDS])
     }
 }
 
-static bool fm_decimal(const char *text, uint64_t maximum, uint64_t *out)
+static bool canonical_decimal(const char *text, uint64_t maximum, uint64_t *out)
 {
     return text[0] != '0' && decimal(text, maximum, out);
 }
@@ -179,7 +180,7 @@ static gridpico_result dispatch_fm(local_runtime *runtime, fm_pipe *fm, char *fi
     uint64_t epoch;
     if (strcmp(fields[0], "fm-join-bind") == 0) {
         if (count != 3 || strcmp(fields[1], "fm-v1") != 0 ||
-            !fm_decimal(fields[2], UINT64_MAX, &epoch)) return GRIDPICO_INVALID;
+            !canonical_decimal(fields[2], UINT64_MAX, &epoch)) return GRIDPICO_INVALID;
         if (!probe_open || runtime->fm_runtime_epoch != 0) return GRIDPICO_UNAVAILABLE;
         runtime->fm_runtime_epoch = epoch;
         response->fm_kind = FM_REPLY_READY;
@@ -188,8 +189,8 @@ static gridpico_result dispatch_fm(local_runtime *runtime, fm_pipe *fm, char *fi
     if (runtime->fm_runtime_epoch == 0) return GRIDPICO_INVALID;
 
     uint64_t rid;
-    if (count < 4 || !fm_decimal(fields[1], UINT64_MAX, &epoch) ||
-        !fm_decimal(fields[2], UINT64_MAX, &rid)) return GRIDPICO_INVALID;
+    if (count < 4 || !canonical_decimal(fields[1], UINT64_MAX, &epoch) ||
+        !canonical_decimal(fields[2], UINT64_MAX, &rid)) return GRIDPICO_INVALID;
     if (strcmp(fields[0], "fm-reserve") == 0) {
         return count == 4 ? reserve_fm(runtime, fm, epoch, rid, fields[3], response) : GRIDPICO_INVALID;
     }
@@ -197,10 +198,10 @@ static gridpico_result dispatch_fm(local_runtime *runtime, fm_pipe *fm, char *fi
     const bool publish = strcmp(fields[0], "fm-publish") == 0;
     const bool retire = strcmp(fields[0], "fm-retire") == 0;
     uint64_t port, generation, sid = 0;
-    if ((!publish && !retire) || count != 6 || !fm_decimal(fields[3], UINT16_MAX, &port) ||
-        !fm_decimal(fields[4], UINT32_MAX, &generation) || generation <= 1 ||
+    if ((!publish && !retire) || count != 6 || !canonical_decimal(fields[3], UINT16_MAX, &port) ||
+        !canonical_decimal(fields[4], UINT32_MAX, &generation) || generation <= 1 ||
         (!(retire && strcmp(fields[5], "-") == 0) &&
-         !fm_decimal(fields[5], UINT64_MAX, &sid))) return GRIDPICO_INVALID;
+         !canonical_decimal(fields[5], UINT64_MAX, &sid))) return GRIDPICO_INVALID;
     if (epoch != runtime->fm_runtime_epoch) return GRIDPICO_UNAVAILABLE;
 
     for (size_t i = 0; i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
@@ -226,6 +227,21 @@ static gridpico_result dispatch_fm(local_runtime *runtime, fm_pipe *fm, char *fi
     return GRIDPICO_UNAVAILABLE;
 }
 
+static gridpico_result dispatch_apc_result(local_runtime *runtime, char *fields[MAX_FIELDS], size_t count)
+{
+    uint64_t panel, panel_generation, led, led_generation, token;
+    if (count != 7 || !canonical_decimal(fields[1], UINT16_MAX, &panel) ||
+        !canonical_decimal(fields[2], UINT32_MAX, &panel_generation) ||
+        !canonical_decimal(fields[3], UINT16_MAX, &led) ||
+        !canonical_decimal(fields[4], UINT32_MAX, &led_generation) ||
+        !canonical_decimal(fields[5], UINT64_MAX, &token)) return GRIDPICO_INVALID;
+    const bool written = strcmp(fields[6], "written") == 0;
+    if (!written && strcmp(fields[6], "dropped") != 0) return GRIDPICO_INVALID;
+    return local_runtime_complete_apc_page(
+        runtime, (gridpico_connection){(gridpico_port_id)panel, (uint32_t)panel_generation},
+        (gridpico_connection){(gridpico_port_id)led, (uint32_t)led_generation}, token, written);
+}
+
 static gridpico_result dispatch(local_runtime *runtime, fm_pipe *fm, char *line, reply *response)
 {
     char *fields[MAX_FIELDS] = {0};
@@ -239,6 +255,15 @@ static gridpico_result dispatch(local_runtime *runtime, fm_pipe *fm, char *line,
         if (count != 2 || strcmp(fields[1], "forwarding-v1") != 0) return GRIDPICO_INVALID;
         return local_runtime_bind_forwarding_transport(runtime);
     }
+    if (strcmp(command, "apc-page-bind") == 0) {
+        if (count != 2 || strcmp(fields[1], "apc-page-v1") != 0) return GRIDPICO_INVALID;
+        const gridpico_result result = local_runtime_bind_apc_transport(runtime);
+        response->apc_ready = result == GRIDPICO_OK;
+        return result;
+    }
+    if (runtime->profile->editable_surface && !runtime->editable_apc.enabled)
+        return GRIDPICO_UNAVAILABLE;
+    if (strcmp(command, "apc-page-result") == 0) return dispatch_apc_result(runtime, fields, count);
     if (strncmp(command, "fm-", 3) == 0) return dispatch_fm(runtime, fm, fields, count, response);
     fm->probe_open = false;
     uint64_t generation;
@@ -325,7 +350,27 @@ static bool write_serial_range(const local_runtime *runtime, size_t sent, size_t
     return true;
 }
 
-static bool write_records(const local_runtime *runtime)
+static bool write_apc_records(local_runtime *runtime)
+{
+    const local_apc_surface *apc = &runtime->editable_apc;
+    if (apc->refusal != GRIDPICO_OK &&
+        printf("apc-gesture-refused %u %" PRIu32 " %s\n", (unsigned)apc->refused_owner.endpoint,
+               apc->refused_owner.generation, result_line(apc->refusal) + sizeof("err ") - 1) < 0)
+        return false;
+
+    const gridpico_apc_surface_message *messages;
+    const local_apc_flight *page = local_runtime_take_apc_page(runtime, &messages);
+    if (page == NULL) return true;
+    if (printf("apc-page %u %" PRIu32 " %u %" PRIu32 " %" PRIu64 " ",
+               (unsigned)page->panel.endpoint, page->panel.generation, (unsigned)page->led.endpoint,
+               page->led.generation, page->token) < 0) return false;
+    for (size_t i = 0; i < GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES; ++i) {
+        if (!write_hex((const char *)messages[i].bytes, sizeof(messages[i].bytes))) return false;
+    }
+    return putchar('\n') != EOF;
+}
+
+static bool write_records(local_runtime *runtime)
 {
     size_t serial_offset = 0;
     for (size_t i = 0; i < runtime->forwarding_barrier_count; ++i) {
@@ -362,13 +407,13 @@ static bool write_records(const local_runtime *runtime)
             if (!write_hex((const char *)row->bytes, sizeof(row->bytes)) || putchar('\n') == EOF) return false;
         }
     }
-    if (runtime->serial.fault) {
-        return printf("fault serial %" PRIu32 "\n", runtime->serial.generation) >= 0;
-    }
-    return write_serial_range(runtime, serial_offset, runtime->serial_count);
+    const bool serial_written = runtime->serial.fault
+        ? printf("fault serial %" PRIu32 "\n", runtime->serial.generation) >= 0
+        : write_serial_range(runtime, serial_offset, runtime->serial_count);
+    return serial_written && write_apc_records(runtime);
 }
 
-static bool write_event(const local_runtime *runtime)
+static bool write_event(local_runtime *runtime)
 {
     return puts("event") != EOF && write_records(runtime) && puts("end") != EOF &&
            fflush(stdout) == 0;
@@ -378,7 +423,9 @@ static uint64_t next_deadline(const local_runtime *runtime)
 {
     const uint64_t raw = runtime->raw_deadline_ms;
     const uint64_t fm = local_runtime_fm_deadline(runtime);
-    return fm != 0 && (raw == 0 || fm < raw) ? fm : raw;
+    const uint64_t deadline = fm != 0 && (raw == 0 || fm < raw) ? fm : raw;
+    const uint64_t apc = runtime->editable_apc.refresh_deadline_ms;
+    return apc != 0 && (deadline == 0 || apc < deadline) ? apc : deadline;
 }
 
 static bool expire(local_runtime *runtime, fm_pipe *fm, uint64_t now)
@@ -386,13 +433,16 @@ static bool expire(local_runtime *runtime, fm_pipe *fm, uint64_t now)
     const uint64_t deadline = next_deadline(runtime);
     if (deadline == 0 || now < deadline) return true;
     const bool raw_due = runtime->raw_deadline_ms != 0 && now >= runtime->raw_deadline_ms;
+    const uint64_t apc_deadline = runtime->editable_apc.refresh_deadline_ms;
+    const bool apc_due = apc_deadline != 0 && now >= apc_deadline;
     local_runtime_begin(runtime, now);
     const gridpico_result expired = local_runtime_expire(runtime);
-    if (raw_due && local_runtime_finish(runtime, expired) != GRIDPICO_OK) {
+    if ((raw_due || apc_due) && local_runtime_finish(runtime, expired) != GRIDPICO_OK && raw_due) {
         fputs("Local router could not restore feedback after Raw expiry\n", stderr);
     }
     release_unused_fm_owners(runtime, fm);
-    return !raw_due || write_event(runtime);
+    const local_apc_surface *apc = &runtime->editable_apc;
+    return !(raw_due || (apc_due && apc->latest_valid && apc->flight.token == 0)) || write_event(runtime);
 }
 
 static bool settle_fm_reply(local_runtime *runtime, const reply *response, gridpico_result *result)
@@ -444,6 +494,7 @@ static bool handle_line(local_runtime *runtime, fm_pipe *fm, char *line, bool ma
     gridpico_result result = local_runtime_finish(runtime, dispatched);
     if (!settle_fm_reply(runtime, &response, &result)) return false;
     if (result == GRIDPICO_OK && !write_fm_reply(runtime, &response)) return false;
+    if (response.apc_ready && puts("apc-page-ready apc-page-v1") == EOF) return false;
     if (response.bound && result == GRIDPICO_OK) {
         const char *classification = "";
         if (runtime->forwarding_enabled) {
@@ -565,6 +616,9 @@ static int run(local_runtime *runtime, const local_router_service *service, bool
     if (signal(SIGPIPE, SIG_IGN) == SIG_ERR || (ui_descriptor && !write_ui_roles(runtime))) {
         return EXIT_FAILURE;
     }
+    if (runtime->profile->editable_surface &&
+        (!ui_descriptor || !runtime->forwarding_transport ||
+         puts("apc-page-required apc-page-v1") == EOF)) return EXIT_FAILURE;
     const int ready = runtime->configured
         ? printf("ready %zu\n", runtime->profile->limits.midi_peer_limit) : puts("ready");
     const bool complete = ready >= 0 && fflush(stdout) == 0 &&
@@ -610,6 +664,10 @@ int main(int argc, char **argv)
     local_router_profile profile;
     if (path != NULL) {
         if (!local_profile_load(path, &profile)) return EXIT_FAILURE;
+        if (profile.editable_surface && (!web_ui || !ui_descriptor || recorder)) {
+            fputs("Editable APC requires an explicitly prepared Web UI profile\n", stderr);
+            return EXIT_FAILURE;
+        }
         if (web_ui && !local_profile_supports_web_ui(&profile)) {
             fputs("Router profile must offer the six starter socket roles at ports 1–6 for --web-ui\n",
                   stderr);

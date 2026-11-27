@@ -28,11 +28,13 @@ typedef struct {
     gridpico_local_profile limits;
     local_profile_port ports[GRIDPICO_PATCH_MAX_PORTS];
     bool passive_surface;
+    bool editable_surface;
     bool note_transform;
 } local_router_profile;
 
 bool local_profile_load(const char *path, local_router_profile *profile);
 bool local_profile_supports_web_ui(const local_router_profile *profile);
+bool local_profile_supports_editable_apc(const local_router_profile *profile);
 gridpico_port_id local_profile_role(const local_router_profile *profile, local_port_role role);
 const char *local_profile_role_token(local_port_role role);
 

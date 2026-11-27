@@ -2,6 +2,7 @@
 #include "app/local_profile.h"
 
 #include "api/patchbay_controls.h"
+#include "frontends/apc/apc_physical.h"
 
 #include <fcntl.h>
 #include <stdio.h>
@@ -193,9 +194,10 @@ static bool read_row(local_router_profile *profile, char *rest, bool *surface_se
     }
     if (strcmp(kind, "surface") != 0 || *surface_seen) return false;
     const char *mode = word(&rest);
-    if ((strcmp(mode, "passive") != 0 && strcmp(mode, "legacy") != 0) ||
-        *word(&rest) != '\0') return false;
+    if (*word(&rest) != '\0' || (strcmp(mode, "passive") != 0 &&
+        strcmp(mode, "legacy") != 0 && strcmp(mode, "editable") != 0)) return false;
     profile->passive_surface = strcmp(mode, "passive") == 0;
+    profile->editable_surface = strcmp(mode, "editable") == 0;
     *surface_seen = true;
     return true;
 }
@@ -261,11 +263,35 @@ bool local_profile_load(const char *path, local_router_profile *profile)
         fprintf(stderr, "%s:%zu: invalid or duplicate router profile row\n", path, number);
         return false;
     }
-    if (!surface_seen || !valid_resources(profile)) {
+    if (!surface_seen || !valid_resources(profile) ||
+        (profile->editable_surface && !local_profile_supports_editable_apc(profile))) {
         fprintf(stderr, "%s: missing surface or invalid peer/queue budget\n", path);
         return false;
     }
     return true;
+}
+
+bool local_profile_supports_editable_apc(const local_router_profile *profile)
+{
+    const gridpico_local_registry *registry = &profile->registry;
+    if (registry->inventory.port_count > GRIDPICO_PATCH_MAX_PORTS || profile->passive_surface)
+        return false;
+    gridpico_port_id panel = 0, led = 0;
+    for (size_t i = 0; i < registry->inventory.port_count; ++i) {
+        const gridpico_patch_port *port = &registry->inventory.ports[i];
+        const local_profile_port role = profile->ports[i];
+        if (role.role == LOCAL_ROLE_PANEL) {
+            if (panel != 0 || !role.socket || port->direction != GRIDPICO_PATCH_INPUT ||
+                registry->port_capabilities[i] != GRIDPICO_LOCAL_PORT_PANEL) return false;
+            panel = port->id;
+        } else if (role.role == LOCAL_ROLE_LED) {
+            if (led != 0 || !role.socket || role.queue_limit < GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES ||
+                port->direction != GRIDPICO_PATCH_OUTPUT ||
+                registry->port_capabilities[i] != GRIDPICO_LOCAL_PORT_RAW) return false;
+            led = port->id;
+        }
+    }
+    return panel != 0 && led != 0 && panel != led;
 }
 
 bool local_profile_supports_web_ui(const local_router_profile *profile)

@@ -1,5 +1,6 @@
 #include "app/local_runtime.h"
 #include "core/processors/managed_note.h"
+#include "frontends/apc/apc_protocol.h"
 
 #include <string.h>
 
@@ -9,6 +10,8 @@ enum {
     WEB_MONITOR_PORT = 5,
     MIDI_LOG_PORT = 6,
     RECORDER_PORT = 12,
+    APC_ACTIVITY_MS = 100,
+    APC_PENDING_PHASE_MS = 500,
 };
 
 static const local_router_profile default_profile = {
@@ -230,6 +233,214 @@ static void reset_panel(local_runtime *runtime)
     }
 }
 
+static bool valid_triplet(const uint8_t *bytes)
+{
+    const unsigned status = bytes[0] >> 4;
+    return (status == 8 || status == 9 || status == 10 || status == 11 || status == 14) &&
+           bytes[1] <= 127 && bytes[2] <= 127;
+}
+
+static bool same_connection(gridpico_connection left, gridpico_connection right)
+{
+    return left.endpoint == right.endpoint && left.generation == right.generation;
+}
+
+static bool current_apc_pair(local_runtime *runtime, gridpico_connection *panel,
+                             gridpico_connection *led)
+{
+    const local_binding *input = binding(runtime, runtime->editable_apc.panel_port);
+    const local_binding *output = binding(runtime, runtime->feedback_port);
+    if (input == NULL || !input->attached || input->adapter_owned || input->fault ||
+        output == NULL || !output->attached || output->adapter_owned || output->fault) return false;
+    *panel = (gridpico_connection){runtime->editable_apc.panel_port, input->generation};
+    *led = (gridpico_connection){runtime->feedback_port, output->generation};
+    return true;
+}
+
+static bool current_apc_version(const local_runtime *runtime,
+                                const gridpico_apc_physical_page_version *version)
+{
+    return version->route_page == !runtime->editable_apc.frontend.arranging &&
+           version->layout_revision == runtime->session.apc_layout_revision &&
+           version->graph_revision == runtime->graph.revision;
+}
+
+static void advance_apc_epoch(local_runtime *runtime)
+{
+    local_apc_surface *apc = &runtime->editable_apc;
+    if (apc->epoch == UINT64_MAX) apc->flight.epoch = 0;
+    else ++apc->epoch;
+    runtime->feedback_ready = false;
+}
+
+static void fence_apc_visibility(local_runtime *runtime)
+{
+    local_apc_surface *apc = &runtime->editable_apc;
+    advance_apc_epoch(runtime);
+    apc->frontend.route_page_ready = false;
+    apc->inhibited = true;
+    apc->latest_valid = false;
+    apc->refresh_deadline_ms = 0;
+    runtime->feedback_refresh = true;
+}
+
+static uint64_t earlier_deadline(uint64_t current, uint64_t candidate)
+{
+    return current == 0 || candidate < current ? candidate : current;
+}
+
+static uint64_t apc_refresh_deadline(const local_runtime *runtime, bool route_page)
+{
+    const local_apc_surface *apc = &runtime->editable_apc;
+    const uint64_t now = runtime->now_ms;
+    uint64_t deadline = 0;
+    for (size_t row = 0; row < GRIDPICO_PATCH_SOURCE_ROWS; ++row) {
+        const gridpico_apc_row_activity *activity = &apc->frontend.activity[row];
+        if (activity->has_flashed && now >= activity->started_ms &&
+            now - activity->started_ms < APC_ACTIVITY_MS) {
+            deadline = earlier_deadline(deadline, activity->started_ms + APC_ACTIVITY_MS);
+        }
+        for (size_t col = 0; route_page && col < GRIDPICO_PATCH_DESTINATION_COLUMNS; ++col) {
+            if (apc->snapshot.cells[row][col].state == GRIDPICO_PATCH_ROUTE_PENDING) {
+                const uint64_t phase_end = now + APC_PENDING_PHASE_MS - now % APC_PENDING_PHASE_MS;
+                deadline = earlier_deadline(deadline, phase_end);
+            }
+        }
+    }
+    return deadline;
+}
+
+static gridpico_result capture_apc_page(void *context, const gridpico_apc_surface_message *messages,
+                                       size_t count, const gridpico_apc_physical_page_version *version)
+{
+    local_runtime *runtime = context;
+    local_apc_surface *apc = &runtime->editable_apc;
+    if (count != GRIDPICO_APC_PHYSICAL_FEEDBACK_FRAMES || !current_apc_version(runtime, version)) {
+        return GRIDPICO_INVALID;
+    }
+    for (size_t i = 0; i < count; ++i) {
+        if (!valid_triplet(messages[i].bytes)) return GRIDPICO_INVALID;
+    }
+    memcpy(apc->latest, messages, sizeof(apc->latest));
+    apc->latest_version = *version;
+    apc->latest_valid = true;
+    apc->refresh_deadline_ms = apc_refresh_deadline(runtime, version->route_page);
+    runtime->feedback_refresh = false;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result read_editable_apc(void *context, gridpico_apc_patch_snapshot *out)
+{
+    local_runtime *runtime = context;
+    return gridpico_patch_session_read_apc_patch(&runtime->session, out);
+}
+
+static gridpico_result set_editable_apc_cell(void *context, gridpico_revision layout,
+                                            gridpico_revision graph, uint8_t row, uint8_t column,
+                                            bool enabled)
+{
+    local_runtime *runtime = context;
+    const gridpico_result result = gridpico_patch_session_set_apc_patch_cell(
+        &runtime->session, layout, graph, row, column, enabled);
+    runtime->editable_apc.edit_accepted = result == GRIDPICO_OK;
+    return result;
+}
+
+static gridpico_result assign_editable_apc(void *context, gridpico_revision layout,
+                                          gridpico_patch_direction axis, uint8_t slot,
+                                          gridpico_port_id port)
+{
+    local_runtime *runtime = context;
+    const gridpico_result result =
+        gridpico_patch_session_assign_apc_patch(&runtime->session, layout, axis, slot, port);
+    runtime->editable_apc.edit_accepted = result == GRIDPICO_OK;
+    return result;
+}
+
+static gridpico_result move_editable_apc(void *context, gridpico_revision layout,
+                                        gridpico_patch_direction axis, uint8_t from, uint8_t to)
+{
+    local_runtime *runtime = context;
+    const gridpico_result result =
+        gridpico_patch_session_move_apc_patch(&runtime->session, layout, axis, from, to);
+    runtime->editable_apc.edit_accepted = result == GRIDPICO_OK;
+    return result;
+}
+
+static gridpico_result init_editable_apc(local_runtime *runtime)
+{
+    const gridpico_apc_patch_layout empty = {0};
+    const gridpico_result result = gridpico_patch_session_bind_apc_patch(&runtime->session, &empty, 0);
+    if (result != GRIDPICO_OK) return result;
+    gridpico_patch_session_enable_flat_managed_routes(&runtime->session);
+    local_apc_surface *apc = &runtime->editable_apc;
+    apc->panel_port = local_profile_role(runtime->profile, LOCAL_ROLE_PANEL);
+    apc->epoch = 1;
+    apc->inhibited = true;
+    gridpico_apc_physical_init(&apc->frontend, runtime, read_editable_apc, set_editable_apc_cell,
+                              assign_editable_apc, move_editable_apc, runtime, NULL, capture_apc_page,
+                              &apc->snapshot);
+    return GRIDPICO_OK;
+}
+
+static void refresh_editable_apc(local_runtime *runtime)
+{
+    gridpico_connection panel, led;
+    const local_apc_surface *apc = &runtime->editable_apc;
+    if (runtime->raw_deadline_ms != 0 || !current_apc_pair(runtime, &panel, &led)) return;
+    if (runtime->feedback_refresh || !current_apc_version(runtime, &apc->latest_version) ||
+        (apc->refresh_deadline_ms != 0 && runtime->now_ms >= apc->refresh_deadline_ms)) {
+        if (gridpico_apc_physical_refresh(&runtime->editable_apc.frontend, runtime->now_ms) != GRIDPICO_OK)
+            fence_apc_visibility(runtime);
+    }
+}
+
+const local_apc_flight *local_runtime_take_apc_page(
+    local_runtime *runtime, const gridpico_apc_surface_message **messages)
+{
+    local_apc_surface *apc = &runtime->editable_apc;
+    gridpico_connection panel, led;
+    if (!apc->enabled || !apc->latest_valid || apc->flight.token != 0 ||
+        runtime->raw_deadline_ms != 0 || !current_apc_pair(runtime, &panel, &led) ||
+        !current_apc_version(runtime, &apc->latest_version)) return NULL;
+    if (apc->last_token == UINT64_MAX) {
+        fence_apc_visibility(runtime);
+        return NULL;
+    }
+    apc->flight = (local_apc_flight){
+        .panel = panel, .led = led, .token = ++apc->last_token, .epoch = apc->epoch,
+        .version = apc->latest_version,
+    };
+    apc->latest_valid = false;
+    *messages = apc->latest;
+    return &apc->flight;
+}
+
+gridpico_result local_runtime_complete_apc_page(local_runtime *runtime, gridpico_connection panel,
+                                               gridpico_connection led, uint64_t token, bool written)
+{
+    local_apc_surface *apc = &runtime->editable_apc;
+    if (!apc->enabled || token == 0 || token > apc->last_token ||
+        panel.endpoint != apc->panel_port || led.endpoint != runtime->feedback_port ||
+        panel.generation == 0 || led.generation == 0) return GRIDPICO_INVALID;
+    const local_apc_flight flight = apc->flight;
+    if (token != flight.token) return GRIDPICO_OK;
+    if (!same_connection(panel, flight.panel) || !same_connection(led, flight.led)) return GRIDPICO_INVALID;
+    apc->flight = (local_apc_flight){0};
+    gridpico_connection current_panel, current_led;
+    if (written && flight.epoch == apc->epoch && runtime->raw_deadline_ms == 0 &&
+        current_apc_pair(runtime, &current_panel, &current_led) &&
+        same_connection(panel, current_panel) && same_connection(led, current_led) &&
+        current_apc_version(runtime, &flight.version)) {
+        gridpico_apc_physical_feedback_complete(&apc->frontend, &flight.version);
+        apc->inhibited = false;
+        runtime->feedback_ready = true;
+    } else {
+        runtime->feedback_ready = false;
+    }
+    return GRIDPICO_OK;
+}
+
 static bool route_feedback_changed(const gridpico_patch_graph_state *before,
                                    const gridpico_patch_graph_state *after)
 {
@@ -324,7 +535,10 @@ static gridpico_result set_local_route(void *context, const gridpico_local_route
         if (result == GRIDPICO_OK && !current &&
             (route.source != runtime->sequence_port || route.destination != runtime->feedback_port ||
              !binding(runtime, route.source)->attached ||
-             !runtime->feedback_ready)) {
+             !runtime->feedback_ready ||
+             (runtime->editable_apc.enabled && (runtime->feedback_refresh ||
+              runtime->editable_apc.latest_valid || runtime->editable_apc.flight.token != 0 ||
+              !current_apc_version(runtime, &runtime->editable_apc.latest_version))))) {
             result = GRIDPICO_UNAVAILABLE;
         }
     }
@@ -337,6 +551,7 @@ static gridpico_result set_local_route(void *context, const gridpico_local_route
             runtime->raw_route = route;
             runtime->raw_deadline_ms = runtime->now_ms + LOCAL_RAW_LEASE_MS;
             runtime->feedback_ready = false;
+            if (runtime->editable_apc.enabled) fence_apc_visibility(runtime);
         } else if (!raw) {
             runtime->feedback_refresh = true;
         }
@@ -643,6 +858,8 @@ static gridpico_result init_profile(local_runtime *runtime, const local_router_p
     *runtime = (local_runtime){.forwarding_running = true, .forwarding_revision = 1};
     runtime->configured = profile != NULL;
     runtime->profile = runtime->configured ? profile : &default_profile;
+    if (runtime->profile->editable_surface && !local_profile_supports_editable_apc(runtime->profile))
+        return GRIDPICO_INVALID;
     const gridpico_local_registry *registry = &runtime->profile->registry;
     gridpico_local_profile limits = runtime->profile->limits;
     if (prepare_fm) {
@@ -668,6 +885,7 @@ static gridpico_result init_profile(local_runtime *runtime, const local_router_p
     gridpico_patch_session_bind_local_routes(&runtime->session, gridpico_patch_graph_set_local_route,
                                             gridpico_patch_graph_read_local_route);
     if (runtime->configured) enable_routing(runtime);
+    if (runtime->profile->editable_surface) return init_editable_apc(runtime);
     reset_panel(runtime);
     return GRIDPICO_OK;
 }
@@ -732,11 +950,6 @@ static uint32_t fresh_fm_id(const local_runtime *runtime, uint32_t id, bool devi
         if (slot == count) break;
     }
     return id;
-}
-
-static bool same_connection(gridpico_connection left, gridpico_connection right)
-{
-    return left.endpoint == right.endpoint && left.generation == right.generation;
 }
 
 static local_fm_allocation *find_fm(local_runtime *runtime, gridpico_port_id port)
@@ -995,6 +1208,14 @@ gridpico_result local_runtime_bind_forwarding_transport(local_runtime *runtime)
     return GRIDPICO_OK;
 }
 
+gridpico_result local_runtime_bind_apc_transport(local_runtime *runtime)
+{
+    if (!runtime->profile->editable_surface || !runtime->forwarding_enabled) return GRIDPICO_INVALID;
+    if (runtime->editable_apc.enabled) return GRIDPICO_UNAVAILABLE;
+    runtime->editable_apc.enabled = true;
+    return GRIDPICO_OK;
+}
+
 void local_runtime_begin(local_runtime *runtime, uint64_t now_ms)
 {
     runtime->now_ms = now_ms;
@@ -1003,6 +1224,7 @@ void local_runtime_begin(local_runtime *runtime, uint64_t now_ms)
     runtime->forwarding_barrier_count = 0;
     runtime->serial_count = 0;
     runtime->serial.fault = false;
+    runtime->editable_apc.refusal = GRIDPICO_OK;
     for (size_t i = 0; i < runtime->graph.inventory.port_count; ++i) {
         runtime->bindings[i].queued = 0;
         runtime->bindings[i].fault_staged = false;
@@ -1064,7 +1286,8 @@ static gridpico_result bind_port(local_runtime *runtime, gridpico_connection con
     if (result != GRIDPICO_OK) {
         apply_port(runtime, connection, false);
         stage_fault(runtime, connection);
-    } else if (connection.endpoint == runtime->feedback_port) {
+    } else if (connection.endpoint == runtime->feedback_port ||
+               (runtime->editable_apc.enabled && connection.endpoint == runtime->editable_apc.panel_port)) {
         runtime->feedback_refresh = true;
     }
     return result;
@@ -1114,7 +1337,14 @@ gridpico_result local_runtime_detach(local_runtime *runtime, gridpico_connection
     port->fault = false;
     gridpico_result result = apply_port(runtime, connection, false);
     cancel_panic_output(runtime, connection);
-    if (runtime->graph.port_capabilities[index] == GRIDPICO_LOCAL_PORT_PANEL) {
+    if (runtime->editable_apc.enabled &&
+        (connection.endpoint == runtime->editable_apc.panel_port ||
+         connection.endpoint == runtime->feedback_port)) {
+        if (connection.endpoint == runtime->editable_apc.panel_port) {
+            result = first_error(result, gridpico_apc_physical_detach(&runtime->editable_apc.frontend));
+        }
+        fence_apc_visibility(runtime);
+    } else if (runtime->graph.port_capabilities[index] == GRIDPICO_LOCAL_PORT_PANEL) {
         if (runtime->profile->passive_surface) gridpico_apc_patch_reset_gestures(&runtime->apc);
         else reset_panel(runtime);
         runtime->feedback_refresh = true;
@@ -1129,11 +1359,39 @@ gridpico_result local_runtime_detach(local_runtime *runtime, gridpico_connection
     return result;
 }
 
-static bool valid_triplet(const uint8_t *bytes)
+static gridpico_result receive_editable_apc(local_runtime *runtime, gridpico_connection panel,
+                                            const gridpico_apc_surface_message *message)
 {
-    const unsigned status = bytes[0] >> 4;
-    return (status == 8 || status == 9 || status == 10 || status == 11 || status == 14) &&
-           bytes[1] <= 127 && bytes[2] <= 127;
+    local_apc_surface *apc = &runtime->editable_apc;
+    if (!apc->enabled || panel.endpoint != apc->panel_port) return GRIDPICO_UNAVAILABLE;
+    gridpico_result result;
+    apc->edit_accepted = false;
+    if (apc->inhibited) {
+        uint8_t note;
+        const gridpico_apc_pad_event event = gridpico_apc_decode_button(message, &note);
+        if (event == GRIDPICO_APC_PAD_INVALID) return GRIDPICO_INVALID;
+        if (event != GRIDPICO_APC_PAD_PRESSED) {
+            return gridpico_apc_physical_receive(&apc->frontend, message, runtime->now_ms);
+        }
+        /* Keep a suppressed down held so its repeat cannot edit after rearm. */
+        if (apc->frontend.held[note]) return GRIDPICO_OK;
+        apc->frontend.held[note] = true;
+        if (apc->flight.token == 0 && !apc->latest_valid) runtime->feedback_refresh = true;
+        result = GRIDPICO_UNAVAILABLE;
+    } else {
+        const bool arranging = apc->frontend.arranging;
+        result = gridpico_apc_physical_receive(&apc->frontend, message, runtime->now_ms);
+        if (apc->frontend.arranging != arranging) advance_apc_epoch(runtime);
+    }
+    if (result != GRIDPICO_OK) {
+        if (apc->edit_accepted) {
+            fence_apc_visibility(runtime);
+        } else {
+            apc->refused_owner = panel;
+            apc->refusal = result;
+        }
+    }
+    return GRIDPICO_OK;
 }
 
 gridpico_result local_runtime_midi_at_revision(local_runtime *runtime,
@@ -1158,6 +1416,10 @@ gridpico_result local_runtime_midi_at_revision(local_runtime *runtime,
     case GRIDPICO_LOCAL_PORT_PANEL: {
         gridpico_apc_surface_message message;
         memcpy(message.bytes, input->bytes, sizeof(message.bytes));
+        if (runtime->profile->editable_surface) {
+            if (port->adapter_owned || port->fault) return GRIDPICO_UNAVAILABLE;
+            return receive_editable_apc(runtime, input->source, &message);
+        }
         return gridpico_apc_patch_receive(&runtime->apc, &message);
     }
     case GRIDPICO_LOCAL_PORT_RAW: {
@@ -1183,6 +1445,10 @@ gridpico_result local_runtime_midi_at_revision(local_runtime *runtime,
                 .velocity = input->bytes[2],
             },
         };
+        if (runtime->editable_apc.enabled && note.note.kind == GRIDPICO_NOTE_ON) {
+            gridpico_patch_session_observe_apc_patch_note(&runtime->session, &note, runtime->now_ms * 1000);
+            runtime->feedback_refresh = true;
+        }
         const gridpico_result result = gridpico_patch_graph_submit_note(&runtime->graph, &note);
         if (result != GRIDPICO_OK) {
             append_log(runtime, (gridpico_diagnostic_log_entry){
@@ -1296,6 +1562,10 @@ static gridpico_result retire_faults(local_runtime *runtime)
 gridpico_result local_runtime_finish(local_runtime *runtime, gridpico_result result)
 {
     result = first_error(result, retire_faults(runtime));
+    if (runtime->editable_apc.enabled) {
+        refresh_editable_apc(runtime);
+        return result;
+    }
     if (!runtime->feedback_refresh) {
         return result;
     }

@@ -5,7 +5,7 @@ const { createServer } = require("node:http");
 const { randomBytes } = require("node:crypto");
 const path = require("node:path");
 const { WebSocket, WebSocketServer } = require("ws");
-const { maxGeneration, startLocalPipe } = require("./local-pipe");
+const { apcPageFrames, maxGeneration, startLocalPipe } = require("./local-pipe");
 const { createWssListener } = require("./wss-listener");
 const { createTrustedLanListener } = require("./trusted-lan-listener");
 const { createRecorder, recorderPort } = require("./recording");
@@ -293,6 +293,11 @@ let busy;
 const fmQueue = [];
 let preferFm = true;
 let shuttingDown = false;
+let editableApc;
+let apcFlight;
+let droppedApcPage;
+let lastApcToken = 0n;
+let activePanelCommand;
 
 function reject(socket, status) {
   if (socket.destroyed || socket.writableEnded) return;
@@ -322,6 +327,18 @@ function filterPendingOutput(peer, keep) {
 function retire(peer, { code = 1011, reason = "Binding closed", graceful = false, retired = false } = {}) {
   clearPeerTimers(peer);
   peer.closing = true;
+  if (editableApc && peers.get(peer.key) === peer &&
+      (peer.port === editableApc.panel || peer.port === editableApc.led)) {
+    peer.apcDetach = true;
+    const panel = peers.get(editableApc.panel);
+    if (panel) {
+      panel.input.length = 0;
+      panel.inputBytes = 0;
+    }
+    if (apcFlight && (apcFlight.panelPeer === peer || apcFlight.ledPeer === peer)) {
+      settleApcPage(apcFlight, false);
+    }
+  }
   peer.beforeUpgrade.length = 0;
   if (peer.port === undefined) {
     for (const destination of peers.values()) {
@@ -396,12 +413,110 @@ function output(peer, record) {
     if (peer.outputFrames === 0) {
       clearTimeout(peer.readerTimer);
       peer.readerTimer = undefined;
+      if (peer.port === editableApc?.led) startApcPage();
     }
   });
   if (!peer.closing && peer.outputFrames > 0 && peer.readerTimer === undefined) {
     peer.readerTimer = setTimeout(() =>
       retire(peer, { code: 1013, reason: "Reader stalled" }), stallMs);
   }
+}
+
+function apcPeer(port, generation, direction) {
+  const peer = peers.get(port);
+  if (peer?.bound && !peer.closing && peer.generation === generation && peer.direction === direction) return peer;
+}
+
+function apcPeerOpen(peer) {
+  return peer && peers.get(peer.key) === peer && peer.bound && !peer.closing &&
+    !peer.raw.destroyed && !peer.raw.readableEnded && !peer.raw.writableEnded &&
+    peer.socket?.readyState === WebSocket.OPEN;
+}
+
+function apcPairOpen({ panelPeer, ledPeer }) {
+  return apcPeerOpen(panelPeer) && apcPeerOpen(ledPeer);
+}
+
+function settleApcPage(flight, written) {
+  if (apcFlight !== flight || flight === droppedApcPage) return;
+  clearTimeout(flight.timer);
+  if (flight.charged) {
+    flight.ledPeer.outputFrames -= apcPageFrames;
+    flight.ledPeer.outputBytes -= flight.data.length;
+    flight.charged = false;
+  }
+  if (shuttingDown) {
+    apcFlight = undefined;
+    return;
+  }
+  if (written) {
+    flight.panelPeer.input.push({ page: flight });
+  } else {
+    const queue = flight.panelPeer?.input;
+    const marker = queue?.findIndex(frame => frame.page === flight);
+    if (marker >= 0) queue.splice(marker, 1);
+    droppedApcPage = flight;
+  }
+  queueMicrotask(pump);
+}
+
+function failApcDelivery(flight, reason) {
+  const started = flight.charged;
+  settleApcPage(flight, false);
+  if (started && apcPeerOpen(flight.ledPeer)) retire(flight.ledPeer, { reason });
+}
+
+function startApcPage() {
+  const flight = apcFlight;
+  if (!flight || flight.started || flight === droppedApcPage || !apcPairOpen(flight)) return;
+  const { ledPeer: led, data } = flight;
+  if (led.outputFrames !== 0) return;
+
+  // Reserve the entire page before any writer call. Existing LED writes have drained.
+  flight.started = flight.charged = true;
+  led.outputFrames += apcPageFrames;
+  led.outputBytes += data.length;
+  let remaining = apcPageFrames;
+  for (let offset = 0; offset < data.length && flight !== droppedApcPage; offset += 3) {
+    let completed = false;
+    const callback = error => {
+      if (completed || apcFlight !== flight || flight === droppedApcPage) return;
+      completed = true;
+      if (error) failApcDelivery(flight, "APC page delivery failed");
+      else if (--remaining === 0) settleApcPage(flight, Boolean(apcPairOpen(flight)));
+    };
+    try {
+      led.socket.send(data.subarray(offset, offset + 3), { binary: true }, callback);
+    } catch (error) {
+      callback(error);
+    }
+  }
+}
+
+function stageApcPage(record) {
+  if (record.panel !== editableApc.panel || record.led !== editableApc.led ||
+      record.token <= lastApcToken || apcFlight) throw new Error("Unexpected APC feedback page");
+  lastApcToken = record.token;
+  const panelPeer = apcPeer(record.panel, record.panelGeneration, "in");
+  const ledPeer = apcPeer(record.led, record.ledGeneration, "out");
+  const flight = apcFlight = { ...record, panelPeer, ledPeer };
+  if (!panelPeer || !ledPeer || ledPeer.limit < apcPageFrames) {
+    settleApcPage(flight, false);
+    return;
+  }
+  flight.timer = setTimeout(() => failApcDelivery(flight, "APC page delivery stalled"), stallMs);
+  startApcPage();
+}
+
+function dispatchApcResult(flight, written) {
+  const { panel, panelGeneration, led, ledGeneration, token } = flight;
+  apcFlight = droppedApcPage = undefined;
+  busy = flight;
+  pipe.dispatch(`apc-page-result ${panel} ${panelGeneration} ${led} ${ledGeneration} ${token} ${written ? "written" : "dropped"}`, error => {
+    busy = undefined;
+    if (error) throw new Error("Router rejected the APC page result");
+    queueMicrotask(pump);
+  });
 }
 
 function applyForwardingState(record) {
@@ -419,6 +534,19 @@ function applyForwardingState(record) {
 }
 
 function handleRecord(record) {
+  if (record.kind === "apc-page") {
+    stageApcPage(record);
+    return;
+  }
+  if (record.kind === "apc-gesture-refused") {
+    const command = activePanelCommand;
+    if (!command || command.refused || command.peer !== busy ||
+        record.port !== command.peer.port || record.generation !== command.peer.generation) {
+      throw new Error("Unexpected APC gesture refusal");
+    }
+    command.refused = true;
+    return;
+  }
   if (record.kind === "forwarding-state") {
     applyForwardingState(record);
     return;
@@ -434,6 +562,11 @@ function handleRecord(record) {
     peer.direction = record.direction;
     peer.managed = record.classification === "managed";
     peer.limit = record.limit;
+    if (editableApc && ((peer.port === editableApc.led &&
+          (peer.direction !== "out" || peer.managed || peer.limit < apcPageFrames)) ||
+          (peer.port === editableApc.panel && (peer.direction !== "in" || peer.managed)))) {
+      throw new Error("Unexpected editable APC binding");
+    }
     peer.bound = true;
     generations.set(peer.key, peer.generation);
     return;
@@ -492,7 +625,7 @@ function completeUpgrade(peer) {
       }
 
       const full = peer.port === undefined
-        ? peer.inputBytes + data.length > serialQueueBytes : peer.input.length === peer.limit;
+        ? peer.inputBytes + data.length > serialQueueBytes : peer.inputBytes / 3 >= peer.limit;
       if (full) {
         retire(peer, { code: 1013, reason: "Input queue full" });
         return;
@@ -513,6 +646,7 @@ function completeUpgrade(peer) {
     for (const record of staged) output(peer, record);
     if (peer.expectedDirection && !peer.closing) monitorHeartbeat(peer);
     peer.raw.resume();
+    if (editableApc && (peer.port === editableApc.panel || peer.port === editableApc.led)) startApcPage();
   });
 }
 
@@ -542,8 +676,14 @@ function pumpFm() {
 }
 
 function pump() {
-  if (shuttingDown || busy || (preferFm && pumpFm())) return;
-  for (const peer of peers.values()) {
+  if (shuttingDown || busy) return;
+  const urgent = editableApc && [...peers.values()].find(peer => peer.apcDetach && peer.bound);
+  if (!urgent && droppedApcPage) {
+    dispatchApcResult(droppedApcPage, false);
+    return;
+  }
+  if (!urgent && preferFm && pumpFm()) return;
+  for (const peer of urgent ? [urgent] : peers.values()) {
     if (peer.fmLease) continue;
     const { port, generation } = peer;
     let line;
@@ -569,7 +709,12 @@ function pump() {
         }
       };
     } else if (peer.input.length > 0) {
-      const { data, forwardingRevision } = peer.input.shift();
+      const { data, forwardingRevision, page } = peer.input.shift();
+      if (page) {
+        if (apcFlight === page && apcPairOpen(page)) dispatchApcResult(page, true);
+        else settleApcPage(page, false);
+        return;
+      }
       if (port !== undefined) peer.inputBytes -= data.length;
       if (forwardingRevision !== undefined &&
           (!forwarding.running || forwardingRevision !== forwarding.revision)) {
@@ -579,7 +724,11 @@ function pump() {
       const hex = data.toString("hex").toUpperCase();
       const payload = forwardingRevision === undefined ? hex : `ordinary ${forwardingRevision} ${hex}`;
       line = port === undefined ? `serial ${generation} ${hex}` : `midi ${port} ${generation} ${payload}`;
+      const panelCommand = editableApc && port === editableApc.panel ? { peer, refused: false } : undefined;
+      activePanelCommand = panelCommand;
       complete = (error) => {
+        activePanelCommand = undefined;
+        if (panelCommand?.refused && error) throw new Error("APC gesture refusal lacked successful completion");
         if (port === undefined && !peer.closing) peer.inputBytes -= data.length;
         if (error && peers.get(peer.key) === peer) retire(peer, { code: 1008, reason: "Router rejected the frame" });
       };
@@ -758,8 +907,11 @@ if (uiDescriptor && webUi && profile && !recorder) {
   do { fmEpoch = randomBytes(8).readBigUInt64BE(); } while (fmEpoch === 0n);
 }
 const pipe = startLocalPipe(runnerPath, {
-  onReady(peerLimit, runtimeRoles, qualifiedForwarding, qualifiedFmJoin) {
+  onReady(peerLimit, runtimeRoles, qualifiedForwarding, qualifiedFmJoin, qualifiedEditableApc) {
     forwardingEnabled = qualifiedForwarding;
+    if (qualifiedEditableApc) {
+      editableApc = { panel: runtimeRoles.get("panel").port, led: runtimeRoles.get("led").port };
+    }
     if (qualifiedFmJoin) {
       fmJoin = createLocalFmJoin({
         epoch: fmEpoch, runtime: runtimeInstance, limit: peerLimit, matchesHeader, enqueue: enqueueFm,
@@ -776,7 +928,10 @@ const pipe = startLocalPipe(runnerPath, {
   },
 }, [...(webUi ? ["--web-ui"] : []), ...(profile ? ["--profile", profile] : []),
   ...(recorder ? ["--recorder"] : []), ...(uiDescriptor ? ["--ui-descriptor"] : [])],
-{ expectUiRoles: uiDescriptor, probeForwarding: uiDescriptor && !recorder, fmEpoch });
+{
+  expectUiRoles: uiDescriptor, probeForwarding: uiDescriptor && !recorder, fmEpoch,
+  allowEditableApc: Boolean(bundle && webUi && profile && !lan && !network && !recorder),
+});
 
 server.on("error", (error) => {
   console.error(error.message);
