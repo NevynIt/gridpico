@@ -1,0 +1,17 @@
+diff --git a/api/patchbay.h b/api/patchbay.h
+index efaf1206e3e3f07f0ba16292205d9c38a92c957a..4e4611bc33f21911425b7079bca938a5a9ec4c21 100644
+--- a/api/patchbay.h
++++ b/api/patchbay.h
+@@ -35,7 +35,12 @@
+     GRIDPICO_PATCH_MAX_DEVICES = 12,
+     GRIDPICO_PATCH_MAX_PORTS = 36,
+ #endif
++#if defined(PICO_ON_DEVICE) && PICO_ON_DEVICE && defined(PICO_RP2040) && PICO_RP2040 && \
++    defined(GRIDPICO_RP2040_MATRIX_CLI) && !defined(GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
++    GRIDPICO_PATCH_MAX_BRANCHES = 24,
++#else
+     GRIDPICO_PATCH_MAX_BRANCHES = 13,
++#endif
+     GRIDPICO_PATCH_SOURCE_ROWS = 5,
+     GRIDPICO_PATCH_DESTINATION_COLUMNS = 8,
+     GRIDPICO_PATCH_NAME_BYTES = 32,
