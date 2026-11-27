@@ -47,6 +47,8 @@ This is the target design for hardware work and a later architecture review. The
 | OLED | I²C monochrome 64 × 128 display. |
 | UART | Expose 3.3 V TX, RX and ground, with no power pin. Defer 5 V level shifting until needed. |
 
+Build a minimal carrier for ordinary DEV use. Power SD and OLED from the RP2040-Zero 3.3 V rail within its usable current budget. Use four-signal USB connectors or breakouts (ground, D+, D− and 5 V) and confirm any required USB-C CC parts on the actual connector. Prioritize protection of the laptop and attached MIDI devices, including prevention of backfeed and unsafe downstream current. Accept local Pico risk and document any compromise to dual-source operation or the powered cascade.
+
 Draw the actual pinout and schematic against the RP2040-Zero module. Evaluate the suggested low-drop paths from U1 to U3, U1 to U4 and U2 to U4 against voltage drop and current for a chain of up to three Picos. Check source isolation, USB power roles and downstream protection on the actual wiring before choosing the power circuit.
 
 ### B. PC router
