@@ -19,7 +19,7 @@ Make the instruments already in the rig work together without a computer during 
 
 ## Platforms
 
-The production router targets RP2040, Linux on x86 and ARM, and Windows. RTP-MIDI and WS/WSS connect network MIDI peers. Web MIDI can select RTP-MIDI ports exposed by the OS. Independently running components exchange MIDI or serial CLI bytes. Provide a user-testable portable Windows build, preferably as one executable bundling the router core, web server and UI assets.
+The production router targets RP2040, Linux on x86 and ARM, and Windows. RTP-MIDI and WS/WSS connect network MIDI peers. Web MIDI can select RTP-MIDI ports exposed by the OS. Independently running components exchange MIDI or serial CLI bytes. Provide a user-testable portable Windows ZIP with the native Gridpico executable and static Web UI. Prefer opening the pages directly from disk. If they need HTTP, include a minimal local server that serves only the packaged assets. The Windows package runs without Node.js.
 
 The Pico hosts USB instruments through a hub, with seven simultaneous MIDI devices as a qualification target. Routing uses available target storage without policy caps on total routes or destinations per input. Native USB provides CDC and a bidirectional APC Panel/LED pair alongside assignable MIDI pairs. Board settings cover supported LED and PIO USB pin mappings. The onboard light reports readiness and issues. CDC BOOTSEL and early watchdog recovery support repeatable firmware updates.
 
