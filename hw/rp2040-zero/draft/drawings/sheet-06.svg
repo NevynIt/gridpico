@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1584" height="1033" viewBox="0 0 1584 1033" role="img">
+<rect x="0" y="0" width="1584" height="1033" stroke="#ffffff" stroke-width="1" fill="#ffffff"/>
+<rect x="0" y="0" width="1584" height="98" stroke="#162638" stroke-width="1" fill="#162638"/>
+<text x="38" y="36" fill="#a7cbd1" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">GRIDPICO / RP2040-ZERO CARRIER</text>
+<text x="38" y="77" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="33" text-anchor="start" font-weight="700">Waveshare RP2040-Zero module pinout</text>
+<text x="1546" y="74" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="23" text-anchor="end" font-weight="700">06 / 09</text>
+<text x="38" y="116" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">Waveshare drawing P1/P2/P3 numbering. GP16 is the built-in pixel DIN. Physical footprint must match the purchased revision.</text>
+<rect x="38" y="126" width="1031" height="836" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="38" y="126" width="1031" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="53" y="150" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">M1   RP2040-Zero module, original receptacle removed</text>
+<rect x="305.96600115299225" y="186" width="484.0679976940155" height="577" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="548" y="204" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">M1</text>
+<text x="548" y="220" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">Waveshare RP2040-Zero</text>
+<line x1="305.96600115299225" y1="227" x2="790.0339988470078" y2="227" stroke="#d6e0e9" stroke-width="1"/>
+<text x="312.96600115299225" y="242" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.1  GP0 UART0 TX</text>
+<line x1="305.96600115299225" y1="238" x2="280.96600115299225" y2="238" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="242" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART0_TX</text>
+<text x="312.96600115299225" y="265" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.2  GP1 UART0 RX</text>
+<line x1="305.96600115299225" y1="261" x2="280.96600115299225" y2="261" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="265" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART0_RX</text>
+<text x="312.96600115299225" y="288" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.3  GP2 I2C1 SDA</text>
+<line x1="305.96600115299225" y1="284" x2="280.96600115299225" y2="284" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="288" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">CC_SDA</text>
+<text x="312.96600115299225" y="311" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.4  GP3 I2C1 SCL</text>
+<line x1="305.96600115299225" y1="307" x2="280.96600115299225" y2="307" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="311" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">CC_SCL</text>
+<text x="312.96600115299225" y="334" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.5  GP4 I2C0 SDA</text>
+<line x1="305.96600115299225" y1="330" x2="280.96600115299225" y2="330" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="334" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">OLED_SDA_A</text>
+<text x="312.96600115299225" y="357" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.6  GP5 I2C0 SCL</text>
+<line x1="305.96600115299225" y1="353" x2="280.96600115299225" y2="353" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="357" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">OLED_SCL_A</text>
+<text x="312.96600115299225" y="380" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.7  GP6 SIO</text>
+<line x1="305.96600115299225" y1="376" x2="280.96600115299225" y2="376" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="380" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U3_A_GRANT</text>
+<text x="312.96600115299225" y="403" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.8  GP7 SIO</text>
+<line x1="305.96600115299225" y1="399" x2="280.96600115299225" y2="399" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="403" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_A_GRANT</text>
+<text x="312.96600115299225" y="426" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.9  GP8 SIO</text>
+<line x1="305.96600115299225" y1="422" x2="280.96600115299225" y2="422" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="426" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_B_GRANT</text>
+<text x="312.96600115299225" y="449" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.10  GP9 SIO</text>
+<line x1="305.96600115299225" y1="445" x2="280.96600115299225" y2="445" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="449" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_PORT_EN</text>
+<text x="312.96600115299225" y="472" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.11  GP10 SPI1 SCK</text>
+<line x1="305.96600115299225" y1="468" x2="280.96600115299225" y2="468" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="472" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">SD_SCK_A</text>
+<text x="312.96600115299225" y="495" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.12  GP11 SPI1 TX</text>
+<line x1="305.96600115299225" y1="491" x2="280.96600115299225" y2="491" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="495" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">SD_MOSI_A</text>
+<text x="312.96600115299225" y="518" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.13  GP12 SPI1 RX</text>
+<line x1="305.96600115299225" y1="514" x2="280.96600115299225" y2="514" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="518" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">SD_MISO_A</text>
+<text x="312.96600115299225" y="541" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.14  GP13 SPI1 CS</text>
+<line x1="305.96600115299225" y1="537" x2="280.96600115299225" y2="537" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="541" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">SD_CS_A</text>
+<text x="312.96600115299225" y="564" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.15  GP14 PIO D+</text>
+<line x1="305.96600115299225" y1="560" x2="280.96600115299225" y2="560" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="564" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">PIO_DP</text>
+<text x="312.96600115299225" y="587" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.16  GP15 PIO D-</text>
+<line x1="305.96600115299225" y1="583" x2="280.96600115299225" y2="583" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="587" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">PIO_DM</text>
+<text x="312.96600115299225" y="610" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.17  GP26</text>
+<line x1="305.96600115299225" y1="606" x2="280.96600115299225" y2="606" stroke="#225e67" stroke-width="1.5"/>
+<line x1="277.96600115299225" y1="603" x2="283.96600115299225" y2="609" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="277.96600115299225" y1="609" x2="283.96600115299225" y2="603" stroke="#5a6570" stroke-width="1.1"/>
+<text x="312.96600115299225" y="633" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.18  GP27</text>
+<line x1="305.96600115299225" y1="629" x2="280.96600115299225" y2="629" stroke="#225e67" stroke-width="1.5"/>
+<line x1="277.96600115299225" y1="626" x2="283.96600115299225" y2="632" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="277.96600115299225" y1="632" x2="283.96600115299225" y2="626" stroke="#5a6570" stroke-width="1.1"/>
+<text x="312.96600115299225" y="656" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.19  GP28</text>
+<line x1="305.96600115299225" y1="652" x2="280.96600115299225" y2="652" stroke="#225e67" stroke-width="1.5"/>
+<line x1="277.96600115299225" y1="649" x2="283.96600115299225" y2="655" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="277.96600115299225" y1="655" x2="283.96600115299225" y2="649" stroke="#5a6570" stroke-width="1.1"/>
+<text x="312.96600115299225" y="679" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.20  GP29</text>
+<line x1="305.96600115299225" y1="675" x2="280.96600115299225" y2="675" stroke="#225e67" stroke-width="1.5"/>
+<line x1="277.96600115299225" y1="672" x2="283.96600115299225" y2="678" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="277.96600115299225" y1="678" x2="283.96600115299225" y2="672" stroke="#5a6570" stroke-width="1.1"/>
+<text x="312.96600115299225" y="702" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.21  3V3 output</text>
+<line x1="305.96600115299225" y1="698" x2="280.96600115299225" y2="698" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="276.96600115299225" y="702" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">3V3_AON</text>
+<text x="312.96600115299225" y="725" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.22  GND</text>
+<line x1="305.96600115299225" y1="721" x2="280.96600115299225" y2="721" stroke="#225e67" stroke-width="1.5"/>
+<text x="276.96600115299225" y="725" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="312.96600115299225" y="748" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">P1.23  5V / VSYS</text>
+<line x1="305.96600115299225" y1="744" x2="280.96600115299225" y2="744" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="276.96600115299225" y="748" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">SYS5</text>
+<text x="783.0339988470078" y="242" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GP17 RGB data  P2.1</text>
+<line x1="790.0339988470078" y1="238" x2="815.0339988470078" y2="238" stroke="#225e67" stroke-width="1.5"/>
+<text x="819.0339988470078" y="242" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">RGB_A</text>
+<text x="783.0339988470078" y="265" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GP18 native VBUS_N  P2.2</text>
+<line x1="790.0339988470078" y1="261" x2="815.0339988470078" y2="261" stroke="#225e67" stroke-width="1.5"/>
+<text x="819.0339988470078" y="265" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">NUSB_OE_N</text>
+<text x="783.0339988470078" y="288" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GP19 peripheral EN  P2.3</text>
+<line x1="790.0339988470078" y1="284" x2="815.0339988470078" y2="284" stroke="#225e67" stroke-width="1.5"/>
+<text x="819.0339988470078" y="288" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">PER_EN</text>
+<text x="783.0339988470078" y="311" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GP20 host VBUS_N  P2.4</text>
+<line x1="790.0339988470078" y1="307" x2="815.0339988470078" y2="307" stroke="#225e67" stroke-width="1.5"/>
+<text x="819.0339988470078" y="311" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">HUSB_OE_N</text>
+<text x="783.0339988470078" y="334" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GP21  P2.5</text>
+<line x1="790.0339988470078" y1="330" x2="815.0339988470078" y2="330" stroke="#225e67" stroke-width="1.5"/>
+<line x1="812.0339988470078" y1="327" x2="818.0339988470078" y2="333" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="812.0339988470078" y1="333" x2="818.0339988470078" y2="327" stroke="#5a6570" stroke-width="1.1"/>
+<text x="783.0339988470078" y="357" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GP22 A peripheral grant  P3.1</text>
+<line x1="790.0339988470078" y1="353" x2="815.0339988470078" y2="353" stroke="#225e67" stroke-width="1.5"/>
+<text x="819.0339988470078" y="357" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">PER_A_GRANT</text>
+<text x="783.0339988470078" y="380" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GP23 B peripheral grant  P3.2</text>
+<line x1="790.0339988470078" y1="376" x2="815.0339988470078" y2="376" stroke="#225e67" stroke-width="1.5"/>
+<text x="819.0339988470078" y="380" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">PER_B_GRANT</text>
+<text x="783.0339988470078" y="403" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GP24  P3.3</text>
+<line x1="790.0339988470078" y1="399" x2="815.0339988470078" y2="399" stroke="#225e67" stroke-width="1.5"/>
+<line x1="812.0339988470078" y1="396" x2="818.0339988470078" y2="402" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="812.0339988470078" y1="402" x2="818.0339988470078" y2="396" stroke="#5a6570" stroke-width="1.1"/>
+<text x="783.0339988470078" y="426" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GP25  P3.4</text>
+<line x1="790.0339988470078" y1="422" x2="815.0339988470078" y2="422" stroke="#225e67" stroke-width="1.5"/>
+<line x1="812.0339988470078" y1="419" x2="818.0339988470078" y2="425" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="812.0339988470078" y1="425" x2="818.0339988470078" y2="419" stroke="#5a6570" stroke-width="1.1"/>
+<text x="783.0339988470078" y="449" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GND  P3.5</text>
+<line x1="790.0339988470078" y1="445" x2="815.0339988470078" y2="445" stroke="#225e67" stroke-width="1.5"/>
+<text x="819.0339988470078" y="449" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="783.0339988470078" y="472" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">Onboard D_P lands  T-C.A6,B6</text>
+<line x1="790.0339988470078" y1="468" x2="815.0339988470078" y2="468" stroke="#225e67" stroke-width="1.5"/>
+<text x="819.0339988470078" y="472" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">N_DP</text>
+<text x="783.0339988470078" y="495" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">Onboard D_N lands  T-C.A7,B7</text>
+<line x1="790.0339988470078" y1="491" x2="815.0339988470078" y2="491" stroke="#225e67" stroke-width="1.5"/>
+<text x="819.0339988470078" y="495" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">N_DM</text>
+<text x="783.0339988470078" y="518" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">Lands remain tied to P1.23  T-C.VBUS</text>
+<line x1="790.0339988470078" y1="514" x2="815.0339988470078" y2="514" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="819.0339988470078" y="518" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">SYS5</text>
+<text x="783.0339988470078" y="541" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">Old Rd nodes, no mating receptacle  T-C.CC1,CC2</text>
+<line x1="790.0339988470078" y1="537" x2="815.0339988470078" y2="537" stroke="#225e67" stroke-width="1.5"/>
+<line x1="812.0339988470078" y1="534" x2="818.0339988470078" y2="540" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="812.0339988470078" y1="540" x2="818.0339988470078" y2="534" stroke="#5a6570" stroke-width="1.1"/>
+<text x="783.0339988470078" y="564" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">GP16 onboard WS2812B  INT</text>
+<line x1="790.0339988470078" y1="560" x2="815.0339988470078" y2="560" stroke="#225e67" stroke-width="1.5"/>
+<line x1="812.0339988470078" y1="557" x2="818.0339988470078" y2="563" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="812.0339988470078" y1="563" x2="818.0339988470078" y2="557" stroke="#5a6570" stroke-width="1.1"/>
+<text x="53" y="947" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">No external power input at 3V3_AON. Keep built-in RESET and BOOTSEL accessible.</text>
+<rect x="1089" y="126" width="457" height="836" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="1089" y="126" width="457" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="1104" y="150" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">Native USB module interface</text>
+<text x="1104" y="188" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Vendor schematic connects the stock VBUS lands directly to</text>
+<text x="1104" y="206" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">VSYS and P1.23.</text>
+<text x="1104" y="224" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Remove the stock connector. Insulate its former VBUS lands</text>
+<text x="1104" y="242" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">after verification.</text>
+<text x="1104" y="260" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Use short, controlled-impedance D_P/D_N land connections.</text>
+<text x="1104" y="278" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Keep native series resistors on M1.</text>
+<text x="1104" y="296" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Leave old CC lands isolated externally. The two stock Rd can</text>
+<text x="1104" y="314" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">remain on those unused lands.</text>
+<text x="1104" y="332" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Externally replace the whole connector function at J2,</text>
+<text x="1104" y="350" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">including the Type-C sink controller.</text>
+<text x="1104" y="368" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Never connect J2 VBUS directly to the stock VBUS lands or</text>
+<text x="1104" y="386" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">stack a USB-C cable on the module.</text>
+<text x="1104" y="404" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">This module modification requires a verified assembly</text>
+<text x="1104" y="422" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">process and D+/D- continuity inspection.</text>
+<line x1="38" y1="995" x2="1546" y2="995" stroke="#d6e0e9" stroke-width="1.5"/>
+<text x="38" y="1016" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">Electrical design review   /   Named nets are joined across sheets   /   x = intentional NC</text>
+<text x="1546" y="1016" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">SCRATCH 0.1   /   2026-11-27   /   Layout and qualification pending</text>
+</svg>

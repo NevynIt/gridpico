@@ -1,0 +1,5 @@
+# The historical manifests pin exact LF text, two CRLF CSVs and one binary PDF.
+* text eol=lf
+pinout.csv -text !eol whitespace=cr-at-eol
+pin-netlist.csv -text !eol whitespace=cr-at-eol
+Gridpico-RP2040-Zero-Schematic.pdf binary !eol

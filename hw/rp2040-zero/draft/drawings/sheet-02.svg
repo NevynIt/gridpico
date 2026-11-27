@@ -1,0 +1,237 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1584" height="1033" viewBox="0 0 1584 1033" role="img">
+<rect x="0" y="0" width="1584" height="1033" stroke="#ffffff" stroke-width="1" fill="#ffffff"/>
+<rect x="0" y="0" width="1584" height="98" stroke="#162638" stroke-width="1" fill="#162638"/>
+<text x="38" y="36" fill="#a7cbd1" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">GRIDPICO / RP2040-ZERO CARRIER</text>
+<text x="38" y="77" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="33" text-anchor="start" font-weight="700">Protected inputs and module supply</text>
+<text x="1546" y="74" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="23" text-anchor="end" font-weight="700">02 / 09</text>
+<text x="38" y="116" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">Input eFuses block reverse current. A5 and B5 feed only the mux and their own authorized output branches.</text>
+<rect x="38" y="126" width="744" height="478" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="38" y="126" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="53" y="150" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">U1 input and reverse block</text>
+<rect x="363.36650028824806" y="174" width="189.26699942350388" height="186" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="458" y="192" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">IC1</text>
+<text x="458" y="208" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">TPS259474LRPWR</text>
+<line x1="363.36650028824806" y1="215" x2="552.6334997117519" y2="215" stroke="#d6e0e9" stroke-width="1"/>
+<text x="370.36650028824806" y="230" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">5  IN</text>
+<line x1="363.36650028824806" y1="226" x2="338.36650028824806" y2="226" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="334.36650028824806" y="230" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U1_RAW</text>
+<text x="370.36650028824806" y="253" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  EN/UVLO</text>
+<line x1="363.36650028824806" y1="249" x2="338.36650028824806" y2="249" stroke="#225e67" stroke-width="1.5"/>
+<text x="334.36650028824806" y="253" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">EN1</text>
+<text x="370.36650028824806" y="276" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  OVLO</text>
+<line x1="363.36650028824806" y1="272" x2="338.36650028824806" y2="272" stroke="#225e67" stroke-width="1.5"/>
+<text x="334.36650028824806" y="276" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">OV1</text>
+<text x="370.36650028824806" y="299" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">8  GND</text>
+<line x1="363.36650028824806" y1="295" x2="338.36650028824806" y2="295" stroke="#225e67" stroke-width="1.5"/>
+<text x="334.36650028824806" y="299" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="545.6334997117519" y="230" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">OUT  6</text>
+<line x1="552.6334997117519" y1="226" x2="577.6334997117519" y2="226" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="581.6334997117519" y="230" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">A5</text>
+<text x="545.6334997117519" y="253" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">DVDT  7</text>
+<line x1="552.6334997117519" y1="249" x2="577.6334997117519" y2="249" stroke="#225e67" stroke-width="1.5"/>
+<text x="581.6334997117519" y="253" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">DV1</text>
+<text x="545.6334997117519" y="276" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">ILM  9</text>
+<line x1="552.6334997117519" y1="272" x2="577.6334997117519" y2="272" stroke="#225e67" stroke-width="1.5"/>
+<text x="581.6334997117519" y="276" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">IL1</text>
+<text x="545.6334997117519" y="299" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">PG  3</text>
+<line x1="552.6334997117519" y1="295" x2="577.6334997117519" y2="295" stroke="#225e67" stroke-width="1.5"/>
+<line x1="574.6334997117519" y1="292" x2="580.6334997117519" y2="298" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="574.6334997117519" y1="298" x2="580.6334997117519" y2="292" stroke="#5a6570" stroke-width="1.1"/>
+<text x="545.6334997117519" y="322" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">PGTH  4</text>
+<line x1="552.6334997117519" y1="318" x2="577.6334997117519" y2="318" stroke="#225e67" stroke-width="1.5"/>
+<text x="581.6334997117519" y="322" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="545.6334997117519" y="345" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">ITIMER  10</text>
+<line x1="552.6334997117519" y1="341" x2="577.6334997117519" y2="341" stroke="#225e67" stroke-width="1.5"/>
+<line x1="574.6334997117519" y1="338" x2="580.6334997117519" y2="344" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="574.6334997117519" y1="344" x2="580.6334997117519" y2="338" stroke="#5a6570" stroke-width="1.1"/>
+<text x="278" y="371" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R11  2.67k, 1%</text>
+<polyline points="256,383 261,377 267,389 273,377 279,389 285,377 291,389 297,377 300,383" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="256" y1="383" x2="233" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="229" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">IL1</text>
+<line x1="300" y1="383" x2="323" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="327" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="598" y="371" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C11  2.2nF, 16V</text>
+<line x1="594" y1="375" x2="594" y2="391" stroke="#162638" stroke-width="1.5"/>
+<line x1="602" y1="375" x2="602" y2="391" stroke="#162638" stroke-width="1.5"/>
+<line x1="594" y1="383" x2="553" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="549" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">DV1</text>
+<line x1="602" y1="383" x2="643" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="647" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="278" y="417" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R12  34.8k, 0.1%</text>
+<polyline points="256,429 261,423 267,435 273,423 279,435 285,423 291,435 297,423 300,429" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="256" y1="429" x2="233" y2="429" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="229" y="433" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U1_RAW</text>
+<line x1="300" y1="429" x2="323" y2="429" stroke="#225e67" stroke-width="1.5"/>
+<text x="327" y="433" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">OV1</text>
+<text x="598" y="417" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R13  10.0k, 0.1%</text>
+<polyline points="576,429 581,423 587,435 593,423 599,435 605,423 611,435 617,423 620,429" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="576" y1="429" x2="553" y2="429" stroke="#225e67" stroke-width="1.5"/>
+<text x="549" y="433" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">OV1</text>
+<line x1="620" y1="429" x2="643" y2="429" stroke="#225e67" stroke-width="1.5"/>
+<text x="647" y="433" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="278" y="452" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R14  24.9k, 1%</text>
+<polyline points="256,464 261,458 267,470 273,458 279,470 285,458 291,470 297,458 300,464" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="256" y1="464" x2="233" y2="464" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="229" y="468" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U1_RAW</text>
+<line x1="300" y1="464" x2="323" y2="464" stroke="#225e67" stroke-width="1.5"/>
+<text x="327" y="468" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">EN1</text>
+<text x="598" y="452" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R15  10.0k, 1%</text>
+<polyline points="576,464 581,458 587,470 593,458 599,470 605,458 611,470 617,458 620,464" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="576" y1="464" x2="553" y2="464" stroke="#225e67" stroke-width="1.5"/>
+<text x="549" y="468" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">EN1</text>
+<line x1="620" y1="464" x2="643" y2="464" stroke="#225e67" stroke-width="1.5"/>
+<text x="647" y="468" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="278" y="503" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C12  2.2uF, 16V</text>
+<line x1="274" y1="507" x2="274" y2="523" stroke="#162638" stroke-width="1.5"/>
+<line x1="282" y1="507" x2="282" y2="523" stroke="#162638" stroke-width="1.5"/>
+<line x1="274" y1="515" x2="233" y2="515" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="229" y="519" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">A5</text>
+<line x1="282" y1="515" x2="323" y2="515" stroke="#225e67" stroke-width="1.5"/>
+<text x="327" y="519" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="53" y="589" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">OVLO nominal 5.376 V. UVLO nominal 4.188 V rising. ITIMER open for minimum delay.</text>
+<rect x="802" y="126" width="744" height="478" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="802" y="126" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="817" y="150" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">U2 input and reverse block</text>
+<rect x="1127.366500288248" y="174" width="189.26699942350388" height="186" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="1222" y="192" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">IC2</text>
+<text x="1222" y="208" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">TPS259474LRPWR</text>
+<line x1="1127.366500288248" y1="215" x2="1316.633499711752" y2="215" stroke="#d6e0e9" stroke-width="1"/>
+<text x="1134.366500288248" y="230" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">5  IN</text>
+<line x1="1127.366500288248" y1="226" x2="1102.366500288248" y2="226" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="1098.366500288248" y="230" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U2_RAW</text>
+<text x="1134.366500288248" y="253" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  EN/UVLO</text>
+<line x1="1127.366500288248" y1="249" x2="1102.366500288248" y2="249" stroke="#225e67" stroke-width="1.5"/>
+<text x="1098.366500288248" y="253" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">EN2</text>
+<text x="1134.366500288248" y="276" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  OVLO</text>
+<line x1="1127.366500288248" y1="272" x2="1102.366500288248" y2="272" stroke="#225e67" stroke-width="1.5"/>
+<text x="1098.366500288248" y="276" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">OV2</text>
+<text x="1134.366500288248" y="299" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">8  GND</text>
+<line x1="1127.366500288248" y1="295" x2="1102.366500288248" y2="295" stroke="#225e67" stroke-width="1.5"/>
+<text x="1098.366500288248" y="299" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="1309.633499711752" y="230" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">OUT  6</text>
+<line x1="1316.633499711752" y1="226" x2="1341.633499711752" y2="226" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="1345.633499711752" y="230" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">B5</text>
+<text x="1309.633499711752" y="253" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">DVDT  7</text>
+<line x1="1316.633499711752" y1="249" x2="1341.633499711752" y2="249" stroke="#225e67" stroke-width="1.5"/>
+<text x="1345.633499711752" y="253" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">DV2</text>
+<text x="1309.633499711752" y="276" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">ILM  9</text>
+<line x1="1316.633499711752" y1="272" x2="1341.633499711752" y2="272" stroke="#225e67" stroke-width="1.5"/>
+<text x="1345.633499711752" y="276" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">IL2</text>
+<text x="1309.633499711752" y="299" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">PG  3</text>
+<line x1="1316.633499711752" y1="295" x2="1341.633499711752" y2="295" stroke="#225e67" stroke-width="1.5"/>
+<line x1="1338.633499711752" y1="292" x2="1344.633499711752" y2="298" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="1338.633499711752" y1="298" x2="1344.633499711752" y2="292" stroke="#5a6570" stroke-width="1.1"/>
+<text x="1309.633499711752" y="322" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">PGTH  4</text>
+<line x1="1316.633499711752" y1="318" x2="1341.633499711752" y2="318" stroke="#225e67" stroke-width="1.5"/>
+<text x="1345.633499711752" y="322" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="1309.633499711752" y="345" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">ITIMER  10</text>
+<line x1="1316.633499711752" y1="341" x2="1341.633499711752" y2="341" stroke="#225e67" stroke-width="1.5"/>
+<line x1="1338.633499711752" y1="338" x2="1344.633499711752" y2="344" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="1338.633499711752" y1="344" x2="1344.633499711752" y2="338" stroke="#5a6570" stroke-width="1.1"/>
+<text x="1042" y="371" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R21  6.65k, 1%</text>
+<polyline points="1020,383 1025,377 1031,389 1037,377 1043,389 1049,377 1055,389 1061,377 1064,383" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="1020" y1="383" x2="997" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="993" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">IL2</text>
+<line x1="1064" y1="383" x2="1087" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="1091" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="1362" y="371" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C21  2.2nF, 16V</text>
+<line x1="1358" y1="375" x2="1358" y2="391" stroke="#162638" stroke-width="1.5"/>
+<line x1="1366" y1="375" x2="1366" y2="391" stroke="#162638" stroke-width="1.5"/>
+<line x1="1358" y1="383" x2="1317" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="1313" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">DV2</text>
+<line x1="1366" y1="383" x2="1407" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="1411" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="1042" y="417" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R22  34.8k, 0.1%</text>
+<polyline points="1020,429 1025,423 1031,435 1037,423 1043,435 1049,423 1055,435 1061,423 1064,429" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="1020" y1="429" x2="997" y2="429" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="993" y="433" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U2_RAW</text>
+<line x1="1064" y1="429" x2="1087" y2="429" stroke="#225e67" stroke-width="1.5"/>
+<text x="1091" y="433" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">OV2</text>
+<text x="1362" y="417" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R23  10.0k, 0.1%</text>
+<polyline points="1340,429 1345,423 1351,435 1357,423 1363,435 1369,423 1375,435 1381,423 1384,429" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="1340" y1="429" x2="1317" y2="429" stroke="#225e67" stroke-width="1.5"/>
+<text x="1313" y="433" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">OV2</text>
+<line x1="1384" y1="429" x2="1407" y2="429" stroke="#225e67" stroke-width="1.5"/>
+<text x="1411" y="433" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="1042" y="452" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R24  24.9k, 1%</text>
+<polyline points="1020,464 1025,458 1031,470 1037,458 1043,470 1049,458 1055,470 1061,458 1064,464" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="1020" y1="464" x2="997" y2="464" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="993" y="468" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U2_RAW</text>
+<line x1="1064" y1="464" x2="1087" y2="464" stroke="#225e67" stroke-width="1.5"/>
+<text x="1091" y="468" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">EN2</text>
+<text x="1362" y="452" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R25  10.0k, 1%</text>
+<polyline points="1340,464 1345,458 1351,470 1357,458 1363,470 1369,458 1375,470 1381,458 1384,464" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="1340" y1="464" x2="1317" y2="464" stroke="#225e67" stroke-width="1.5"/>
+<text x="1313" y="468" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">EN2</text>
+<line x1="1384" y1="464" x2="1407" y2="464" stroke="#225e67" stroke-width="1.5"/>
+<text x="1411" y="468" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="1042" y="503" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C22  2.2uF, 16V</text>
+<line x1="1038" y1="507" x2="1038" y2="523" stroke="#162638" stroke-width="1.5"/>
+<line x1="1046" y1="507" x2="1046" y2="523" stroke="#162638" stroke-width="1.5"/>
+<line x1="1038" y1="515" x2="997" y2="515" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="993" y="519" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">B5</text>
+<line x1="1046" y1="515" x2="1087" y2="515" stroke="#225e67" stroke-width="1.5"/>
+<text x="1091" y="519" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="817" y="589" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">OVLO nominal 5.376 V. UVLO nominal 4.188 V rising. ITIMER open for minimum delay.</text>
+<rect x="38" y="624" width="1040" height="339" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="38" y="624" width="1040" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="53" y="648" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">Module and local supply priority</text>
+<rect x="294.5660002231598" y="699" width="166.86799955368042" height="163" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="378" y="717" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">IC3</text>
+<text x="378" y="733" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">TPS2116DRLR</text>
+<line x1="294.5660002231598" y1="740" x2="461.4339997768402" y2="740" stroke="#d6e0e9" stroke-width="1"/>
+<text x="301.5660002231598" y="755" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">3  VIN1</text>
+<line x1="294.5660002231598" y1="751" x2="269.5660002231598" y2="751" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="265.5660002231598" y="755" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">A5</text>
+<text x="301.5660002231598" y="778" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">6  VIN2</text>
+<line x1="294.5660002231598" y1="774" x2="269.5660002231598" y2="774" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="265.5660002231598" y="778" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">B5</text>
+<text x="301.5660002231598" y="801" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">5  MODE</text>
+<line x1="294.5660002231598" y1="797" x2="269.5660002231598" y2="797" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="265.5660002231598" y="801" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">A5</text>
+<text x="301.5660002231598" y="824" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">4  PR1</text>
+<line x1="294.5660002231598" y1="820" x2="269.5660002231598" y2="820" stroke="#225e67" stroke-width="1.5"/>
+<text x="265.5660002231598" y="824" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">PR3</text>
+<text x="301.5660002231598" y="847" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  GND</text>
+<line x1="294.5660002231598" y1="843" x2="269.5660002231598" y2="843" stroke="#225e67" stroke-width="1.5"/>
+<text x="265.5660002231598" y="847" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="454.4339997768402" y="755" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">VOUT  2,7</text>
+<line x1="461.4339997768402" y1="751" x2="486.4339997768402" y2="751" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="490.4339997768402" y="755" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">SYS5</text>
+<text x="454.4339997768402" y="778" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">ST  8</text>
+<line x1="461.4339997768402" y1="774" x2="486.4339997768402" y2="774" stroke="#225e67" stroke-width="1.5"/>
+<line x1="483.4339997768402" y1="771" x2="489.4339997768402" y2="777" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="483.4339997768402" y1="777" x2="489.4339997768402" y2="771" stroke="#5a6570" stroke-width="1.1"/>
+<text x="368" y="874" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R31  301k, 1%</text>
+<polyline points="346,886 351,880 357,892 363,880 369,892 375,880 381,892 387,880 390,886" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="346" y1="886" x2="323" y2="886" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="319" y="890" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">A5</text>
+<line x1="390" y1="886" x2="413" y2="886" stroke="#225e67" stroke-width="1.5"/>
+<text x="417" y="890" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">PR3</text>
+<text x="768" y="874" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R32  100k, 1%</text>
+<polyline points="746,886 751,880 757,892 763,880 769,892 775,880 781,892 787,880 790,886" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="746" y1="886" x2="723" y2="886" stroke="#225e67" stroke-width="1.5"/>
+<text x="719" y="890" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">PR3</text>
+<line x1="790" y1="886" x2="813" y2="886" stroke="#225e67" stroke-width="1.5"/>
+<text x="817" y="890" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="768" y="757" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C31  4.7uF, 16V</text>
+<line x1="764" y1="761" x2="764" y2="777" stroke="#162638" stroke-width="1.5"/>
+<line x1="772" y1="761" x2="772" y2="777" stroke="#162638" stroke-width="1.5"/>
+<line x1="764" y1="769" x2="723" y2="769" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="719" y="773" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">SYS5</text>
+<line x1="772" y1="769" x2="813" y2="769" stroke="#225e67" stroke-width="1.5"/>
+<text x="817" y="773" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="53" y="948" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Prioritize valid A5. B5 sustains SYS5 if A5 falls. Feed SYS5 exclusively to M1 P1.23 (5V/VSYS).</text>
+<rect x="1098" y="624" width="448" height="339" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="1098" y="624" width="448" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="1113" y="648" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">Power-domain names</text>
+<text x="1113" y="686" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">U1_RAW and U2_RAW are upstream pins.</text>
+<text x="1113" y="704" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">A5 and B5 remain independent protected rails.</text>
+<text x="1113" y="722" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">SYS5 is local power. It never feeds either receptacle</text>
+<text x="1113" y="740" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">input.</text>
+<text x="1113" y="758" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">3V3_AON is the module regulator output.</text>
+<text x="1113" y="776" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">3V3_PER is an independently enabled local rail.</text>
+<line x1="38" y1="995" x2="1546" y2="995" stroke="#d6e0e9" stroke-width="1.5"/>
+<text x="38" y="1016" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">Electrical design review   /   Named nets are joined across sheets   /   x = intentional NC</text>
+<text x="1546" y="1016" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">SCRATCH 0.1   /   2026-11-27   /   Layout and qualification pending</text>
+</svg>

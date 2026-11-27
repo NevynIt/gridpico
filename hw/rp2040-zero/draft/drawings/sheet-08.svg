@@ -1,0 +1,208 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1584" height="1073" viewBox="0 0 1584 1073" role="img">
+<rect x="0" y="0" width="1584" height="1073" stroke="#ffffff" stroke-width="1" fill="#ffffff"/>
+<rect x="0" y="0" width="1584" height="98" stroke="#162638" stroke-width="1" fill="#162638"/>
+<text x="38" y="36" fill="#a7cbd1" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">GRIDPICO / RP2040-ZERO CARRIER</text>
+<text x="38" y="77" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="33" text-anchor="start" font-weight="700">RGB data and 3.3 V UART</text>
+<text x="1546" y="74" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="23" text-anchor="end" font-weight="700">08 / 09</text>
+<text x="38" y="116" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">External headers export signals and ground. Designated supply rails stay on the board. UART is CMOS, not RS-232.</text>
+<rect x="38" y="126" width="744" height="587" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="38" y="126" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="53" y="150" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">J7   3.3 V UART0, crossed peer wiring</text>
+<rect x="354.8160002231598" y="179" width="164.36799955368042" height="163" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="437" y="197" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">IC17</text>
+<text x="437" y="213" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">SN74LVC2G125DCUR</text>
+<line x1="354.8160002231598" y1="220" x2="519.1839997768402" y2="220" stroke="#d6e0e9" stroke-width="1"/>
+<text x="361.8160002231598" y="235" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  1A TX</text>
+<line x1="354.8160002231598" y1="231" x2="329.8160002231598" y2="231" stroke="#225e67" stroke-width="1.5"/>
+<text x="325.8160002231598" y="235" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART0_TX</text>
+<text x="361.8160002231598" y="258" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">5  2A RX</text>
+<line x1="354.8160002231598" y1="254" x2="329.8160002231598" y2="254" stroke="#225e67" stroke-width="1.5"/>
+<text x="325.8160002231598" y="258" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART_RX_B</text>
+<text x="361.8160002231598" y="281" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  1OE_N</text>
+<line x1="354.8160002231598" y1="277" x2="329.8160002231598" y2="277" stroke="#225e67" stroke-width="1.5"/>
+<text x="325.8160002231598" y="281" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="361.8160002231598" y="304" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">7  2OE_N</text>
+<line x1="354.8160002231598" y1="300" x2="329.8160002231598" y2="300" stroke="#225e67" stroke-width="1.5"/>
+<text x="325.8160002231598" y="304" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="361.8160002231598" y="327" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">4  GND</text>
+<line x1="354.8160002231598" y1="323" x2="329.8160002231598" y2="323" stroke="#225e67" stroke-width="1.5"/>
+<text x="325.8160002231598" y="327" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="512.1839997768402" y="235" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">1Y TX  6</text>
+<line x1="519.1839997768402" y1="231" x2="544.1839997768402" y2="231" stroke="#225e67" stroke-width="1.5"/>
+<text x="548.1839997768402" y="235" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">UART_TX_B</text>
+<text x="512.1839997768402" y="258" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">2Y RX  3</text>
+<line x1="519.1839997768402" y1="254" x2="544.1839997768402" y2="254" stroke="#225e67" stroke-width="1.5"/>
+<text x="548.1839997768402" y="258" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">UART0_RX</text>
+<text x="512.1839997768402" y="281" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">VCC  8</text>
+<line x1="519.1839997768402" y1="277" x2="544.1839997768402" y2="277" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="548.1839997768402" y="281" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">3V3_AON</text>
+<rect x="306.0" y="354" width="154" height="117" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="383" y="372" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">J7</text>
+<text x="383" y="388" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">UART keyed 1x3</text>
+<line x1="306.0" y1="395" x2="460.0" y2="395" stroke="#d6e0e9" stroke-width="1"/>
+<text x="313.0" y="410" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  GND</text>
+<line x1="306.0" y1="406" x2="281.0" y2="406" stroke="#225e67" stroke-width="1.5"/>
+<text x="277.0" y="410" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="313.0" y="433" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  TX out</text>
+<line x1="306.0" y1="429" x2="281.0" y2="429" stroke="#225e67" stroke-width="1.5"/>
+<text x="277.0" y="433" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART_TX</text>
+<text x="313.0" y="456" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">3  RX in</text>
+<line x1="306.0" y1="452" x2="281.0" y2="452" stroke="#225e67" stroke-width="1.5"/>
+<text x="277.0" y="456" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART_RX</text>
+<text x="228" y="484" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R171  100R</text>
+<polyline points="206,496 211,490 217,502 223,490 229,502 235,490 241,502 247,490 250,496" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="206" y1="496" x2="183" y2="496" stroke="#225e67" stroke-width="1.5"/>
+<text x="179" y="500" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART_TX_B</text>
+<line x1="250" y1="496" x2="273" y2="496" stroke="#225e67" stroke-width="1.5"/>
+<text x="277" y="500" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">UART_TX</text>
+<text x="570" y="484" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R172  100R</text>
+<polyline points="548,496 553,490 559,502 565,490 571,502 577,490 583,502 589,490 592,496" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="548" y1="496" x2="525" y2="496" stroke="#225e67" stroke-width="1.5"/>
+<text x="521" y="500" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART_RX</text>
+<line x1="592" y1="496" x2="615" y2="496" stroke="#225e67" stroke-width="1.5"/>
+<text x="619" y="500" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">UART_RX_B</text>
+<text x="228" y="534" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R173  100k</text>
+<polyline points="206,546 211,540 217,552 223,540 229,552 235,540 241,552 247,540 250,546" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="206" y1="546" x2="183" y2="546" stroke="#225e67" stroke-width="1.5"/>
+<text x="179" y="550" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART_RX_B</text>
+<line x1="250" y1="546" x2="273" y2="546" stroke="#225e67" stroke-width="1.5"/>
+<text x="277" y="550" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="570" y="534" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C171  100nF</text>
+<line x1="566" y1="538" x2="566" y2="554" stroke="#162638" stroke-width="1.5"/>
+<line x1="574" y1="538" x2="574" y2="554" stroke="#162638" stroke-width="1.5"/>
+<line x1="566" y1="546" x2="525" y2="546" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="521" y="550" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">3V3_AON</text>
+<line x1="574" y1="546" x2="615" y2="546" stroke="#225e67" stroke-width="1.5"/>
+<text x="619" y="550" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="228" y="584" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">D171  TPD1E05U06DPYR</text>
+<polyline points="219,604 218,588 222,588" fill="none" stroke="#162638" stroke-width="1.5"/>
+<polyline points="237,588 237,604 219,596 237,588" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="219" y1="596" x2="183" y2="596" stroke="#225e67" stroke-width="1.5"/>
+<text x="179" y="600" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART_TX</text>
+<line x1="237" y1="596" x2="273" y2="596" stroke="#225e67" stroke-width="1.5"/>
+<text x="277" y="600" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="570" y="584" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">D172  TPD1E05U06DPYR</text>
+<polyline points="561,604 560,588 564,588" fill="none" stroke="#162638" stroke-width="1.5"/>
+<polyline points="579,588 579,604 561,596 579,588" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="561" y1="596" x2="525" y2="596" stroke="#225e67" stroke-width="1.5"/>
+<text x="521" y="600" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">UART_RX</text>
+<line x1="579" y1="596" x2="615" y2="596" stroke="#225e67" stroke-width="1.5"/>
+<text x="619" y="600" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="53" y="662" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">TX to peer RX, RX to peer TX, and common ground. Require an Ioff-safe peer or keep both ends powered.</text>
+<text x="53" y="680" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Ioff buffers prevent a powered peer from sourcing the unpowered module through UART pins.</text>
+<text x="53" y="698" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">No 5 V, RS-232, or supply pin.</text>
+<rect x="802" y="126" width="744" height="587" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="802" y="126" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="817" y="150" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">J8   Addressable pixel protocol, data only</text>
+<rect x="1103.531000316143" y="179" width="162.93799936771393" height="117" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="1185" y="197" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">IC18</text>
+<text x="1185" y="213" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">SN74LVC1G125DBVR</text>
+<line x1="1103.531000316143" y1="220" x2="1266.468999683857" y2="220" stroke="#d6e0e9" stroke-width="1"/>
+<text x="1110.531000316143" y="235" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  A</text>
+<line x1="1103.531000316143" y1="231" x2="1078.531000316143" y2="231" stroke="#225e67" stroke-width="1.5"/>
+<text x="1074.531000316143" y="235" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">RGB_A</text>
+<text x="1110.531000316143" y="258" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  OE_N</text>
+<line x1="1103.531000316143" y1="254" x2="1078.531000316143" y2="254" stroke="#225e67" stroke-width="1.5"/>
+<text x="1074.531000316143" y="258" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="1110.531000316143" y="281" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">3  GND</text>
+<line x1="1103.531000316143" y1="277" x2="1078.531000316143" y2="277" stroke="#225e67" stroke-width="1.5"/>
+<text x="1074.531000316143" y="281" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="1259.468999683857" y="235" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">Y  4</text>
+<line x1="1266.468999683857" y1="231" x2="1291.468999683857" y2="231" stroke="#225e67" stroke-width="1.5"/>
+<text x="1295.468999683857" y="235" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">RGB_B</text>
+<text x="1259.468999683857" y="258" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">VCC  5</text>
+<line x1="1266.468999683857" y1="254" x2="1291.468999683857" y2="254" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="1295.468999683857" y="258" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">3V3_AON</text>
+<rect x="1070.0" y="334" width="154" height="94" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="1147" y="352" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">J8</text>
+<text x="1147" y="368" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">RGB keyed 1x2</text>
+<line x1="1070.0" y1="375" x2="1224.0" y2="375" stroke="#d6e0e9" stroke-width="1"/>
+<text x="1077.0" y="390" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  GND</text>
+<line x1="1070.0" y1="386" x2="1045.0" y2="386" stroke="#225e67" stroke-width="1.5"/>
+<text x="1041.0" y="390" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="1077.0" y="413" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  DATA out</text>
+<line x1="1070.0" y1="409" x2="1045.0" y2="409" stroke="#225e67" stroke-width="1.5"/>
+<text x="1041.0" y="413" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">RGB_DATA</text>
+<text x="997" y="435" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R181  100R</text>
+<polyline points="975,447 980,441 986,453 992,441 998,453 1004,441 1010,453 1016,441 1019,447" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="975" y1="447" x2="952" y2="447" stroke="#225e67" stroke-width="1.5"/>
+<text x="948" y="451" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">RGB_B</text>
+<line x1="1019" y1="447" x2="1042" y2="447" stroke="#225e67" stroke-width="1.5"/>
+<text x="1046" y="451" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">RGB_DATA</text>
+<text x="1327" y="435" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R182  100k</text>
+<polyline points="1305,447 1310,441 1316,453 1322,441 1328,453 1334,441 1340,453 1346,441 1349,447" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="1305" y1="447" x2="1282" y2="447" stroke="#225e67" stroke-width="1.5"/>
+<text x="1278" y="451" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">RGB_A</text>
+<line x1="1349" y1="447" x2="1372" y2="447" stroke="#225e67" stroke-width="1.5"/>
+<text x="1376" y="451" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="997" y="487" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C181  100nF</text>
+<line x1="993" y1="491" x2="993" y2="507" stroke="#162638" stroke-width="1.5"/>
+<line x1="1001" y1="491" x2="1001" y2="507" stroke="#162638" stroke-width="1.5"/>
+<line x1="993" y1="499" x2="952" y2="499" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="948" y="503" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">3V3_AON</text>
+<line x1="1001" y1="499" x2="1042" y2="499" stroke="#225e67" stroke-width="1.5"/>
+<text x="1046" y="503" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="1327" y="487" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">D181  TPD1E05U06DPYR</text>
+<polyline points="1318,507 1317,491 1321,491" fill="none" stroke="#162638" stroke-width="1.5"/>
+<polyline points="1336,491 1336,507 1318,499 1336,491" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="1318" y1="499" x2="1282" y2="499" stroke="#225e67" stroke-width="1.5"/>
+<text x="1278" y="503" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">RGB_DATA</text>
+<line x1="1336" y1="499" x2="1372" y2="499" stroke="#225e67" stroke-width="1.5"/>
+<text x="1376" y="503" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="817" y="626" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">GP16 remains the onboard pixel. GP17 provides a separate external data output using the same</text>
+<text x="817" y="644" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">protocol.</text>
+<text x="817" y="662" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">A 5 V strip needs its own 5 V supply and a power-off-safe level shifter at the strip end. Connect</text>
+<text x="817" y="680" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">ground.</text>
+<text x="817" y="698" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">J8 is keyed data + ground. No strip power is drawn through this board or the USB chain.</text>
+<rect x="38" y="733" width="744" height="277" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="38" y="733" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="53" y="757" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">U3 / J3   USB-A power-only pinout</text>
+<rect x="246.0" y="791" width="154" height="163" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="323" y="809" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">J3</text>
+<text x="323" y="825" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">USB-A receptacle</text>
+<line x1="246.0" y1="832" x2="400.0" y2="832" stroke="#d6e0e9" stroke-width="1"/>
+<text x="253.0" y="847" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  VBUS</text>
+<line x1="246.0" y1="843" x2="221.0" y2="843" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="217.0" y="847" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U3_VBUS</text>
+<text x="253.0" y="870" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  D-</text>
+<line x1="246.0" y1="866" x2="221.0" y2="866" stroke="#225e67" stroke-width="1.5"/>
+<line x1="218.0" y1="863" x2="224.0" y2="869" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="218.0" y1="869" x2="224.0" y2="863" stroke="#5a6570" stroke-width="1.1"/>
+<text x="253.0" y="893" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">3  D+</text>
+<line x1="246.0" y1="889" x2="221.0" y2="889" stroke="#225e67" stroke-width="1.5"/>
+<line x1="218.0" y1="886" x2="224.0" y2="892" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="218.0" y1="892" x2="224.0" y2="886" stroke="#5a6570" stroke-width="1.1"/>
+<text x="253.0" y="916" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">4  GND</text>
+<line x1="246.0" y1="912" x2="221.0" y2="912" stroke="#225e67" stroke-width="1.5"/>
+<text x="217.0" y="916" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="253.0" y="939" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">S  Shell</text>
+<line x1="246.0" y1="935" x2="221.0" y2="935" stroke="#225e67" stroke-width="1.5"/>
+<text x="217.0" y="939" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="53" y="995" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">D+ and D- are open. Power comes exclusively from the A5 path on sheet 3.</text>
+<rect x="802" y="733" width="744" height="277" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="802" y="733" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="817" y="757" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">U4 / J4   USB-A host pinout</text>
+<rect x="1010.0" y="791" width="154" height="163" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="1087" y="809" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">J4</text>
+<text x="1087" y="825" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">USB-A receptacle</text>
+<line x1="1010.0" y1="832" x2="1164.0" y2="832" stroke="#d6e0e9" stroke-width="1"/>
+<text x="1017.0" y="847" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  VBUS</text>
+<line x1="1010.0" y1="843" x2="985.0" y2="843" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="981.0" y="847" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_VBUS</text>
+<text x="1017.0" y="870" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  D-</text>
+<line x1="1010.0" y1="866" x2="985.0" y2="866" stroke="#225e67" stroke-width="1.5"/>
+<text x="981.0" y="870" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">H_DM</text>
+<text x="1017.0" y="893" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">3  D+</text>
+<line x1="1010.0" y1="889" x2="985.0" y2="889" stroke="#225e67" stroke-width="1.5"/>
+<text x="981.0" y="893" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">H_DP</text>
+<text x="1017.0" y="916" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">4  GND</text>
+<line x1="1010.0" y1="912" x2="985.0" y2="912" stroke="#225e67" stroke-width="1.5"/>
+<text x="981.0" y="916" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="1017.0" y="939" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">S  Shell</text>
+<line x1="1010.0" y1="935" x2="985.0" y2="935" stroke="#225e67" stroke-width="1.5"/>
+<text x="981.0" y="939" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="817" y="995" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">VBUS path on sheet 4. Data and host termination on sheet 5.</text>
+<line x1="38" y1="1035" x2="1546" y2="1035" stroke="#d6e0e9" stroke-width="1.5"/>
+<text x="38" y="1056" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">Electrical design review   /   Named nets are joined across sheets   /   x = intentional NC</text>
+<text x="1546" y="1056" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">SCRATCH 0.1   /   2026-11-27   /   Layout and qualification pending</text>
+</svg>
