@@ -1,4 +1,5 @@
 #include "app/patch_runtime.h"
+#include "app/local_runtime.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -49,6 +50,9 @@ typedef struct {
 } forwarding_fixture;
 
 static gridpico_result unused_snapshot(void *context, gridpico_patch_snapshot *out);
+static gridpico_result read_routing_fixture(void *context,
+                                            gridpico_local_routing_snapshot *out);
+static void initialize_routing_snapshot(routing_fixture *fixture);
 
 static gridpico_result read_forwarding(void *context, gridpico_forwarding_status *out)
 {
@@ -109,6 +113,15 @@ static void clear(transcript *out)
     out->output[0] = '\0';
 }
 
+static void select_machine_format(gridpico_cli_frontend *cli, transcript *terminal)
+{
+    clear(terminal);
+    assert(gridpico_cli_execute_line(cli, "format machine", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT MACHINE\r\nOK\r\n") == 0);
+    assert(cli->machine_format);
+    clear(terminal);
+}
+
 static bool contains(const transcript *out, const char *expected)
 {
     const size_t expected_size = strlen(expected);
@@ -153,6 +166,7 @@ static void test_forwarding_cli(transcript *terminal)
     gridpico_cli_frontend cli;
     assert(gridpico_cli_init(&cli, &fixture, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     clear(terminal);
     assert(gridpico_cli_execute_line(&cli, "forwarding", capture, terminal) ==
            GRIDPICO_UNAVAILABLE);
@@ -423,6 +437,7 @@ static void test_monitor_cli(transcript *terminal)
                              gridpico_session_read_device_color,
                              gridpico_session_set_device_color,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     const gridpico_patch_route_request route = {
         .source = 1,
         .destination = GRIDPICO_PATCH_MONITOR_PORT_ID,
@@ -552,6 +567,7 @@ static void test_local_route_cli(transcript *terminal)
                              gridpico_session_read_device_color,
                              gridpico_session_set_device_color,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     cli.set_local_route = gridpico_patch_session_set_local_route;
     cli.read_local_route = gridpico_patch_session_read_local_route;
     cli.read_local_routing = gridpico_patch_session_read_local_routing;
@@ -631,6 +647,143 @@ static gridpico_result unused_snapshot(void *context, gridpico_patch_snapshot *o
     (void)context;
     (void)out;
     return GRIDPICO_UNAVAILABLE;
+}
+
+static void test_format_cli(transcript *terminal)
+{
+    patch_runtime runtime;
+    assert(patch_runtime_init(&runtime) == GRIDPICO_OK);
+    gridpico_cli_frontend first;
+    gridpico_cli_frontend second;
+    assert(patch_runtime_bind_cli(&runtime, &first, capture, terminal) == GRIDPICO_OK);
+    assert(patch_runtime_bind_cli(&runtime, &second, capture, terminal) == GRIDPICO_OK);
+    assert(!first.machine_format && !second.machine_format);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "inventory", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "Device #1 \"APC Key 25 mk2\": connected; color unset.\r\n"));
+    assert(contains(terminal, "Port #1 \"Keybed\" on device #1 APC Key 25 mk2: in, connected; Patch slot row:1:1.\r\n"));
+    assert(contains(terminal, "Done.\r\n"));
+    assert(!contains(terminal, "DEVICE 1 connected"));
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "help color set", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(contains(terminal, "Command: color set <device> #RRGGBB -- set and read back a device color"));
+    assert(contains(terminal, "Done.\r\n"));
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "status", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "Status at revision 0: 2 devices, 5 ports, 0 active and 0 pending routes."));
+
+    routing_fixture routing = {0};
+    initialize_routing_snapshot(&routing);
+    gridpico_cli_frontend routing_cli;
+    assert(gridpico_cli_init(&routing_cli, &routing, unused_snapshot, NULL, NULL,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    routing_cli.read_local_routing = read_routing_fixture;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&routing_cli, "routing 41 24", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(contains(terminal, "Routing revision 41: end of snapshot."));
+    assert(contains(terminal,
+                    "Route from port #1 Keybed to port #5 Monitor (MANAGED): ACTIVE."));
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "format machine", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT MACHINE\r\nOK\r\n") == 0);
+    assert(first.machine_format && !second.machine_format);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "inventory", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "DEVICE 1 connected unset \"APC Key 25 mk2\"\r\n"));
+    assert(contains(terminal, "OK\r\n"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&second, "inventory", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "Device #1 \"APC Key 25 mk2\""));
+    assert(!second.machine_format);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "format machine extra", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0 && first.machine_format);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "format human", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT HUMAN\r\nOK\r\n") == 0);
+    assert(!first.machine_format);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "format human", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT HUMAN\r\nOK\r\n") == 0);
+
+    /* Reinitializing a frontend for a replacement lease starts in Human. */
+    assert(patch_runtime_bind_cli(&runtime, &first, capture, terminal) == GRIDPICO_OK);
+    assert(!first.machine_format);
+    clear(terminal);
+    gridpico_cli_process(&first);
+    assert(strcmp(terminal->output, "> ") == 0);
+    clear(terminal);
+    gridpico_cli_receive(&first, "format machine\r\n",
+                         sizeof("format machine\r\n") - 1);
+    gridpico_cli_process(&first);
+    assert(strcmp(terminal->output, "FORMAT MACHINE\r\nOK\r\n") == 0);
+
+    clear(terminal);
+    gridpico_cli_receive(&first, "inventory\n", sizeof("inventory\n") - 1);
+    gridpico_cli_process(&first);
+    assert(contains(terminal, "DEVICE 1 connected unset \"APC Key 25 mk2\"\r\n"));
+    assert(!contains(terminal, "inventory\r\n"));
+    assert(!contains(terminal, "> "));
+    assert(contains(terminal, "OK\r\n"));
+
+    clear(terminal);
+    gridpico_cli_receive(&first, "format human\n", sizeof("format human\n") - 1);
+    gridpico_cli_process(&first);
+    assert(strcmp(terminal->output, "FORMAT HUMAN\r\nOK\r\n") == 0);
+    clear(terminal);
+    gridpico_cli_receive(&first, "status\n", sizeof("status\n") - 1);
+    gridpico_cli_process(&first);
+    assert(contains(terminal, "status ") &&
+           contains(terminal, "Status at revision 0:"));
+    assert(contains(terminal, "Done.\r\n> "));
+}
+
+static void test_format_serial_lease(void)
+{
+    local_runtime runtime;
+    assert(local_runtime_init(&runtime) == GRIDPICO_OK);
+    assert(local_runtime_serial_bind(&runtime, 1) == GRIDPICO_OK);
+    assert(!runtime.cli.machine_format);
+
+    /* Discard the attachment's startup prompt before bootstrapping format. */
+    runtime.serial_count = 0;
+    const char machine[] = "format machine\n";
+    assert(local_runtime_serial(&runtime, 1, machine, sizeof machine - 1) == GRIDPICO_OK);
+    assert(runtime.cli.machine_format);
+    assert(runtime.serial_count == sizeof("FORMAT MACHINE\r\nOK\r\n") - 1);
+    assert(memcmp(runtime.serial_bytes, "FORMAT MACHINE\r\nOK\r\n",
+                  runtime.serial_count) == 0);
+
+    /* A full staged writer cannot confirm the next complete acknowledgement. */
+    runtime.serial_count = LOCAL_SERIAL_QUEUE - 1;
+    const char human[] = "format human\n";
+    assert(local_runtime_serial(&runtime, 1, human, sizeof human - 1) ==
+           GRIDPICO_CAPACITY);
+    assert(runtime.serial.fault && !runtime.cli.machine_format);
+    assert(local_runtime_finish(&runtime, GRIDPICO_OK) == GRIDPICO_OK);
+    assert(!runtime.serial.attached);
+
+    assert(local_runtime_serial_bind(&runtime, 2) == GRIDPICO_OK);
+    assert(!runtime.cli.machine_format);
+    runtime.serial_count = 0;
+    const char inventory[] = "inventory\n";
+    assert(local_runtime_serial(&runtime, 2, inventory, sizeof inventory - 1) == GRIDPICO_OK);
+    assert(runtime.serial_count < sizeof(((transcript *)0)->output));
+    transcript reply = {0};
+    memcpy(reply.output, runtime.serial_bytes, runtime.serial_count);
+    reply.output[runtime.serial_count] = '\0';
+    reply.size = runtime.serial_count;
+    assert(contains(&reply, "Device #1 \"Web APC\""));
+    assert(!contains(&reply, "DEVICE 1 connected"));
 }
 
 static gridpico_result read_routing_fixture(void *context,
@@ -764,6 +917,7 @@ static void test_routing_cli(transcript *terminal)
     gridpico_cli_frontend cli;
     assert(gridpico_cli_init(&cli, &fixture, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     cli.read_local_routing = read_routing_fixture;
 
     clear(terminal);
@@ -849,6 +1003,7 @@ static void test_routing_cli(transcript *terminal)
     gridpico_cli_frontend unavailable_cli;
     assert(gridpico_cli_init(&unavailable_cli, &fixture, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&unavailable_cli, terminal);
     clear(terminal);
     assert(gridpico_cli_execute_line(&unavailable_cli, "routing", capture, terminal) ==
            GRIDPICO_UNAVAILABLE);
@@ -879,6 +1034,7 @@ static void test_guarded_route_cli(transcript *terminal)
     gridpico_cli_frontend cli;
     assert(gridpico_cli_init(&cli, NULL, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     gridpico_cli_bind_routing(&cli, &fixture, read_routing_fixture,
                               read_fixture_route, set_fixture_route, &fixture.scratch);
 
@@ -934,6 +1090,7 @@ static void test_guarded_route_cli(transcript *terminal)
     gridpico_cli_frontend unavailable;
     assert(gridpico_cli_init(&unavailable, NULL, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&unavailable, terminal);
     clear(terminal);
     assert(gridpico_cli_execute_line(&unavailable, "route 1 5 managed on if 41",
                                     capture, terminal) == GRIDPICO_UNAVAILABLE);
@@ -965,6 +1122,7 @@ static void test_platform_cli(transcript *terminal)
     gridpico_cli_frontend cli;
     assert(gridpico_cli_init(&cli, &platform, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     cli.read_device_color = gridpico_session_read_device_color;
     cli.set_device_color = gridpico_session_set_device_color;
     cli.set_local_route = gridpico_patch_session_set_local_route;
@@ -1050,6 +1208,7 @@ static void test_platform_cli(transcript *terminal)
     gridpico_cli_frontend no_platform_cli;
     assert(gridpico_cli_init(&no_platform_cli, &platform, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&no_platform_cli, terminal);
     gridpico_cli_bind_platform(&no_platform_cli, GRIDPICO_CLI_PLATFORM_BOOTSEL, NULL, NULL);
     clear(terminal);
     assert(gridpico_cli_execute_line(&no_platform_cli, "help", capture, terminal) ==
@@ -1069,12 +1228,16 @@ static void test_platform_cli(transcript *terminal)
 
 int main(void)
 {
+    transcript terminal = {0};
+    test_format_cli(&terminal);
+    test_format_serial_lease();
+
     patch_runtime runtime;
     assert(patch_runtime_init(&runtime) == GRIDPICO_OK);
 
-    transcript terminal = {0};
     gridpico_cli_frontend cli;
     assert(patch_runtime_bind_cli(&runtime, &cli, capture, &terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, &terminal);
     assert(cli.set_local_route == NULL && cli.read_local_route == NULL);
     assert(gridpico_cli_execute_line(&cli, "route 1 2 managed", capture, &terminal) ==
            GRIDPICO_UNAVAILABLE);

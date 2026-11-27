@@ -14,6 +14,13 @@ const piProfile = path.join(root, 'app/profiles/pi.conf');
 const host = path.join(root, 'connections/local-host.js');
 const runner = process.argv[2] ? path.resolve(process.argv[2]) :
   path.join(root, 'build/portable-transform/gridpico_local_router');
+const machineSelection = 'format machine';
+const machineAck = 'FORMAT MACHINE\r\nOK\r\n';
+const machineTerminal = /(?:^|\r\n)(?:OK|ERR (?:INVALID|CAPACITY|UNAVAILABLE))\r\n$/;
+const routeRecord = /^ROUTE [1-9]\d* [1-9]\d* (?:MANAGED|RAW) (?:OFF|PENDING|ACTIVE)$/;
+const routingHeader = /^ROUTING ([1-9]\d*) (-|0|[1-9]\d*)$/;
+const routingDevice = /^DEVICE [1-9]\d* (?:connected|disconnected|ambiguous) (?:unset|#[0-9A-F]{6}) "(?:[^"\\\x00-\x1f\x7f]|\\["\\])*"$/;
+const routingBinding = /^BINDING [1-9]\d* [1-9]\d* (?:in|out) (?:managed|raw|panel) (?:free|in-use|unavailable) "(?:[^"\\\x00-\x1f\x7f]|\\["\\])*"$/;
 
 async function waitFor(get, what) {
   const deadline = Date.now() + 2500;
@@ -23,6 +30,34 @@ async function waitFor(get, what) {
     await delay(5);
   }
   throw new Error('Timed out: ' + what);
+}
+
+function machineRecords(line, reply, last) {
+  const records = reply.split('\r\n');
+  assert.equal(records.pop(), '', reply);
+  assert.equal(records.pop(), last, reply);
+  if (last !== 'OK') {
+    assert.deepEqual(records, [], reply);
+    return records;
+  }
+  const command = line.split(' ', 1)[0];
+  assert.ok(records.length > 0 && records.every(record => !/[\r\n]/.test(record)), reply);
+  if (command === 'routing') {
+    assert.match(records[0], routingHeader);
+    assert.ok(records.slice(1).every(record => routingDevice.test(record) ||
+      routingBinding.test(record) || routeRecord.test(record)), reply);
+  } else if (command === 'help') {
+    if (line !== 'help') assert.equal(records.length, 1, reply);
+    assert.ok(records.every(record => /^COMMAND [\x20-\x7e]+$/.test(record)), reply);
+  } else {
+    assert.equal(records.length, 1, reply);
+    if (command === 'route') assert.match(records[0], routeRecord);
+    else {
+      assert.equal(command, 'transform');
+      assert.match(records[0], /^TRANSFORM [1-9]\d* [1-9]\d* (?:0|-?[1-9]\d*) (?:0|[1-9]\d*) [1-9]\d*$/);
+    }
+  }
+  return records;
 }
 
 async function withHost({ profile, webUi = false }, run) {
@@ -55,8 +90,10 @@ async function withHost({ profile, webUi = false }, run) {
       return ws;
     }
     let rx = '';
-    const serial = await connect('/serial', bytes => { rx += bytes.toString('ascii'); });
-    await waitFor(() => rx.endsWith('> '), 'serial prompt');
+    const serial = await connect('/serial', bytes => { rx += bytes.toString('latin1'); });
+    await waitFor(() => rx.length >= 2, 'serial attach prompt');
+    assert.equal(rx, '> ');
+    rx = '';
     if (profile) {
       for (const [requestOrigin, status] of [['http://example.invalid', 403], [origin, 503]]) {
         const rejected = new WebSocket(origin.replace('http:', 'ws:') + '/serial',
@@ -68,14 +105,21 @@ async function withHost({ profile, webUi = false }, run) {
         }), new RegExp('Unexpected server response: ' + status));
       }
     }
-    async function command(line, last = 'OK') {
-      rx = '';
+    async function exchange(line) {
+      assert.equal(rx, '', 'unsolicited serial bytes');
       serial.send(Buffer.from(line + '\n'));
-      await waitFor(() => rx.endsWith('> '), 'response for ' + line);
-      const lines = rx.split('\r\n');
-      assert.equal(lines.shift().trimEnd(), line);
-      assert.equal(lines.pop(), '> ');
-      assert.equal(lines.pop(), last, rx);
+      await waitFor(() => {
+        assert.equal(serial.readyState, WebSocket.OPEN);
+        assert.ok(rx.length <= 4096, 'oversized machine reply');
+        return machineTerminal.test(rx);
+      }, 'response for ' + line);
+      const reply = rx;
+      rx = '';
+      return reply;
+    }
+    assert.equal(await exchange(machineSelection), machineAck);
+    async function command(line, last = 'OK') {
+      const lines = machineRecords(line, await exchange(line), last);
       console.log('serial> ' + line + '\n' + lines.concat(last).join('\n'));
       return lines;
     }
@@ -95,46 +139,92 @@ async function withHost({ profile, webUi = false }, run) {
   }
 }
 
-function directSerial(profile, enabled) {
-  const commands = ['help transform', 'route 1 12 managed', 'route 1 5 managed', 'routing',
-                    'transform 1 12 7 4 if 1',
-                    'transform 1 5 -5 0 if 1'];
-  const input = ['bind 1 2', 'bind 5 2', 'bind 12 2', 'serial-bind 1',
-                 ...commands.map(line => 'serial 1 ' + Buffer.from(line + '\n').toString('hex'))];
-  const result = spawnSync(runner, ['--web-ui', '--profile', profile, '--recorder'],
-                           { input: input.join('\n') + '\n', encoding: 'utf8', timeout: 2500 });
-  assert.ifError(result.error);
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(result.stderr, '');
-  const serial = [...result.stdout.matchAll(/^serial 1 ([\da-f]+)$/gmi)]
-    .map(([, hex]) => Buffer.from(hex, 'hex').toString('ascii')).join('');
-  assert.match(serial, /ROUTE 1 12 MANAGED ACTIVE\r\nOK/);
-  assert.match(serial, /ROUTE 1 5 MANAGED ACTIVE\r\nOK/);
-  assert.match(serial, /ROUTING 1 8\r\n/);
-  assert.match(serial, /transform 1 12 7 4 if 1 *\r\nERR UNAVAILABLE/);
-  if (enabled) {
-    assert.match(serial, /COMMAND transform /);
-    assert.match(serial, /TRANSFORM 1 5 -5 0 2\r\nOK/);
-  } else {
-    assert.match(serial, /help transform *\r\nERR UNAVAILABLE/);
-    assert.match(serial, /transform 1 5 -5 0 if 1 *\r\nERR UNAVAILABLE/);
-    assert.doesNotMatch(serial, /COMMAND transform |TRANSFORM /);
+async function directSerial(profile, enabled) {
+  const child = spawn(runner, ['--web-ui', '--profile', profile, '--recorder']);
+  const closed = new Promise(resolve => child.once('close', resolve));
+  let wire = '';
+  let stderr = '';
+  let failure;
+  child.stdout.on('data', bytes => { wire += bytes.toString('latin1'); });
+  child.stderr.on('data', bytes => { stderr += bytes; });
+  child.on('error', error => { failure = error; });
+  child.stdin.on('error', error => { failure = error; });
+  async function readWire(complete, what) {
+    await waitFor(() => {
+      assert.ifError(failure);
+      assert.ok(wire.length <= 16384, 'oversized private reply');
+      return complete.test(wire);
+    }, what);
+    const lines = wire.split('\n');
+    wire = '';
+    assert.equal(lines.pop(), '');
+    return lines;
   }
+  async function dispatch(line) {
+    assert.equal(wire, '', 'unsolicited private bytes');
+    child.stdin.write(line + '\n');
+    const lines = await readWire(/(?:^|\n)(?:ok|err (?:INVALID|CAPACITY|UNAVAILABLE))\n$/, line);
+    assert.equal(lines.pop(), 'ok', line);
+    return lines;
+  }
+  function serialBytes(lines) {
+    return lines.map(line => {
+      const match = /^serial 1 ((?:[0-9A-F]{2})+)$/.exec(line);
+      assert.ok(match, line);
+      return Buffer.from(match[1], 'hex').toString('latin1');
+    }).join('');
+  }
+  async function exchange(line) {
+    return serialBytes(await dispatch('serial 1 ' + Buffer.from(line + '\n').toString('hex')));
+  }
+  async function command(line, last = 'OK') {
+    return machineRecords(line, await exchange(line), last);
+  }
+  try {
+    const ready = await readWire(/\n$/, 'private Runner readiness');
+    assert.equal(ready.length, 1);
+    assert.match(ready[0], /^ready [1-9]\d*$/);
+    for (const [port, direction] of [[1, 'in'], [5, 'out'], [12, 'out']]) {
+      const lines = await dispatch('bind ' + port + ' 2');
+      assert.equal(lines.length, 1);
+      assert.match(lines[0], new RegExp('^bound ' + port + ' 2 ' + direction + ' [1-9]\\d*$'));
+    }
+    assert.equal(serialBytes(await dispatch('serial-bind 1')), '> ');
+    assert.equal(await exchange(machineSelection), machineAck);
+
+    const help = await command('help transform', enabled ? 'OK' : 'ERR UNAVAILABLE');
+    if (enabled) assert.match(help[0], /^COMMAND transform /);
+    assert.deepEqual(await command('route 1 12 managed'), ['ROUTE 1 12 MANAGED ACTIVE']);
+    assert.deepEqual(await command('route 1 5 managed'), ['ROUTE 1 5 MANAGED ACTIVE']);
+    assert.equal((await command('routing'))[0], 'ROUTING 1 8');
+    await command('transform 1 12 7 4 if 1', 'ERR UNAVAILABLE');
+    const transform = await command('transform 1 5 -5 0 if 1', enabled ? 'OK' : 'ERR UNAVAILABLE');
+    if (enabled) assert.deepEqual(transform, ['TRANSFORM 1 5 -5 0 2']);
+  } finally {
+    child.stdin.end();
+    const timer = setTimeout(() => child.kill('SIGKILL'), 2500);
+    await closed;
+    clearTimeout(timer);
+  }
+  assert.ifError(failure);
+  assert.equal(child.exitCode, 0, stderr);
+  assert.equal(stderr, '');
+  assert.equal(wire, '', 'unsolicited private bytes after EOF');
   console.log('PASS direct serial profile ' + path.basename(profile) + ', transform ' +
               (enabled ? 'available with recorder excluded' : 'unavailable for Active public branch'));
 }
 
-function profileAuthority() {
-  directSerial(desktopProfile, true);
-  directSerial(piProfile, false);
+async function profileAuthority() {
+  await directSerial(desktopProfile, true);
+  await directSerial(piProfile, false);
   const directory = mkdtempSync(path.join(tmpdir(), 'gridpico-transform-profile-'));
   try {
     const renamed = path.join(directory, 'renamed.conf');
     const desktopName = path.join(directory, 'desktop.conf');
     copyFileSync(desktopProfile, renamed);
     copyFileSync(piProfile, desktopName);
-    directSerial(renamed, true);
-    directSerial(desktopName, false);
+    await directSerial(renamed, true);
+    await directSerial(desktopName, false);
 
     const profile = readFileSync(piProfile, 'utf8');
     const invalid = path.join(directory, 'invalid.conf');
@@ -160,7 +250,7 @@ async function routing(command) {
   const rows = [];
   while (offset !== '-') {
     const lines = await command(offset === 0 ? 'routing' : 'routing ' + revision + ' ' + offset);
-    const header = /^ROUTING ([1-9]\d*) (-|\d+)$/.exec(lines.shift());
+    const header = routingHeader.exec(lines.shift());
     assert.ok(header);
     if (revision !== undefined) assert.equal(header[1], revision);
     revision = header[1];
@@ -171,7 +261,7 @@ async function routing(command) {
 }
 
 async function run() {
-  profileAuthority();
+  await profileAuthority();
   async function expectNoTransform({ command }) {
     assert.ok(!(await command('help')).some(line => line.startsWith('COMMAND transform ')));
     await command('help transform', 'ERR UNAVAILABLE');

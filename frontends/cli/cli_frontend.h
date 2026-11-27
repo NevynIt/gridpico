@@ -78,6 +78,16 @@ typedef struct {
     bool help_bindings_registered;
     gridpico_cli_write_fn terminal_write;
     void *terminal_write_context;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    /* Reply format is scoped to this initialized CLI session. */
+    bool machine_format;
+    /* Embedded terminal editor output is filtered around format negotiation. */
+    char editor_prefix[GRIDPICO_CLI_LINE_BYTES];
+    size_t editor_prefix_size;
+    unsigned editor_suppress_linebreak;
+    unsigned editor_prompt_pending;
+    bool editor_suppress_prompt;
+#endif
 } gridpico_cli_frontend;
 
 /* Bind a typed Session snapshot reader and caller-owned terminal output. */

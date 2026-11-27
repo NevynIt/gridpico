@@ -446,9 +446,54 @@
       if (pending?.written && (!pending.expectReply || pending.reply !== undefined)) finishCommand(active);
     }
 
+    function readMachineReply(active, chunk) {
+      const pending = active.pending;
+      if (!pending) {
+        if (chunk) {
+          active.format = "unconfirmed";
+          active.prompt = false;
+          updateControls();
+        }
+        return;
+      }
+      active.tail += chunk;
+      if (encoder.encode(active.tail).length > localReplyLimit) {
+        active.format = "unconfirmed";
+        active.prompt = false;
+        finishCommand(active, new Error("The CLI reply exceeded its bound. Reconnect before sending another command."));
+        return;
+      }
+      const terminal = /(?:^|\r\n)(?:OK|ERR (?:INVALID|CAPACITY|UNAVAILABLE))\r\n/.exec(active.tail);
+      const humanPrompt = active.tail === "> " || active.tail.endsWith("\r\n> ");
+      if (!terminal && !(pending.selectFormat && humanPrompt)) return;
+      const reply = active.tail;
+      active.tail = "";
+      const complete = terminal && terminal.index + terminal[0].length === reply.length;
+      active.prompt = Boolean(complete || (pending.selectFormat && humanPrompt));
+      if (pending.selectFormat) {
+        const ack = `FORMAT ${pending.selectFormat.toUpperCase()}\r\nOK\r\n`;
+        if (reply !== ack) {
+          active.format = "unconfirmed";
+          finishCommand(active, new Error("The CLI format is unconfirmed. Reconnect or confirm human format before continuing."));
+          return;
+        }
+        active.format = pending.selectFormat;
+      } else if (!active.prompt) {
+        active.format = "unconfirmed";
+        finishCommand(active, new Error("The CLI returned extra bytes after the reply. Reconnect before continuing."));
+        return;
+      }
+      pending.reply = reply;
+      completeCommand(active);
+    }
+
     function readReply(active, chunk) {
       if (connection !== active || active.closing) return;
       appendTranscript(chunk);
+      if (active.local && (active.pending?.selectFormat || active.format === "machine" || active.format === "unconfirmed")) {
+        readMachineReply(active, chunk);
+        return;
+      }
       if (active.pico || (!active.structured && !active.pending?.expectReply)) return;
       active.tail = (active.tail + chunk).slice(-localReplyLimit);
       if (active.tail !== "> " && !active.tail.endsWith("\r\n> ")) return;
@@ -487,16 +532,21 @@
       }
     }
 
-    function exchange(active, line, expectReply = active.structured, owner) {
+    function exchange(active, line, expectReply = active.structured, owner, selectFormat) {
       if (!available(active) || active.ledTest !== owner || (active.structured && !active.prompt)) {
         return Promise.reject(new Error("The selected serial session is busy or disconnected. Try again."));
       }
       active.prompt = false;
       active.tail = "";
       return new Promise((resolve, reject) => {
-        const request = { resolve, reject, expectReply };
+        const request = { resolve, reject, expectReply, selectFormat };
         request.timer = setTimeout(() => {
           if (active.pending !== request) return;
+          if (request.selectFormat) {
+            active.format = "unconfirmed";
+            finishCommand(active, new Error("The CLI format acknowledgement was incomplete. Reconnect before continuing."));
+            return;
+          }
           const plainFallback = !active.local && !active.structured && request.written && request.expectReply;
           const message = plainFallback ? "Web Serial did not finish the Routing check. The plain terminal remains available." :
             "The serial session did not finish the command. Reconnect and read back any attempted edit.";
@@ -525,7 +575,7 @@
       if (!pico) text.data = "";
       serialNotice = "";
       const selected = { endpoint, local, pico, focusCommand, structured: local,
-        ready: kind === "cdc", closing: false, tail: "", prompt: false };
+        ready: kind === "cdc", closing: false, tail: "", prompt: false, format: local ? "human" : undefined };
       connection = selected;
       notifyLocalCli();
       updateControls();
@@ -536,6 +586,22 @@
       const response = await exchange(active, line, true, owner);
       if (active !== connection || active.closing) throw new Error("The serial session disconnected.");
       return response;
+    }
+
+    async function selectReplyFormat(active, format, owner) {
+      if (active !== connection) throw new Error("The serial session disconnected.");
+      await exchange(active, "format " + format, true, owner, format);
+      if (active !== connection || active.closing || active.format !== format) {
+        throw new Error("The CLI format is unconfirmed on this session.");
+      }
+    }
+
+    async function machineCommand(active, line, owner) {
+      if (active.format === "human") await selectReplyFormat(active, "machine", owner);
+      if (active !== connection || active.closing || active.format !== "machine") {
+        throw new Error("The CLI format is unconfirmed. Reconnect or confirm human format before continuing.");
+      }
+      return readCommand(active, line, owner);
     }
 
     window.gridpicoDiagnosticsCli = Object.freeze({
@@ -560,6 +626,7 @@
         const active = connection ?? connectLocal(false);
         if (active !== connection) throw new Error("Couldn’t connect to the Loopback CLI.");
         const owner = Symbol("LED test");
+        const restoreHuman = active.format === "human";
         active.ledTest = owner;
         updateControls();
         return {
@@ -567,17 +634,26 @@
           get ready() { return this.live && available(active) && active.prompt; },
           readRoute(enable) { return rawRoute(active, 4, 3, enable, owner); },
           async receiverOccupied() {
-            const reply = await readCommand(active, "routing", owner);
+            const reply = await machineCommand(active, "routing", owner);
             const lines = reply.split("\r\n");
-            return /^routing ?$/.test(lines[0]) && /^ROUTING [1-9][0-9]* (END|[1-9][0-9]*)$/.test(lines[1]) &&
-              lines.at(-2) === "OK" && lines.at(-1) === "> " &&
-              lines.slice(2, -2).some(line => /^BINDING 3 [1-9][0-9]* out raw in-use ".*"$/.test(line));
+            return /^ROUTING [1-9][0-9]* (END|[1-9][0-9]*)$/.test(lines[0]) &&
+              lines.at(-2) === "OK" && lines.at(-1) === "" &&
+              lines.slice(1, -2).some(line => /^BINDING 3 [1-9][0-9]* out raw in-use ".*"$/.test(line));
           },
           release() {
             if (active !== connection) return;
-            active.ledTest = undefined;
-            if (owned) void disconnect(active);
-            else updateControls();
+            if (owned) {
+              active.ledTest = undefined;
+              void disconnect(active);
+              return;
+            }
+            const restore = restoreHuman && active.format === "machine"
+              ? selectReplyFormat(active, "human", owner) : Promise.resolve();
+            void restore.catch(error => showStatus(error.message, true)).finally(() => {
+              if (active !== connection) return;
+              active.ledTest = undefined;
+              updateControls();
+            });
           },
         };
       },
@@ -603,23 +679,30 @@
         if (edit && !active.local && !(active.structured && confirmed)) {
           throw new Error("Confirm the selected Web Serial router before editing.");
         }
-        return readCommand(active, line);
+        return active.local ? machineCommand(active, line) : readCommand(active, line);
       },
       async checkRawRoute(source, destination) {
         const validId = (value) => Number.isInteger(value) && value > 0 && value <= 65535;
         if (!validId(source) || !validId(destination)) throw new Error("Choose the source and LED receiver port IDs.");
         const active = connection;
         if (!active?.local) throw new Error("The local CLI is disconnected.");
-        return rawRoute(active, source, destination);
+        const restoreHuman = active.format === "human";
+        try {
+          return await rawRoute(active, source, destination);
+        } finally {
+          if (restoreHuman && active === connection && active.format === "machine" && available(active)) {
+            await selectReplyFormat(active, "human");
+          }
+        }
       },
     });
 
     async function rawRoute(active, source, destination, enable = false, owner) {
-        const cmd = `route ${source} ${destination} raw${enable ? " on" : ""}`;
-        const reply = await readCommand(active, cmd, owner);
-      const prefix = `${cmd}\r\nROUTE ${source} ${destination} RAW `;
+      const cmd = `route ${source} ${destination} raw${enable ? " on" : ""}`;
+      const reply = await machineCommand(active, cmd, owner);
+      const prefix = `ROUTE ${source} ${destination} RAW `;
       for (const state of ["OFF", "PENDING", "ACTIVE"]) {
-        if (reply === `${prefix}${state}\r\nOK\r\n> `) return state;
+        if (reply === `${prefix}${state}\r\nOK\r\n`) return state;
       }
       const rejections = [
         ["INVALID", "The selected ports are incompatible with this Raw route"],
@@ -627,7 +710,7 @@
         ["UNAVAILABLE", "The Raw route is unavailable"],
       ];
       for (const [code, message] of rejections) {
-        if (reply === `${cmd}\r\nERR ${code}\r\n> `) {
+        if (reply === `ERR ${code}\r\n`) {
           throw new Error(`Raw route ${source} → ${destination} check failed (ERR ${code}). ${message}.`);
         }
       }
@@ -871,7 +954,14 @@
       }
       try {
         if (available(active)) window.dispatchEvent(new Event("gridpico-local-cli-terminal"));
-        await exchange(active, line);
+        const requestedFormat = active.local && /^format (human|machine)$/.exec(line)?.[1];
+        if (requestedFormat) await selectReplyFormat(active, requestedFormat);
+        else {
+          if (active.format === "unconfirmed") {
+            throw new Error("Confirm human format or reconnect before sending a command.");
+          }
+          await exchange(active, line);
+        }
         if (connection === active && command.value === line) command.value = "";
       } catch (error) {
         if (connection === active && !active.closing) inputError.textContent = error.message;

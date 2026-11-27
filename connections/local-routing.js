@@ -69,11 +69,16 @@ window.addEventListener("DOMContentLoaded", async () => {
     if (!condition) throw new Error("The local CLI returned an incomplete or invalid Routing reply.");
   }
 
-  function cliReply(reply, command) {
-    const lines = (cli.loopback ? reply : reply.replace(/^> (?:\r\n)?/, "")).split("\r\n");
-    const echo = lines.shift();
-    // The terminal can echo the no-argument routing command with one trailing space.
-    assert((echo === command || (command === "routing" && echo === "routing ")) && lines.pop() === "> ");
+  async function routingReply(command, confirmed = false) {
+    const machine = cli.loopback;
+    const reply = await cli.routingCommand(command, confirmed);
+    const lines = (machine ? reply : reply.replace(/^> (?:\r\n)?/, "")).split("\r\n");
+    if (machine) assert(lines.pop() === "");
+    else {
+      const echo = lines.shift();
+      // A qualified Web Serial terminal can echo routing with a trailing space.
+      assert((echo === command || (command === "routing" && echo === "routing ")) && lines.pop() === "> ");
+    }
     assert(lines.length > 0 && lines.every(line => encoder.encode(line).length + 2 <= 256));
     if (lines.length === 1 && /^ERR (INVALID|CAPACITY|UNAVAILABLE)$/.test(lines[0])) {
       return { rejected: lines[0].slice(4) };
@@ -141,7 +146,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   async function readManagedGuard() {
     const command = "help route";
     try {
-      const reply = cliReply(await cli.routingCommand(command), command);
+      const reply = await routingReply(command);
       const form = reply.lines?.[0]?.split(" -- ", 1)[0];
       return reply.lines?.length === 1 && form.startsWith("COMMAND route ") &&
         form.split("; ").includes("route <src> <dst> managed on|off if <revision>");
@@ -155,7 +160,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     let offset = 0;
     for (let page = 0; page <= maxRecords; page++) {
       const command = offset ? `routing ${projection.revision} ${offset}` : "routing";
-      const reply = cliReply(await cli.routingCommand(command), command);
+      const reply = await routingReply(command);
       if (work !== job) return;
       if (reply.rejected) {
         if (offset && reply.rejected === "UNAVAILABLE") return { changed: true };
@@ -442,7 +447,7 @@ window.addEventListener("DOMContentLoaded", async () => {
     try {
       const write = `route ${source} ${destination} ${mode} ${on ? "on" : "off"}`;
       const command = mode === "managed" ? `${write} if ${guard}` : write;
-      const reply = cliReply(await cli.routingCommand(command, confirmRouter.checked), command);
+      const reply = await routingReply(command, confirmRouter.checked);
       if (work !== job) return;
       if (reply.rejected) {
         const reason = `Edit rejected (ERR ${reply.rejected}) · ${rejections[reply.rejected]}.`;
