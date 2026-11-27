@@ -14,6 +14,7 @@ The original [design manifest](SHA256SUMS) has SHA-256 **25dbfc048bc370898640e84
 
 ## Review and topology
 
+- [One-page connection overview](review/overview/gridpico-carrier-at-a-glance.pdf), [editable SVG](review/overview/gridpico-carrier-at-a-glance.svg) and [180-reference component table](review/overview/components.csv). Hardware Design reviewed this companion to the historical draft.
 - [Independent HAL electrical review](review/hal/RESULT.md) and [sheet-by-sheet findings](review/hal/SHEET-DELTAS.md).
 - [U4 voltage and data-enable hold](ELECTRICAL-HOLD.md) and [chain authorization, inrush and fault hold](CHAIN-REVIEW-HOLD.md). The [hold manifest](CHAIN-REVIEW-HOLD.sha256) covers both.
 - [Product brief board sketch](../../../PRODUCT_BRIEF.md#rp2040-zero-board-sketch) and [architecture context](../../../ARCHITECTURE.md). The reviewed draft places each upstream input on a separately protected rail. U3 draws only from U1. U4 and the optional local-peripheral rail have separately granted paths from either input. The native USB data connection uses a replacement U2 receptacle. The historical module receptacle must be removed because its VBUS lands share the module 5 V pad.
