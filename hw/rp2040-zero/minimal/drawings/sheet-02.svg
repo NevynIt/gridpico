@@ -1,0 +1,322 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1584" height="1793" viewBox="0 0 1584 1793" role="img">
+<rect x="0" y="0" width="1584" height="1793" stroke="#ffffff" stroke-width="1" fill="#ffffff"/>
+<rect x="0" y="0" width="1584" height="98" stroke="#162638" stroke-width="1" fill="#162638"/>
+<text x="38" y="36" fill="#a7cbd1" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">GRIDPICO / RP2040-ZERO CARRIER</text>
+<text x="38" y="77" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="33" text-anchor="start" font-weight="700">U4 PIO host power and cutoff</text>
+<text x="1546" y="74" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="23" text-anchor="end" font-weight="700">02 / 04</text>
+<text x="38" y="116" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">U4 draws from A5 or a separately granted current-limited B5 branch. GP9 independently starts and vetoes the port.</text>
+<rect x="38" y="126" width="744" height="420" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="38" y="126" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="53" y="150" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">IC6   U4 downstream power protection</text>
+<rect x="363.36650028824806" y="174" width="189.26699942350388" height="186" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="458" y="192" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">IC6</text>
+<text x="458" y="208" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">TPS259474LRPWR</text>
+<line x1="363.36650028824806" y1="215" x2="552.6334997117519" y2="215" stroke="#d6e0e9" stroke-width="1"/>
+<text x="370.36650028824806" y="230" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">5  IN</text>
+<line x1="363.36650028824806" y1="226" x2="338.36650028824806" y2="226" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="334.36650028824806" y="230" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">HOST_PRE</text>
+<text x="370.36650028824806" y="253" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  EN/UVLO</text>
+<line x1="363.36650028824806" y1="249" x2="338.36650028824806" y2="249" stroke="#225e67" stroke-width="1.5"/>
+<text x="334.36650028824806" y="253" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">EN6</text>
+<text x="370.36650028824806" y="276" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  OVLO</text>
+<line x1="363.36650028824806" y1="272" x2="338.36650028824806" y2="272" stroke="#225e67" stroke-width="1.5"/>
+<text x="334.36650028824806" y="276" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="370.36650028824806" y="299" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">8  GND</text>
+<line x1="363.36650028824806" y1="295" x2="338.36650028824806" y2="295" stroke="#225e67" stroke-width="1.5"/>
+<text x="334.36650028824806" y="299" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="545.6334997117519" y="230" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">OUT  6</text>
+<line x1="552.6334997117519" y1="226" x2="577.6334997117519" y2="226" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="581.6334997117519" y="230" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">U4_VBUS</text>
+<text x="545.6334997117519" y="253" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">DVDT  7</text>
+<line x1="552.6334997117519" y1="249" x2="577.6334997117519" y2="249" stroke="#225e67" stroke-width="1.5"/>
+<text x="581.6334997117519" y="253" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">DV6</text>
+<text x="545.6334997117519" y="276" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">ILM  9</text>
+<line x1="552.6334997117519" y1="272" x2="577.6334997117519" y2="272" stroke="#225e67" stroke-width="1.5"/>
+<text x="581.6334997117519" y="276" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">IL6</text>
+<text x="545.6334997117519" y="299" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">PG  3</text>
+<line x1="552.6334997117519" y1="295" x2="577.6334997117519" y2="295" stroke="#225e67" stroke-width="1.5"/>
+<line x1="574.6334997117519" y1="292" x2="580.6334997117519" y2="298" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="574.6334997117519" y1="298" x2="580.6334997117519" y2="292" stroke="#5a6570" stroke-width="1.1"/>
+<text x="545.6334997117519" y="322" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">PGTH  4</text>
+<line x1="552.6334997117519" y1="318" x2="577.6334997117519" y2="318" stroke="#225e67" stroke-width="1.5"/>
+<text x="581.6334997117519" y="322" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="545.6334997117519" y="345" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">ITIMER  10</text>
+<line x1="552.6334997117519" y1="341" x2="577.6334997117519" y2="341" stroke="#225e67" stroke-width="1.5"/>
+<line x1="574.6334997117519" y1="338" x2="580.6334997117519" y2="344" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="574.6334997117519" y1="344" x2="580.6334997117519" y2="338" stroke="#5a6570" stroke-width="1.1"/>
+<text x="278" y="371" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R61  5.36k, 1%</text>
+<polyline points="256,383 261,377 267,389 273,377 279,389 285,377 291,389 297,377 300,383" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="256" y1="383" x2="233" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="229" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">IL6</text>
+<line x1="300" y1="383" x2="323" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="327" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="598" y="371" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C61  39nF, 5%, C0G</text>
+<line x1="594" y1="375" x2="594" y2="391" stroke="#162638" stroke-width="1.5"/>
+<line x1="602" y1="375" x2="602" y2="391" stroke="#162638" stroke-width="1.5"/>
+<line x1="594" y1="383" x2="553" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="549" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">DV6_C</text>
+<line x1="602" y1="383" x2="643" y2="383" stroke="#225e67" stroke-width="1.5"/>
+<text x="647" y="387" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="400" y="423" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R67  100R, 1%</text>
+<polyline points="378,435 383,429 389,441 395,429 401,441 407,429 413,441 419,429 422,435" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="378" y1="435" x2="355" y2="435" stroke="#225e67" stroke-width="1.5"/>
+<text x="351" y="439" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">DV6</text>
+<line x1="422" y1="435" x2="445" y2="435" stroke="#225e67" stroke-width="1.5"/>
+<text x="449" y="439" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">DV6_C</text>
+<text x="53" y="495" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Current breaker, reverse blocking and controlled slew. Initial target is a 500 mA configured host</text>
+<text x="53" y="513" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">port.</text>
+<text x="53" y="531" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Place series R67/C61 close to IC6. Validate the fitted ramp and actual inrush before use.</text>
+<rect x="802" y="126" width="744" height="420" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="802" y="126" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="817" y="150" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">J4 / U4   USB-A PIO host outlet</text>
+<rect x="1010.0" y="184" width="154" height="163" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="1087" y="202" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">J4</text>
+<text x="1087" y="218" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">USB-A receptacle</text>
+<line x1="1010.0" y1="225" x2="1164.0" y2="225" stroke="#d6e0e9" stroke-width="1"/>
+<text x="1017.0" y="240" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  VBUS</text>
+<line x1="1010.0" y1="236" x2="985.0" y2="236" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="981.0" y="240" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_VBUS</text>
+<text x="1017.0" y="263" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  D-</text>
+<line x1="1010.0" y1="259" x2="985.0" y2="259" stroke="#225e67" stroke-width="1.5"/>
+<text x="981.0" y="263" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">H_DM</text>
+<text x="1017.0" y="286" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">3  D+</text>
+<line x1="1010.0" y1="282" x2="985.0" y2="282" stroke="#225e67" stroke-width="1.5"/>
+<text x="981.0" y="286" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">H_DP</text>
+<text x="1017.0" y="309" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">4  GND</text>
+<line x1="1010.0" y1="305" x2="985.0" y2="305" stroke="#225e67" stroke-width="1.5"/>
+<text x="981.0" y="309" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="1017.0" y="332" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">S  Shell</text>
+<line x1="1010.0" y1="328" x2="985.0" y2="328" stroke="#225e67" stroke-width="1.5"/>
+<text x="981.0" y="332" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="1002" y="381" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C62  270uF polymer candidate</text>
+<line x1="998" y1="385" x2="998" y2="401" stroke="#162638" stroke-width="1.5"/>
+<line x1="1006" y1="385" x2="1006" y2="401" stroke="#162638" stroke-width="1.5"/>
+<line x1="998" y1="393" x2="957" y2="393" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="953" y="397" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_VBUS</text>
+<line x1="1006" y1="393" x2="1047" y2="393" stroke="#225e67" stroke-width="1.5"/>
+<text x="1051" y="397" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="1332" y="381" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R66  4.70k, 1%</text>
+<polyline points="1310,393 1315,387 1321,399 1327,387 1333,399 1339,387 1345,399 1351,387 1354,393" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="1310" y1="393" x2="1287" y2="393" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="1283" y="397" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_VBUS</text>
+<line x1="1354" y1="393" x2="1377" y2="393" stroke="#225e67" stroke-width="1.5"/>
+<text x="1381" y="397" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="1332" y="424" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C63  1uF, 16V</text>
+<line x1="1328" y1="428" x2="1328" y2="444" stroke="#162638" stroke-width="1.5"/>
+<line x1="1336" y1="428" x2="1336" y2="444" stroke="#162638" stroke-width="1.5"/>
+<line x1="1328" y1="436" x2="1287" y2="436" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="1283" y="440" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_VBUS</text>
+<line x1="1336" y1="436" x2="1377" y2="436" stroke="#225e67" stroke-width="1.5"/>
+<text x="1381" y="440" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="817" y="513" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">C62 is a 170 to 400uF effective-capacitance design envelope. Select and measure the actual capacitor.</text>
+<text x="817" y="531" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">The passive discharge estimate alone supplies no attach or reconnect timing.</text>
+<rect x="38" y="566" width="744" height="351" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="38" y="566" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="53" y="590" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">GP9 fail-off, sourced from selected HOST_PRE</text>
+<rect x="177.0" y="624" width="154" height="94" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="254" y="642" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">Q60A</text>
+<text x="254" y="658" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">2N7002</text>
+<line x1="177.0" y1="665" x2="331.0" y2="665" stroke="#d6e0e9" stroke-width="1"/>
+<text x="184.0" y="680" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  Gate</text>
+<line x1="177.0" y1="676" x2="152.0" y2="676" stroke="#225e67" stroke-width="1.5"/>
+<text x="148.0" y="680" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_PORT_EN</text>
+<text x="184.0" y="703" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  Source</text>
+<line x1="177.0" y1="699" x2="152.0" y2="699" stroke="#225e67" stroke-width="1.5"/>
+<text x="148.0" y="703" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="324.0" y="680" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">Drain  3</text>
+<line x1="331.0" y1="676" x2="356.0" y2="676" stroke="#225e67" stroke-width="1.5"/>
+<text x="360.0" y="680" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">PG_60</text>
+<rect x="506.0" y="624" width="154" height="94" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="583" y="642" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">Q60B</text>
+<text x="583" y="658" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">BSS84</text>
+<line x1="506.0" y1="665" x2="660.0" y2="665" stroke="#d6e0e9" stroke-width="1"/>
+<text x="513.0" y="680" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  Gate</text>
+<line x1="506.0" y1="676" x2="481.0" y2="676" stroke="#225e67" stroke-width="1.5"/>
+<text x="477.0" y="680" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">PG_60</text>
+<text x="513.0" y="703" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  Source</text>
+<line x1="506.0" y1="699" x2="481.0" y2="699" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="477.0" y="703" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">HOST_PRE</text>
+<text x="653.0" y="680" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">Drain  3</text>
+<line x1="660.0" y1="676" x2="685.0" y2="676" stroke="#225e67" stroke-width="1.5"/>
+<text x="689.0" y="680" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">EN_SRC_60</text>
+<text x="205" y="744" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R601  100k</text>
+<polyline points="183,756 188,750 194,762 200,750 206,762 212,750 218,762 224,750 227,756" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="183" y1="756" x2="160" y2="756" stroke="#225e67" stroke-width="1.5"/>
+<text x="156" y="760" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_PORT_EN</text>
+<line x1="227" y1="756" x2="250" y2="756" stroke="#225e67" stroke-width="1.5"/>
+<text x="254" y="760" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="558" y="744" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R602  100k</text>
+<polyline points="536,756 541,750 547,762 553,750 559,762 565,750 571,762 577,750 580,756" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="536" y1="756" x2="513" y2="756" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="509" y="760" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">HOST_PRE</text>
+<line x1="580" y1="756" x2="603" y2="756" stroke="#225e67" stroke-width="1.5"/>
+<text x="607" y="760" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">PG_60</text>
+<text x="205" y="794" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R603  24.9k</text>
+<polyline points="183,806 188,800 194,812 200,800 206,812 212,800 218,812 224,800 227,806" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="183" y1="806" x2="160" y2="806" stroke="#225e67" stroke-width="1.5"/>
+<text x="156" y="810" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">EN_SRC_60</text>
+<line x1="227" y1="806" x2="250" y2="806" stroke="#225e67" stroke-width="1.5"/>
+<text x="254" y="810" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">EN6</text>
+<text x="558" y="794" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R604  10.0k</text>
+<polyline points="536,806 541,800 547,812 553,800 559,812 565,800 571,812 577,800 580,806" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="536" y1="806" x2="513" y2="806" stroke="#225e67" stroke-width="1.5"/>
+<text x="509" y="810" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">EN6</text>
+<line x1="580" y1="806" x2="603" y2="806" stroke="#225e67" stroke-width="1.5"/>
+<text x="607" y="810" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="53" y="884" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Assert GP9 after valid HOST_PRE. Dropping it removes the IC6 enable and opens U4 data.</text>
+<text x="53" y="902" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">A fault requires bounded, deliberate recovery and a fresh downstream attachment.</text>
+<rect x="802" y="566" width="744" height="351" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="802" y="566" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="817" y="590" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">Host power limits</text>
+<text x="817" y="628" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Software admits the configured load within the measured U4 port and source budget.</text>
+<text x="817" y="646" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">The hardware breaker protects faults. Measure preconfiguration load, hot plug, current,</text>
+<text x="817" y="664" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">drop/droop, forced-output backfeed and discharge before powered use.</text>
+<rect x="38" y="937" width="744" height="432" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="38" y="937" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="53" y="961" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">IC7   U2 host branch, fail-off grant and limit</text>
+<rect x="339.20850017666817" y="987" width="167.58299964666367" height="117" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="423" y="1005" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">IC7</text>
+<text x="423" y="1021" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">TPS2553DBVR-1</text>
+<line x1="339.20850017666817" y1="1028" x2="506.79149982333183" y2="1028" stroke="#d6e0e9" stroke-width="1"/>
+<text x="346.20850017666817" y="1043" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  IN</text>
+<line x1="339.20850017666817" y1="1039" x2="314.20850017666817" y2="1039" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="310.20850017666817" y="1043" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">B5</text>
+<text x="346.20850017666817" y="1066" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  GND</text>
+<line x1="339.20850017666817" y1="1062" x2="314.20850017666817" y2="1062" stroke="#225e67" stroke-width="1.5"/>
+<text x="310.20850017666817" y="1066" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="346.20850017666817" y="1089" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">3  EN</text>
+<line x1="339.20850017666817" y1="1085" x2="314.20850017666817" y2="1085" stroke="#225e67" stroke-width="1.5"/>
+<text x="310.20850017666817" y="1089" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">EN7</text>
+<text x="499.79149982333183" y="1043" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">FAULT_N  4</text>
+<line x1="506.79149982333183" y1="1039" x2="531.7914998233318" y2="1039" stroke="#225e67" stroke-width="1.5"/>
+<text x="535.7914998233318" y="1043" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">U4_B_FAULT_N</text>
+<text x="499.79149982333183" y="1066" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">ILIM  5</text>
+<line x1="506.79149982333183" y1="1062" x2="531.7914998233318" y2="1062" stroke="#225e67" stroke-width="1.5"/>
+<text x="535.7914998233318" y="1066" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">IL7</text>
+<text x="499.79149982333183" y="1089" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">OUT  6</text>
+<line x1="506.79149982333183" y1="1085" x2="531.7914998233318" y2="1085" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="535.7914998233318" y="1089" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">B_HOST</text>
+<text x="240" y="1136" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R75  105k, 1%</text>
+<polyline points="218,1148 223,1142 229,1154 235,1142 241,1154 247,1142 253,1154 259,1142 262,1148" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="218" y1="1148" x2="195" y2="1148" stroke="#225e67" stroke-width="1.5"/>
+<text x="191" y="1152" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">IL7</text>
+<line x1="262" y1="1148" x2="285" y2="1148" stroke="#225e67" stroke-width="1.5"/>
+<text x="289" y="1152" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="584" y="1136" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C71  2.2uF, 16V</text>
+<line x1="580" y1="1140" x2="580" y2="1156" stroke="#162638" stroke-width="1.5"/>
+<line x1="588" y1="1140" x2="588" y2="1156" stroke="#162638" stroke-width="1.5"/>
+<line x1="580" y1="1148" x2="539" y2="1148" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="535" y="1152" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">B_HOST</text>
+<line x1="588" y1="1148" x2="629" y2="1148" stroke="#225e67" stroke-width="1.5"/>
+<text x="633" y="1152" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="240" y="1190" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R76  47k</text>
+<polyline points="218,1202 223,1196 229,1208 235,1196 241,1208 247,1196 253,1208 259,1196 262,1202" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="218" y1="1202" x2="195" y2="1202" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="191" y="1206" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">3V3_AON</text>
+<line x1="262" y1="1202" x2="285" y2="1202" stroke="#225e67" stroke-width="1.5"/>
+<text x="289" y="1206" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">U4_B_FAULT_N</text>
+<text x="584" y="1190" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C72  100nF, 16V</text>
+<line x1="580" y1="1194" x2="580" y2="1210" stroke="#162638" stroke-width="1.5"/>
+<line x1="588" y1="1194" x2="588" y2="1210" stroke="#162638" stroke-width="1.5"/>
+<line x1="580" y1="1202" x2="539" y2="1202" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="535" y="1206" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">B5</text>
+<line x1="588" y1="1202" x2="629" y2="1202" stroke="#225e67" stroke-width="1.5"/>
+<text x="633" y="1206" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="53" y="1336" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">GP8 authorizes this branch only after a valid U2 aggregate budget.</text>
+<text x="53" y="1354" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">R75 screens 221 to 292 mA cutoff corners. 200 mA is the proposed settled B-port ceiling.</text>
+<rect x="802" y="937" width="744" height="327" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="802" y="937" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="817" y="961" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">B branch source-local enable</text>
+<rect x="941.0" y="995" width="154" height="94" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="1018" y="1013" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">Q70A</text>
+<text x="1018" y="1029" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">2N7002</text>
+<line x1="941.0" y1="1036" x2="1095.0" y2="1036" stroke="#d6e0e9" stroke-width="1"/>
+<text x="948.0" y="1051" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  Gate</text>
+<line x1="941.0" y1="1047" x2="916.0" y2="1047" stroke="#225e67" stroke-width="1.5"/>
+<text x="912.0" y="1051" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_B_GRANT</text>
+<text x="948.0" y="1074" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  Source</text>
+<line x1="941.0" y1="1070" x2="916.0" y2="1070" stroke="#225e67" stroke-width="1.5"/>
+<text x="912.0" y="1074" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="1088.0" y="1051" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">Drain  3</text>
+<line x1="1095.0" y1="1047" x2="1120.0" y2="1047" stroke="#225e67" stroke-width="1.5"/>
+<text x="1124.0" y="1051" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">PG_70</text>
+<rect x="1270.0" y="995" width="154" height="94" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="1347" y="1013" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">Q70B</text>
+<text x="1347" y="1029" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">BSS84</text>
+<line x1="1270.0" y1="1036" x2="1424.0" y2="1036" stroke="#d6e0e9" stroke-width="1"/>
+<text x="1277.0" y="1051" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  Gate</text>
+<line x1="1270.0" y1="1047" x2="1245.0" y2="1047" stroke="#225e67" stroke-width="1.5"/>
+<text x="1241.0" y="1051" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">PG_70</text>
+<text x="1277.0" y="1074" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">2  Source</text>
+<line x1="1270.0" y1="1070" x2="1245.0" y2="1070" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="1241.0" y="1074" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">B5</text>
+<text x="1417.0" y="1051" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">Drain  3</text>
+<line x1="1424.0" y1="1047" x2="1449.0" y2="1047" stroke="#225e67" stroke-width="1.5"/>
+<text x="1453.0" y="1051" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">EN_SRC_70</text>
+<text x="969" y="1115" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R701  100k</text>
+<polyline points="947,1127 952,1121 958,1133 964,1121 970,1133 976,1121 982,1133 988,1121 991,1127" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="947" y1="1127" x2="924" y2="1127" stroke="#225e67" stroke-width="1.5"/>
+<text x="920" y="1131" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_B_GRANT</text>
+<line x1="991" y1="1127" x2="1014" y2="1127" stroke="#225e67" stroke-width="1.5"/>
+<text x="1018" y="1131" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="1322" y="1115" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R702  100k</text>
+<polyline points="1300,1127 1305,1121 1311,1133 1317,1121 1323,1133 1329,1121 1335,1133 1341,1121 1344,1127" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="1300" y1="1127" x2="1277" y2="1127" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="1273" y="1131" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">B5</text>
+<line x1="1344" y1="1127" x2="1367" y2="1127" stroke="#225e67" stroke-width="1.5"/>
+<text x="1371" y="1131" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">PG_70</text>
+<text x="969" y="1165" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R703  10.0k</text>
+<polyline points="947,1177 952,1171 958,1183 964,1171 970,1183 976,1171 982,1183 988,1171 991,1177" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="947" y1="1177" x2="924" y2="1177" stroke="#225e67" stroke-width="1.5"/>
+<text x="920" y="1181" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">EN_SRC_70</text>
+<line x1="991" y1="1177" x2="1014" y2="1177" stroke="#225e67" stroke-width="1.5"/>
+<text x="1018" y="1181" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">EN7</text>
+<text x="1322" y="1165" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">R704  10.0k</text>
+<polyline points="1300,1177 1305,1171 1311,1183 1317,1171 1323,1183 1329,1171 1335,1183 1341,1171 1344,1177" fill="none" stroke="#162638" stroke-width="1.5"/>
+<line x1="1300" y1="1177" x2="1277" y2="1177" stroke="#225e67" stroke-width="1.5"/>
+<text x="1273" y="1181" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">EN7</text>
+<line x1="1344" y1="1177" x2="1367" y2="1177" stroke="#225e67" stroke-width="1.5"/>
+<text x="1371" y="1181" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="817" y="1249" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">The GP8 pull-down denies this branch while the module is off or in reset.</text>
+<rect x="38" y="1389" width="744" height="341" stroke="#d6e0e9" stroke-width="1.4" fill="#ffffff"/>
+<rect x="38" y="1389" width="744" height="36" stroke="#d6e0e9" stroke-width="1.1" fill="#eaf1f7"/>
+<text x="53" y="1413" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="700">IC8   U4 manual-mode source selector</text>
+<rect x="340.5660002231598" y="1435" width="166.86799955368042" height="163" stroke="#162638" stroke-width="1.6" fill="#f5f9fc"/>
+<text x="424" y="1453" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="middle" font-weight="700">IC8</text>
+<text x="424" y="1469" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">TPS2116DRLR</text>
+<line x1="340.5660002231598" y1="1476" x2="507.4339997768402" y2="1476" stroke="#d6e0e9" stroke-width="1"/>
+<text x="347.5660002231598" y="1491" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">3  VIN1</text>
+<line x1="340.5660002231598" y1="1487" x2="315.5660002231598" y2="1487" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="311.5660002231598" y="1491" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">B_HOST</text>
+<text x="347.5660002231598" y="1514" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">4  PR1</text>
+<line x1="340.5660002231598" y1="1510" x2="315.5660002231598" y2="1510" stroke="#225e67" stroke-width="1.5"/>
+<text x="311.5660002231598" y="1514" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">U4_B_GRANT</text>
+<text x="347.5660002231598" y="1537" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">5  MODE</text>
+<line x1="340.5660002231598" y1="1533" x2="315.5660002231598" y2="1533" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="311.5660002231598" y="1537" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">3V3_AON</text>
+<text x="347.5660002231598" y="1560" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">6  VIN2</text>
+<line x1="340.5660002231598" y1="1556" x2="315.5660002231598" y2="1556" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="311.5660002231598" y="1560" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">A5</text>
+<text x="347.5660002231598" y="1583" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">1  GND</text>
+<line x1="340.5660002231598" y1="1579" x2="315.5660002231598" y2="1579" stroke="#225e67" stroke-width="1.5"/>
+<text x="311.5660002231598" y="1583" fill="#225e67" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">GND</text>
+<text x="500.4339997768402" y="1491" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">VOUT  2,7</text>
+<line x1="507.4339997768402" y1="1487" x2="532.4339997768402" y2="1487" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="536.4339997768402" y="1491" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">HOST_PRE</text>
+<text x="500.4339997768402" y="1514" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="end" font-weight="400">ST  8</text>
+<line x1="507.4339997768402" y1="1510" x2="532.4339997768402" y2="1510" stroke="#225e67" stroke-width="1.5"/>
+<line x1="529.4339997768402" y1="1507" x2="535.4339997768402" y2="1513" stroke="#5a6570" stroke-width="1.1"/>
+<line x1="529.4339997768402" y1="1513" x2="535.4339997768402" y2="1507" stroke="#5a6570" stroke-width="1.1"/>
+<text x="228" y="1629" fill="#162638" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="middle" font-weight="400">C81  2.2uF, 16V</text>
+<line x1="224" y1="1633" x2="224" y2="1649" stroke="#162638" stroke-width="1.5"/>
+<line x1="232" y1="1633" x2="232" y2="1649" stroke="#162638" stroke-width="1.5"/>
+<line x1="224" y1="1641" x2="183" y2="1641" stroke="#9e3d14" stroke-width="1.5"/>
+<text x="179" y="1645" fill="#9e3d14" font-family="monospace" font-size="12" text-anchor="end" font-weight="400">HOST_PRE</text>
+<line x1="232" y1="1641" x2="273" y2="1641" stroke="#225e67" stroke-width="1.5"/>
+<text x="277" y="1645" fill="#225e67" font-family="monospace" font-size="12" text-anchor="start" font-weight="400">GND</text>
+<text x="53" y="1697" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">With AON valid, GP8 low selects A5; GP8 high selects current-limited B_HOST.</text>
+<text x="53" y="1715" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="13" text-anchor="start" font-weight="400">Drop GP9 and retire the old attach before changing source. Measure unpowered and brownout states.</text>
+<line x1="38" y1="1755" x2="1546" y2="1755" stroke="#d6e0e9" stroke-width="1.5"/>
+<text x="38" y="1776" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="start" font-weight="400">Electrical design review   /   Named nets are joined across sheets   /   x = intentional NC</text>
+<text x="1546" y="1776" fill="#385066" font-family="Arial,Helvetica,sans-serif" font-size="12" text-anchor="end" font-weight="400">MINIMUM CARRIER / DESIGN REVIEW   /   2026-11-27   /   Layout and qualification pending</text>
+</svg>

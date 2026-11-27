@@ -1,0 +1,9 @@
+U1 full planning load 0.925 A: J3 5.002 V; J4 4.946 V, including both outlets.
+Conditional chain from 5.10 V: A U4 5.029 V, B U2 5.004 V, B U4 4.947 V, C U2 4.935 V.
+B U4 with 4.75 V at head U1: 4.597 V.
+B request screen: local + tail = 250 mA. Installed request: 100 mA.
+U4 C62+C63: 170..400 uF effective design window. Fast-edge charge estimate 37.3 mA. Preconfig 100 mA + charging + 2 mA allowance: 139.3 mA.
+Ideal 10 uF hot-plug share at 5.25 V: 291.7 mV out of 330 mV before ESR and source behavior.
+R66-only discharge 5.25 to 0.80 V: 1.50..3.54 s nominal; reconnect needs actual clearance.
+RT9013 screen at 120 mA: 0.234 W, 103.5 C at 45 C ambient and 250 C/W.
+RT9013 screen at 180 mA: 0.351 W, 132.8 C at 45 C ambient and 250 C/W.

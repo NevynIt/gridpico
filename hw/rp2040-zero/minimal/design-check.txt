@@ -1,0 +1,5 @@
+4 sheets | 102 references | 68 nets | 33 intentional NC groups
+PASS unique reference/pin, exact power paths, independent input and port VBUS nets, U1/U3 data NC, native and PIO data sets
+PASS GP9 veto and common 3.3 V accessory rail connectivity
+Connectivity checks only. Electrical and mechanical qualification remain open.
+PASS four schematic sheets and one-page overview, valid SVG, no detected text collisions, exact BOM coverage.

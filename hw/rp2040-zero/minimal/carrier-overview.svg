@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1584" height="1020" viewBox="0 0 1584 1020" role="img">
+<rect x="0" y="0" width="1584" height="1020" stroke="#ffffff" stroke-width="1" fill="#ffffff"/>
+<rect x="0" y="0" width="1584" height="1020" stroke="#f2f5f7" stroke-width="1" fill="#f2f5f7"/>
+<rect x="0" y="0" width="1584" height="112" stroke="#132b3b" stroke-width="1" fill="#132b3b"/>
+<text x="41" y="57" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="41" text-anchor="start" font-weight="700">RP2040-Zero minimum carrier</text>
+<text x="42" y="88" fill="#bdd9df" font-family="Arial,Helvetica,sans-serif" font-size="18" text-anchor="start" font-weight="400">Ordinary DEV design review  /  Brief 8acb1af  /  102 references, down from 180</text>
+<text x="1542" y="58" fill="#ffd1a9" font-family="Arial,Helvetica,sans-serif" font-size="19" text-anchor="end" font-weight="700">Electrical qualification open</text>
+<text x="41" y="159" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="26" text-anchor="start" font-weight="700">Two inputs and independent protected rails</text>
+<rect x="41" y="180" width="738" height="121" stroke="#d8e1e6" stroke-width="1" fill="#ffffff"/>
+<rect x="41" y="180" width="5" height="121" stroke="#0d665f" stroke-width="1" fill="#0d665f"/>
+<text x="63" y="217" fill="#0d665f" font-family="Arial,Helvetica,sans-serif" font-size="22" text-anchor="start" font-weight="700">U1  /  5 V power in</text>
+<text x="63" y="249" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">Dedicated qualified 5 V adapter. D+ and D- open.</text>
+<text x="63" y="274" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">IC1 reverse-blocking breaker feeds A5.</text>
+<rect x="805" y="180" width="738" height="121" stroke="#d8e1e6" stroke-width="1" fill="#ffffff"/>
+<rect x="805" y="180" width="5" height="121" stroke="#4a478c" stroke-width="1" fill="#4a478c"/>
+<text x="827" y="217" fill="#4a478c" font-family="Arial,Helvetica,sans-serif" font-size="22" text-anchor="start" font-weight="700">U2  /  Native USB Device</text>
+<text x="827" y="249" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">Laptop data uses native D+ and D- with actual J2 VBUS sensing.</text>
+<text x="827" y="274" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">IC2 reverse-blocking breaker feeds B5.</text>
+<rect x="660" y="220" width="73" height="41" stroke="#0d665f" stroke-width="1" fill="#0d665f"/>
+<text x="697" y="247" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="19" text-anchor="middle" font-weight="700">A5</text>
+<rect x="1424" y="220" width="73" height="41" stroke="#4a478c" stroke-width="1" fill="#4a478c"/>
+<text x="1461" y="247" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="19" text-anchor="middle" font-weight="700">B5</text>
+<text x="41" y="354" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="26" text-anchor="start" font-weight="700">Three loads with distinct power rules</text>
+<rect x="41" y="374" width="482" height="186" stroke="#d8e1e6" stroke-width="1" fill="#ffffff"/>
+<rect x="41" y="374" width="5" height="186" stroke="#0d665f" stroke-width="1" fill="#0d665f"/>
+<text x="63" y="411" fill="#0d665f" font-family="Arial,Helvetica,sans-serif" font-size="22" text-anchor="start" font-weight="700">U3  /  Power only</text>
+<text x="63" y="443" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">A5 through an independent breaker.</text>
+<text x="63" y="468" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">U1 only. USB-A data contacts open.</text>
+<text x="63" y="493" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">300 mA proposed accessory envelope.</text>
+<rect x="551" y="374" width="482" height="186" stroke="#d8e1e6" stroke-width="1" fill="#ffffff"/>
+<rect x="551" y="374" width="5" height="186" stroke="#284c71" stroke-width="1" fill="#284c71"/>
+<text x="573" y="411" fill="#284c71" font-family="Arial,Helvetica,sans-serif" font-size="22" text-anchor="start" font-weight="700">U4  /  PIO USB Host</text>
+<text x="573" y="443" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">A5 or current-limited B5 via a source mux.</text>
+<text x="573" y="468" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">Final breaker, soft start and reverse blocking.</text>
+<text x="573" y="493" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">GP9 enables power and can force data open.</text>
+<text x="573" y="518" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">500 mA on A or 200 mA on authorized B.</text>
+<rect x="1061" y="374" width="482" height="186" stroke="#d8e1e6" stroke-width="1" fill="#ffffff"/>
+<rect x="1061" y="374" width="5" height="186" stroke="#4a478c" stroke-width="1" fill="#4a478c"/>
+<text x="1083" y="411" fill="#4a478c" font-family="Arial,Helvetica,sans-serif" font-size="22" text-anchor="start" font-weight="700">Module and 3.3 V loads</text>
+<text x="1083" y="443" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">One power-off bridge selects A5 or B5.</text>
+<text x="1083" y="468" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">A5 populated for the default DEV build.</text>
+<text x="1083" y="493" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">SD/OLED on the module rail if qualified.</text>
+<text x="1083" y="518" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">No automatic module supply transfer.</text>
+<text x="41" y="611" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="26" text-anchor="start" font-weight="700">Simple connectors and retained protection</text>
+<rect x="41" y="632" width="738" height="292" stroke="#d8e1e6" stroke-width="1" fill="#ffffff"/>
+<rect x="41" y="632" width="5" height="292" stroke="#284c71" stroke-width="1" fill="#284c71"/>
+<text x="63" y="669" fill="#284c71" font-family="Arial,Helvetica,sans-serif" font-size="22" text-anchor="start" font-weight="700">Four functional signals</text>
+<text x="63" y="701" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">5 V, D-, D+, GND. Jill's exact connector order is pending.</text>
+<text x="63" y="726" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">U1 and U2 USB-C breakouts need verified passive CC termination.</text>
+<text x="63" y="751" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">U2 data must work in both plug orientations.</text>
+<text x="63" y="776" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">U3 and U4 use downstream USB-A.</text>
+<text x="63" y="801" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">The module's stock VBUS lands are on VSYS. The separate J2</text>
+<text x="63" y="826" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">requires the stock receptacle absent and those lands insulated.</text>
+<text x="63" y="851" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">J2 and J4 keep full-speed data gates and local ESD protection.</text>
+<rect x="805" y="632" width="738" height="292" stroke="#d8e1e6" stroke-width="1" fill="#ffffff"/>
+<rect x="805" y="632" width="5" height="292" stroke="#9b4924" stroke-width="1" fill="#9b4924"/>
+<text x="827" y="669" fill="#9b4924" font-family="Arial,Helvetica,sans-serif" font-size="22" text-anchor="start" font-weight="700">Conditions for the proposed build</text>
+<text x="827" y="701" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">120 mA total on the module 3.3 V rail is a thermal screening target.</text>
+<text x="827" y="726" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">At the illustrative 70 mA base load, about 50 mA remains for SD/OLED.</text>
+<text x="827" y="751" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">Exact module, card, OLED and adapter evidence is pending.</text>
+<text x="827" y="776" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">A powered cascade still requires eligible U2 module builds and</text>
+<text x="827" y="801" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">separate USB current admissions. The installed profile offers 100 mA.</text>
+<text x="827" y="826" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">Check backfeed, short, inrush, droop, discharge and USB suspend.</text>
+<text x="827" y="851" fill="#203c4c" font-family="Arial,Helvetica,sans-serif" font-size="16" text-anchor="start" font-weight="400">This paper design is held for fabrication and powered qualification.</text>
+<text x="41" y="974" fill="#455b69" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Use the four-sheet schematic and pinout for exact connections and conditional fit.</text>
+<text x="1542" y="974" fill="#455b69" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="end" font-weight="400">Gridpico Hardware Design</text>
+</svg>

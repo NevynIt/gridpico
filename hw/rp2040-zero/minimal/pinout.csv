@@ -1,0 +1,80 @@
+sheet,reference,value,pin,function,net
+1,J1,Dedicated 4-signal U1 power interface,1,5 V input,U1_RAW
+1,J1,Dedicated 4-signal U1 power interface,2,D- unused,NC
+1,J1,Dedicated 4-signal U1 power interface,3,D+ unused,NC
+1,J1,Dedicated 4-signal U1 power interface,4,GND,GND
+1,J3,USB-A receptacle,1,VBUS,U3_VBUS
+1,J3,USB-A receptacle,2,D-,NC
+1,J3,USB-A receptacle,3,D+,NC
+1,J3,USB-A receptacle,4,GND,GND
+1,J3,USB-A receptacle,S,Shell,GND
+1,SJ1,3-pad exclusive assembly selector,1,U1 position,A5
+1,SJ1,3-pad exclusive assembly selector,2,Module common,SYS5
+1,SJ1,3-pad exclusive assembly selector,3,U2 position,B5
+2,J4,USB-A receptacle,1,VBUS,U4_VBUS
+2,J4,USB-A receptacle,2,D-,H_DM
+2,J4,USB-A receptacle,3,D+,H_DP
+2,J4,USB-A receptacle,4,GND,GND
+2,J4,USB-A receptacle,S,Shell,GND
+3,J2,Upstream 4-signal device interface,1,VBUS input,U2_RAW
+3,J2,Upstream 4-signal device interface,2,D-,C2_DM
+3,J2,Upstream 4-signal device interface,3,D+,C2_DP
+3,J2,Upstream 4-signal device interface,4,GND,GND
+3,J2,Upstream 4-signal device interface,S,Shell,GND
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.1,GP0 UART0 TX,UART_TX_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.2,GP1 UART0 RX,UART_RX_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.3,GP2,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.4,GP3,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.5,GP4 I2C0 SDA,OLED_SDA
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.6,GP5 I2C0 SCL,OLED_SCL
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.7,GP6,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.8,GP7,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.9,GP8 B host grant,U4_B_GRANT
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.10,GP9 SIO,U4_PORT_EN
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.11,GP10 SPI1 SCK,SD_CLK_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.12,GP11 SPI1 TX,SD_MOSI
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.13,GP12 SPI1 RX,SD_MISO
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.14,GP13 SPI1 CS,SD_CS
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.15,GP14 PIO D+,PIO_DP
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.16,GP15 PIO D-,PIO_DM
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.17,GP26,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.18,GP27,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.19,GP28,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.20,GP29,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.21,3V3 output,3V3_AON
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.22,GND,GND
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.23,5 V VSYS,SYS5
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.1,GP17 external RGB,RGB_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.2,GP18 U2 switch command,NUSB_OE_N
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.3,GP19,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.4,GP20 U4 switch command,HUSB_OE_N
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.5,GP21 B branch fault,U4_B_FAULT_N
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.1,GP22,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.2,GP23,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.3,GP24,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.4,GP25,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.5,GND,GND
+4,M1,"Waveshare RP2040-Zero, exact revision pending","T-C.A6,B6",Former D+ lands,N_DP
+4,M1,"Waveshare RP2040-Zero, exact revision pending","T-C.A7,B7",Former D- lands,N_DM
+4,M1,"Waveshare RP2040-Zero, exact revision pending",T-C.VBUS,Insulated former VBUS lands,SYS5
+4,M1,"Waveshare RP2040-Zero, exact revision pending","T-C.CC1,CC2",No external connection,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",INT,GP16 onboard pixel,NC
+4,J5,3.3 V microSD socket,1,DAT2,SD_DAT2
+4,J5,3.3 V microSD socket,2,DAT3 / CS,SD_CS
+4,J5,3.3 V microSD socket,3,CMD / DI,SD_MOSI
+4,J5,3.3 V microSD socket,4,VDD,3V3_AON
+4,J5,3.3 V microSD socket,5,CLK,SD_CLK
+4,J5,3.3 V microSD socket,6,GND,GND
+4,J5,3.3 V microSD socket,7,DAT0 / DO,SD_MISO
+4,J5,3.3 V microSD socket,8,DAT1,SD_DAT1
+4,J5,3.3 V microSD socket,S,Shell,GND
+4,J5,3.3 V microSD socket,CD,Card detect,NC
+4,J6,3.3 V I2C OLED,1,GND,GND
+4,J6,3.3 V I2C OLED,2,3V3,3V3_AON
+4,J6,3.3 V I2C OLED,3,SCL,OLED_SCL
+4,J6,3.3 V I2C OLED,4,SDA,OLED_SDA
+4,J7,3.3 V UART header,1,GND,GND
+4,J7,3.3 V UART header,2,TX,UART_TX
+4,J7,3.3 V UART header,3,RX,UART_RX
+4,J8,3.3 V RGB data header,1,GND,GND
+4,J8,3.3 V RGB data header,2,DATA,RGB_DATA

@@ -1,0 +1,103 @@
+reference,sheet,part_or_value
+C10,1,"1uF, 16V"
+C101,3,100nF
+C11,1,"3.3nF, 5%"
+C111,3,100nF
+C112,3,"4.7nF, 5%, C0G"
+C12,1,"4.7uF, 10V"
+C121,3,100nF
+C131,3,100nF
+C132,3,"68nF, 5%, C0G"
+C20,1,"1uF, 16V"
+C21,1,"2.2nF, 5%"
+C22,1,"2.2uF, 16V"
+C261,3,100nF
+C31,1,"4.7uF, 10V"
+C41,1,"3.3nF, 5%"
+C42,1,"10uF, 16V"
+C51,4,"10uF, 10V"
+C52,4,100nF
+C61,2,"39nF, 5%, C0G"
+C62,2,270uF polymer candidate
+C63,2,"1uF, 16V"
+C71,2,"2.2uF, 16V"
+C72,2,"100nF, 16V"
+C81,2,"2.2uF, 16V"
+D10,1,SMF6.0A
+D101,3,TPD2E2U06QDBZRQ1
+D121,3,TPD2E2U06QDBZRQ1
+IC1,1,TPS259474LRPWR
+IC10,3,TMUXHS221FRSWR
+IC11,3,TPS389001DSER
+IC12,3,TMUXHS221FRSWR
+IC13,3,TPS389001DSER
+IC2,1,TPS259474LRPWR
+IC26,3,74AUP2G132DC
+IC4,1,TPS259474LRPWR
+IC6,2,TPS259474LRPWR
+IC7,2,TPS2553DBVR-1
+IC8,2,TPS2116DRLR
+J1,1,Dedicated 4-signal U1 power interface
+J2,3,Upstream 4-signal device interface
+J3,1,USB-A receptacle
+J4,2,USB-A receptacle
+J5,4,3.3 V microSD socket
+J6,4,3.3 V I2C OLED
+J7,4,3.3 V UART header
+J8,4,3.3 V RGB data header
+M1,4,"Waveshare RP2040-Zero, exact revision pending"
+Q60A,2,2N7002
+Q60B,2,BSS84
+Q70A,2,2N7002
+Q70B,2,BSS84
+R101,3,47k
+R11,1,"2.67k, 1%"
+R111,3,"47k, 1%"
+R112,3,"26.8k, 0.1%"
+R113,3,"10.0k, 0.1%"
+R12,1,"34.8k, 0.1%"
+R121,3,22R
+R122,3,22R
+R123,3,"15k, 1%"
+R124,3,"15k, 1%"
+R125,3,47k
+R13,1,"10.0k, 0.1%"
+R131,3,"47k, 1%"
+R132,3,"29.1k, 0.1%"
+R133,3,"10.0k, 0.1%"
+R14,1,"24.9k, 1%"
+R15,1,"10.0k, 1%"
+R21,1,"6.57k, 0.1%"
+R22,1,"34.8k, 0.1%"
+R23,1,"10.0k, 0.1%"
+R24,1,"24.9k, 1%"
+R25,1,"10.0k, 1%"
+R41,1,"6.57k, 0.1%"
+R44,1,"24.9k, 1%"
+R45,1,"10.0k, 1%"
+R46,1,4.7k
+R51,4,47k
+R52,4,47k
+R53,4,47k
+R54,4,47k
+R55,4,47k
+R56,4,22R
+R601,2,100k
+R602,2,100k
+R603,2,24.9k
+R604,2,10.0k
+R61,2,"5.36k, 1%"
+R64,4,4.7k if needed
+R65,4,4.7k if needed
+R66,2,"4.70k, 1%"
+R67,2,"100R, 1%"
+R701,2,100k
+R702,2,100k
+R703,2,10.0k
+R704,2,10.0k
+R71,4,100R
+R72,4,100R
+R75,2,"105k, 1%"
+R76,2,47k
+R81,4,100R
+SJ1,1,3-pad exclusive assembly selector

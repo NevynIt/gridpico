@@ -1,0 +1,68 @@
+3V3_AON          R76.1  IC8.5  IC10.9  C101.1  IC12.9  C121.1  IC11.3  IC11.4  R111.1  C111.1  IC13.4  R131.1  C131.1  IC26.8  R101.1  R125.1  C261.1  M1.P1.21  J5.4  R51.2  R52.2  R53.2  R54.2  R55.2  C51.1  C52.1  J6.2  R64.1  R65.1
+A5               IC1.6  C12.1  IC4.5  R44.1  SJ1.1  IC8.6
+B5               IC2.6  C22.1  SJ1.3  IC7.1  C72.1  Q70B.2  R702.1
+B_HOST           IC7.6  C71.1  IC8.3
+C2_DM            J2.2  IC10.2  D101.1
+C2_DP            J2.3  IC10.1  D101.2
+DV1              IC1.7  C11.1
+DV2              IC2.7  C21.1
+DV4              IC4.7  C41.1
+DV6              IC6.7  R67.1
+DV6_C            C61.1  R67.2
+EN1              IC1.1  R14.2  R15.1
+EN2              IC2.1  R24.2  R25.1
+EN4              IC4.1  R44.2  R45.1
+EN6              IC6.1  R603.2  R604.1
+EN7              IC7.3  R703.2  R704.1
+EN_SRC_60        Q60B.3  R603.1
+EN_SRC_70        Q70B.3  R703.1
+GND              J1.4  C10.2  D10.2  IC1.8  IC1.4  R11.2  C11.2  R13.2  R15.2  C12.2  IC4.2  IC4.8  IC4.4  R41.2  C41.2  R45.2  J3.4  J3.S  C42.2  R46.2  IC2.8  IC2.4  R21.2  C21.2  R23.2  R25.2  C22.2  C20.2  C31.2  IC6.2  IC6.8  IC6.4  R61.2  C61.2  J4.4  J4.S  C62.2  R66.2  C63.2  Q60A.2  R601.2  R604.2  IC7.2  R75.2  C71.2  C72.2  Q70A.2  R701.2  R704.2  IC8.1  C81.2  J2.4  J2.S  IC10.10  IC10.3  C101.2  D101.3  IC12.10  IC12.3  D121.3  R123.2  R124.2  C121.2  IC11.2  R113.2  C111.2  C112.2  IC13.2  R133.2  C131.2  C132.2  IC26.4  C261.2  M1.P1.22  M1.P3.5  J5.6  J5.S  C51.2  C52.2  J6.1  J7.1  J8.1
+HOST_PRE         IC6.5  Q60B.2  R602.1  IC8.2,7  C81.1
+HP_DM            IC12.4  R122.2
+HP_DP            IC12.5  R121.2
+HUSB_OE_N        IC12.8  IC26.3  R125.2  M1.P2.4
+H_DM             J4.2  IC12.2  D121.1  R124.1
+H_DP             J4.3  IC12.1  D121.2  R123.1
+H_VBUS_GOOD      IC13.6  R131.2  IC26.5
+IL1              IC1.9  R11.1
+IL2              IC2.9  R21.1
+IL4              IC4.9  R41.1
+IL6              IC6.9  R61.1
+IL7              IC7.5  R75.1
+NUSB_OE_N        IC10.8  IC26.7  R101.2  M1.P2.2
+N_DM             IC10.4  M1.T-C.A7,B7
+N_DP             IC10.5  M1.T-C.A6,B6
+N_VBUS_GOOD      IC11.6  R111.2  IC26.1  IC26.2
+OLED_SCL         M1.P1.6  J6.3  R65.2
+OLED_SDA         M1.P1.5  J6.4  R64.2
+OV1              IC1.2  R12.2  R13.1
+OV2              IC2.2  R22.2  R23.1
+PG_60            Q60A.3  Q60B.1  R602.2
+PG_70            Q70A.3  Q70B.1  R702.2
+PIO_DM           R122.1  M1.P1.16
+PIO_DP           R121.1  M1.P1.15
+RGB_A            M1.P2.1  R81.1
+RGB_DATA         J8.2  R81.2
+SD_CLK           J5.5  R56.2
+SD_CLK_A         M1.P1.11  R56.1
+SD_CS            M1.P1.14  J5.2  R53.1
+SD_DAT1          J5.8  R52.1
+SD_DAT2          J5.1  R51.1
+SD_MISO          M1.P1.13  J5.7  R55.1
+SD_MOSI          M1.P1.12  J5.3  R54.1
+SYS5             SJ1.2  C31.1  M1.P1.23  M1.T-C.VBUS
+U1_RAW           J1.1  C10.1  D10.1  IC1.5  R12.1  R14.1
+U2_DWELL         IC11.5  C112.1
+U2_RAW           IC2.5  R22.1  R24.1  C20.1  J2.1  R112.1
+U2_SNS           IC11.1  R112.2  R113.1
+U3_VBUS          IC4.6  J3.1  C42.1  R46.1
+U4_B_FAULT_N     IC7.4  R76.2  M1.P2.5
+U4_B_GRANT       Q70A.1  R701.1  IC8.4  M1.P1.9
+U4_DWELL         IC13.5  C132.1
+U4_PORT_EN       Q60A.1  R601.1  IC13.3  IC26.6  M1.P1.10
+U4_SNS           IC13.1  R132.2  R133.1
+U4_VBUS          IC6.6  J4.1  C62.1  R66.1  C63.1  R132.1
+UART_RX          J7.3  R72.1
+UART_RX_A        M1.P1.2  R72.2
+UART_TX          J7.2  R71.2
+UART_TX_A        M1.P1.1  R71.1
