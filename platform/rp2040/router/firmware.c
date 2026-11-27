@@ -2923,16 +2923,24 @@ static bool start_host(void)
 }
 
 #ifdef GRIDPICO_RP2040_ONBOARD_STATUS
+enum { ONBOARD_SAMPLE_US = 10000 };
+
 /* Keep the LED sample off the router's foreground dispatch stack frame. */
-static void __attribute__((noinline)) service_onboard_status(void)
+static void __attribute__((noinline)) service_onboard_status(bool host_ready, bool startup_ready,
+                                                            uint64_t host_start_at)
 {
     static uint64_t next_sample;
     const uint64_t now = time_us_64();
     if (now < next_sample) return;
-    next_sample = now + 10000;
+    next_sample = now + ONBOARD_SAMPLE_US;
+    if (!host_ready) {
+        /* Skip the last sample window before the existing clock transition. */
+        if (host_start_at > next_sample) gridpico_onboard_show(GRIDPICO_ONBOARD_STARTING);
+        return;
+    }
 
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
-    gridpico_onboard_facts facts = {.started = true};
+    gridpico_onboard_facts facts = {.started = startup_ready};
     for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
         if (!observed_interface(index)) continue;
         facts.fault |= interfaces[index].faulted;
@@ -2940,7 +2948,7 @@ static void __attribute__((noinline)) service_onboard_status(void)
     }
 #else
     gridpico_onboard_facts facts = {
-        .started = true,
+        .started = startup_ready,
         .midi = (apc_interface != NO_INTERFACE && tuh_midi_mounted(apc_interface)) ||
                 (synth_interface != NO_INTERFACE && tuh_midi_mounted(synth_interface)),
         .recovery = apc_ambiguous || synth_ambiguous,
@@ -3056,7 +3064,7 @@ int main(void)
         }
 #endif
 #ifdef GRIDPICO_RP2040_ONBOARD_STATUS
-        if (startup_ready) service_onboard_status();
+        service_onboard_status(host_ready, startup_ready, native_first_until);
 #endif
         watchdog_update();
     }

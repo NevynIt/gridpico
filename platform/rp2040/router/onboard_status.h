@@ -44,21 +44,29 @@ static inline uint32_t gridpico_onboard_grb(gridpico_onboard_status status)
 }
 
 typedef struct {
-    bool offered;
-    uint32_t word;
-} gridpico_onboard_pixel;
+    bool sampled;
+    gridpico_onboard_status status;
+    uint64_t entered_us;
+} gridpico_onboard_cadence;
 
-typedef bool (*gridpico_onboard_offer_fn)(uint32_t word);
-
-/* Call with the latest status. A refused offer leaves no work queued. */
-static inline bool gridpico_onboard_present(gridpico_onboard_pixel *pixel, gridpico_onboard_status status,
-                                           gridpico_onboard_offer_fn offer)
+/* Sample only the current phase. A refused write never restarts the cadence. */
+static inline uint32_t gridpico_onboard_word(gridpico_onboard_cadence *cadence,
+                                            gridpico_onboard_status status, uint64_t now_us)
 {
-    const uint32_t word = gridpico_onboard_grb(status);
-    if (pixel->offered && pixel->word == word) return true;
-    if (!offer(word)) return false;
-    *pixel = (gridpico_onboard_pixel){.offered = true, .word = word};
-    return true;
+    if (!cadence->sampled || cadence->status != status) {
+        *cadence = (gridpico_onboard_cadence){.sampled = true, .status = status, .entered_us = now_us};
+    }
+
+    const uint64_t elapsed = now_us - cadence->entered_us;
+    if (status == GRIDPICO_ONBOARD_STARTING) {
+        if (elapsed % 1000000u >= 500000u) return 0;
+    } else if (status == GRIDPICO_ONBOARD_READY_EMPTY || status == GRIDPICO_ONBOARD_READY_HUB) {
+        const uint64_t phase = elapsed % 2000000u;
+        if (phase >= 180000u && !(status == GRIDPICO_ONBOARD_READY_HUB && phase >= 360000u && phase < 540000u)) {
+            return 0;
+        }
+    }
+    return gridpico_onboard_grb(status);
 }
 
 void gridpico_onboard_init(void);

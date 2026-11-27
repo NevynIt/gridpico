@@ -3,19 +3,6 @@
 #include <assert.h>
 #include <stdio.h>
 
-static bool available;
-static unsigned attempts, received;
-static uint32_t last_word;
-
-static bool try_pixel(uint32_t word)
-{
-    ++attempts;
-    if (!available) return false;
-    ++received;
-    last_word = word;
-    return true;
-}
-
 int main(void)
 {
     gridpico_onboard_facts facts = {0};
@@ -47,25 +34,40 @@ int main(void)
     assert(gridpico_onboard_grb(GRIDPICO_ONBOARD_FAULT) == 0x00280000);
     assert(gridpico_onboard_grb(GRIDPICO_ONBOARD_BOOTSEL) == 0x00202000);
 
-    gridpico_onboard_pixel pixel = {0};
-    assert(!gridpico_onboard_present(&pixel, GRIDPICO_ONBOARD_STARTING, try_pixel));
-    assert(!pixel.offered && received == 0);
-    available = true;
-    assert(gridpico_onboard_present(&pixel, GRIDPICO_ONBOARD_STARTING, try_pixel));
-    assert(received == 1 && last_word == 0x10101000);
-    assert(gridpico_onboard_present(&pixel, GRIDPICO_ONBOARD_STARTING, try_pixel));
-    assert(attempts == 2 && received == 1);
+    gridpico_onboard_cadence cadence = {0};
+    const uint64_t start = UINT64_C(6000000042);
+    const uint32_t white = 0x10101000, blue = 0x04002000;
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_STARTING, start) == white);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_STARTING, start + 499999) == white);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_STARTING, start + 500000) == 0);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_STARTING, start + 999999) == 0);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_STARTING, start + 1000000) == white);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_STARTING, start + 7500000) == 0);
 
-    available = false;
-    assert(!gridpico_onboard_present(&pixel, GRIDPICO_ONBOARD_RECOVERY, try_pixel));
-    assert(pixel.word == 0x10101000);
-    available = true;
-    assert(gridpico_onboard_present(&pixel, GRIDPICO_ONBOARD_READY_HUB, try_pixel));
-    assert(received == 2 && last_word == 0x04002000);
-    assert(gridpico_onboard_present(&pixel, GRIDPICO_ONBOARD_READY_EMPTY, try_pixel));
-    assert(attempts == 4 && received == 2);
+    const uint64_t empty = start + 8000000;
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_EMPTY, empty) == blue);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_EMPTY, empty + 179999) == blue);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_EMPTY, empty + 180000) == 0);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_EMPTY, empty + 360000) == 0);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_EMPTY, empty + 1999999) == 0);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_EMPTY, empty + 2000000) == blue);
 
-    assert(gridpico_onboard_present(&pixel, GRIDPICO_ONBOARD_BOOTSEL, try_pixel));
-    assert(received == 3 && last_word == 0x00202000);
-    puts("PASS status precedence, exact logical palette/GRB, shared blue, no stale or duplicate offer");
+    const uint64_t hub = empty + 2250000;
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_HUB, hub) == blue);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_HUB, hub + 179999) == blue);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_HUB, hub + 180000) == 0);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_HUB, hub + 359999) == 0);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_HUB, hub + 360000) == blue);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_HUB, hub + 539999) == blue);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_HUB, hub + 540000) == 0);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_HUB, hub + 2000000) == blue);
+
+    const uint64_t green = hub + 2600000;
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_MIDI, green) == 0x20000000);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_MIDI, green + 5000000) == 0x20000000);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_READY_HUB, green + 5000001) == blue);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_RECOVERY, green + 5200000) == 0x10200000);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_FAULT, green + 5300000) == 0x00280000);
+    assert(gridpico_onboard_word(&cadence, GRIDPICO_ONBOARD_BOOTSEL, green + 5400000) == 0x00202000);
+    puts("PASS status precedence, exact GRB and monotonic cadence edges, entry reset and sparse sampling");
 }

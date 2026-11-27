@@ -14,26 +14,9 @@ _Static_assert(PIXEL_PIN == PICO_DEFAULT_WS2812_PIN, "The RP2040-Zero onboard pi
 static int pixel_sm = -1;
 static uint32_t pixel_clock;
 static uint64_t next_offer_us;
-static gridpico_onboard_pixel pixel;
-
-static bool offer_word(uint32_t word)
-{
-    if (pixel_sm < 0) return false;
-    const uint sm = (uint)pixel_sm;
-    const uint64_t now = time_us_64();
-    /* FIFO empty alone does not account for the word currently shifting. */
-    if (now < next_offer_us || !pio_sm_is_tx_fifo_empty(pio1, sm)) return false;
-    const uint32_t hz = clock_get_hz(clk_sys);
-    if (hz != pixel_clock) {
-        const uint32_t bit_clock = PIXEL_BITS_PER_SEC * (ws2812_T1 + ws2812_T2 + ws2812_T3);
-        pio_sm_set_clkdiv_int_frac8(pio1, sm, hz / bit_clock, (uint8_t)((hz % bit_clock) * 256u / bit_clock));
-        pio_sm_clkdiv_restart(pio1, sm);
-        pixel_clock = hz;
-    }
-    pio_sm_put(pio1, sm, word);
-    next_offer_us = now + PIXEL_FRAME_AND_RESET_US;
-    return true;
-}
+static bool word_sent;
+static uint32_t pixel_word;
+static gridpico_onboard_cadence cadence;
 
 void gridpico_onboard_init(void)
 {
@@ -51,5 +34,22 @@ void gridpico_onboard_init(void)
 
 void gridpico_onboard_show(gridpico_onboard_status status)
 {
-    gridpico_onboard_present(&pixel, status, offer_word);
+    if (pixel_sm < 0) return;
+    const uint sm = (uint)pixel_sm;
+    const uint64_t now = time_us_64();
+    const uint32_t word = gridpico_onboard_word(&cadence, status, now);
+    const uint32_t hz = clock_get_hz(clk_sys);
+    if (word_sent && pixel_word == word && hz == pixel_clock) return;
+    /* FIFO empty alone does not account for the word currently shifting. */
+    if (now < next_offer_us || !pio_sm_is_tx_fifo_empty(pio1, sm)) return;
+    if (hz != pixel_clock) {
+        const uint32_t bit_clock = PIXEL_BITS_PER_SEC * (ws2812_T1 + ws2812_T2 + ws2812_T3);
+        pio_sm_set_clkdiv_int_frac8(pio1, sm, hz / bit_clock, (uint8_t)((hz % bit_clock) * 256u / bit_clock));
+        pio_sm_clkdiv_restart(pio1, sm);
+        pixel_clock = hz;
+    }
+    pio_sm_put(pio1, sm, word);
+    next_offer_us = now + PIXEL_FRAME_AND_RESET_US;
+    pixel_word = word;
+    word_sent = true;
 }
