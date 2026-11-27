@@ -29,7 +29,7 @@ This is the target design for hardware work and a later architecture review. The
 
 ### A. Pico router
 
-- **USB Device.** Expose one CDC serial port for CLI, two bidirectional MIDI cables with both available to routing, and one mass-storage device for configuration, logs, recordings and a copy of the Web UI. Routing includes APC Keys panel and LED messages in both directions so Ableton and other APC-aware applications can talk to a physical APC through the Pico.
+- **USB Device.** Expose one CDC serial port for CLI, two bidirectional MIDI cables and one mass-storage device for configuration, logs, recordings and a copy of the Web UI. Cable 1 carries general MIDI. Switch Cable 2 between general MIDI and APC/Ableton using the CLI or APC UI. In APC/Ableton mode, it carries APC Keys panel and LED messages in both directions so APC-aware applications can talk to a physical APC through the Pico. Designer will propose the controls and feedback.
 - **USB Host.** The PIO USB host discovers USB MIDI devices and other Gridpicos, directly or through a hub. An exposed 3.3 V UART with TX, RX and ground can later carry a bidirectional link to another Gridpico.
 - **Local peripherals.** Use hardware SPI for microSD, I²C for a 64 × 128 monochrome OLED, and an addressable RGB data output. The onboard RP2040-Zero pixel is the initial RGB device. The same protocol can drive an external strip.
 - **SD operation.** Use human-editable scenes usable without an APC, with CLI, MIDI or optional GPIO selection. Provide a read-only UI view and an explicit PC edit handoff for the SD data volume. Pico unmounts before giving the PC write access, and retakes ownership after clean eject, sync and validation. Pico may pause routing and stops card writes during PC ownership. Keep the append-only boot/event log (firmware version, boot-relative time, attachment and other events) separate from optional detailed per-port MIDI ingress and egress capture. If SD is selected as the sole settings store, a no-card boot discovers compatible MIDI devices and uses eligible default routes. Existing flash persistence and migration stay open for review.
@@ -52,9 +52,9 @@ Draw the actual pinout and schematic against the RP2040-Zero module. Evaluate th
 ### B. PC router
 
 - Run on x86 or ARM Linux and Windows. Connect to A using USB MIDI and CDC. Bring the Pico's two bidirectional cables into the PC router as two inputs and two outputs and route between the nodes.
-- Serve MIDI and serial WebSockets for other PC routers and browser tools. For an attached Pico, expose additional WebSocket targets that proxy its MIDI and CLI through USB. The PC instance and direct Pico target can be used in parallel, including Web APC access to a physical remote Pico.
-- Allow multiple concurrent MIDI and CLI connections up to actual resource capacity. MIDI connections become routable endpoints on B or use the selected direct Pico USB path. Define how concurrent clients share physical MIDI and CDC streams during architecture review. Users choose their routes, including loops. The router must stay responsive enough to stop a mistaken loop.
-- Offer RTP-MIDI if feasible as a lower priority. Confirm whether this is the transport meant by “RDP-MIDI” in the board and connectivity sketch.
+- Serve MIDI and serial WebSockets for other PC routers and browser tools. For an attached Pico, expose additional WebSocket targets that proxy its MIDI and CLI through USB. The PC instance and direct target for the first, PC-attached Pico can be used in parallel, including Web APC access to its physical APC. Chained second and third Picos can carry routed MIDI. Direct PC control of those units is deferred.
+- Allow multiple concurrent MIDI and CLI connections up to actual resource capacity. MIDI connections become routable endpoints on B or use the selected direct Pico USB path. Browser endpoints can keep their names on B and appear under a shared USB cable name on the Pico. Define how concurrent clients share physical MIDI and CDC streams during architecture review. Users choose their routes, including loops. The router must stay responsive enough to stop a mistaken loop.
+- Offer RTP-MIDI if feasible as a lower priority.
 
 ### C. Web UI
 
