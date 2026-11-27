@@ -1,0 +1,201 @@
+sheet,reference,value,pin,function,net
+1,C10,"1uF, 16V",1,,U1_RAW
+1,C10,"1uF, 16V",2,,GND
+1,C11,"3.3nF, 5%",1,,DV1
+1,C11,"3.3nF, 5%",2,,GND
+1,C12,"4.7uF, 10V",1,,A5
+1,C12,"4.7uF, 10V",2,,GND
+1,C20,"1uF, 16V",1,,U2_RAW
+1,C20,"1uF, 16V",2,,GND
+1,C21,"2.2nF, 5%",1,,DV2
+1,C21,"2.2nF, 5%",2,,GND
+1,C22,"2.2uF, 16V",1,,B5
+1,C22,"2.2uF, 16V",2,,GND
+1,C41,"3.3nF, 5%",1,,DV4
+1,C41,"3.3nF, 5%",2,,GND
+1,C42,"10uF, 16V",1,,U3_VBUS
+1,C42,"10uF, 16V",2,,GND
+1,D10,"SMF6.0A, exact vendor open",1,K Cathode / band,U1_RAW
+1,D10,"SMF6.0A, exact vendor open",2,A Anode,GND
+1,IC1,TPS259474LRPWR,1,EN/UVLO,UV1
+1,IC1,TPS259474LRPWR,10,ITIMER,NC
+1,IC1,TPS259474LRPWR,2,OVLO,OV1
+1,IC1,TPS259474LRPWR,3,PG,NC
+1,IC1,TPS259474LRPWR,4,PGTH,GND
+1,IC1,TPS259474LRPWR,5,IN,U1_RAW
+1,IC1,TPS259474LRPWR,6,OUT,A5
+1,IC1,TPS259474LRPWR,7,DVDT,DV1
+1,IC1,TPS259474LRPWR,8,GND,GND
+1,IC1,TPS259474LRPWR,9,ILM,IL1
+1,IC2,TPS259474LRPWR,1,EN/UVLO,UV2
+1,IC2,TPS259474LRPWR,10,ITIMER,NC
+1,IC2,TPS259474LRPWR,2,OVLO,OV2
+1,IC2,TPS259474LRPWR,3,PG,NC
+1,IC2,TPS259474LRPWR,4,PGTH,GND
+1,IC2,TPS259474LRPWR,5,IN,U2_RAW
+1,IC2,TPS259474LRPWR,6,OUT,B5
+1,IC2,TPS259474LRPWR,7,DVDT,DV2
+1,IC2,TPS259474LRPWR,8,GND,GND
+1,IC2,TPS259474LRPWR,9,ILM,IL2
+1,IC4,TPS259474LRPWR,1,EN/UVLO,UV4
+1,IC4,TPS259474LRPWR,10,ITIMER,NC
+1,IC4,TPS259474LRPWR,2,OVLO,GND
+1,IC4,TPS259474LRPWR,3,PG,NC
+1,IC4,TPS259474LRPWR,4,PGTH,GND
+1,IC4,TPS259474LRPWR,5,IN,A5
+1,IC4,TPS259474LRPWR,6,OUT,U3_VBUS
+1,IC4,TPS259474LRPWR,7,DVDT,DV4
+1,IC4,TPS259474LRPWR,8,GND,GND
+1,IC4,TPS259474LRPWR,9,ILM,IL4
+1,J1,Dedicated 4-signal U1 power interface,1,5 V input,U1_RAW
+1,J1,Dedicated 4-signal U1 power interface,2,D- unused,NC
+1,J1,Dedicated 4-signal U1 power interface,3,D+ unused,NC
+1,J1,Dedicated 4-signal U1 power interface,4,GND,GND
+1,J3,USB-A receptacle,1,VBUS,U3_VBUS
+1,J3,USB-A receptacle,2,D-,NC
+1,J3,USB-A receptacle,3,D+,NC
+1,J3,USB-A receptacle,4,GND,GND
+1,J3,USB-A receptacle,S,Shell,GND
+1,R11,"2.67k, 1%",1,,IL1
+1,R11,"2.67k, 1%",2,,GND
+1,R12,"32.4k, 0.1%",1,,U1_RAW
+1,R12,"32.4k, 0.1%",2,,UV1
+1,R13,"2.87k, 0.1%",1,,UV1
+1,R13,"2.87k, 0.1%",2,,OV1
+1,R16,"10.0k, 0.1%",1,,OV1
+1,R16,"10.0k, 0.1%",2,,GND
+1,R21,"6.57k, 0.1%",1,,IL2
+1,R21,"6.57k, 0.1%",2,,GND
+1,R22,"34.0k, 0.1%",1,,U2_RAW
+1,R22,"34.0k, 0.1%",2,,UV2
+1,R23,"3.57k, 0.1%",1,,UV2
+1,R23,"3.57k, 0.1%",2,,OV2
+1,R26,"10.0k, 0.1%",1,,OV2
+1,R26,"10.0k, 0.1%",2,,GND
+1,R41,"6.57k, 0.1%",1,,IL4
+1,R41,"6.57k, 0.1%",2,,GND
+1,R44,"24.9k, 1%",1,,A5
+1,R44,"24.9k, 1%",2,,UV4
+1,R45,"10.0k, 1%",1,,UV4
+1,R45,"10.0k, 1%",2,,GND
+1,R46,4.7k,1,,U3_VBUS
+1,R46,4.7k,2,,GND
+2,C31,"4.7uF, 10V",1,,SYS5
+2,C31,"4.7uF, 10V",2,,GND
+2,C61,"39nF, 5%, C0G",1,,DV6_C
+2,C61,"39nF, 5%, C0G",2,,GND
+2,C62,270uF polymer candidate,1,,U4_VBUS
+2,C62,270uF polymer candidate,2,,GND
+2,C63,"1uF, 16V",1,,U4_VBUS
+2,C63,"1uF, 16V",2,,GND
+2,IC6,TPS259474LRPWR,1,EN/UVLO,UV6
+2,IC6,TPS259474LRPWR,10,ITIMER,NC
+2,IC6,TPS259474LRPWR,2,OVLO,GND
+2,IC6,TPS259474LRPWR,3,PG,NC
+2,IC6,TPS259474LRPWR,4,PGTH,GND
+2,IC6,TPS259474LRPWR,5,IN,A5
+2,IC6,TPS259474LRPWR,6,OUT,U4_VBUS
+2,IC6,TPS259474LRPWR,7,DVDT,DV6
+2,IC6,TPS259474LRPWR,8,GND,GND
+2,IC6,TPS259474LRPWR,9,ILM,IL6
+2,IC9,TPS2116DRLR,1,GND,GND
+2,IC9,TPS2116DRLR,"2,7",VOUT,SYS5
+2,IC9,TPS2116DRLR,3,VIN1 priority,B5
+2,IC9,TPS2116DRLR,4,PR1,PRI_IC9
+2,IC9,TPS2116DRLR,5,MODE,B5
+2,IC9,TPS2116DRLR,6,VIN2 fallback,A5
+2,IC9,TPS2116DRLR,8,ST,NC
+2,R61,"5.36k, 1%",1,,IL6
+2,R61,"5.36k, 1%",2,,GND
+2,R66,"4.70k, 1%",1,,U4_VBUS
+2,R66,"4.70k, 1%",2,,GND
+2,R67,"100R, 1%",1,,DV6
+2,R67,"100R, 1%",2,,DV6_C
+2,R68,"24.9k, 1%",1,,A5
+2,R68,"24.9k, 1%",2,,UV6
+2,R69,"10.0k, 1%",1,,UV6
+2,R69,"10.0k, 1%",2,,GND
+2,R901,"31.6k, 0.1%",1,,B5
+2,R901,"31.6k, 0.1%",2,,PRI_IC9
+2,R902,"10.0k, 0.1%",1,,PRI_IC9
+2,R902,"10.0k, 0.1%",2,,GND
+3,J2,Upstream 4-signal device interface,1,VBUS input,U2_RAW
+3,J2,Upstream 4-signal device interface,2,D-,N_DM
+3,J2,Upstream 4-signal device interface,3,D+,N_DP
+3,J2,Upstream 4-signal device interface,4,GND,GND
+3,J2,Upstream 4-signal device interface,S,Shell,GND
+3,J4,USB-A receptacle,1,VBUS,U4_VBUS
+3,J4,USB-A receptacle,2,D-,H_DM
+3,J4,USB-A receptacle,3,D+,H_DP
+3,J4,USB-A receptacle,4,GND,GND
+3,J4,USB-A receptacle,S,Shell,GND
+3,R121,22R,1,,PIO_DP
+3,R121,22R,2,,H_DP
+3,R122,22R,1,,PIO_DM
+3,R122,22R,2,,H_DM
+3,R123,"15k, 1%",1,,H_DP
+3,R123,"15k, 1%",2,,GND
+3,R124,"15k, 1%",1,,H_DM
+3,R124,"15k, 1%",2,,GND
+4,J5,"3.3 V SPI microSD breakout, exact fit open",2,Card CS,SD_CS
+4,J5,"3.3 V SPI microSD breakout, exact fit open",3,Card CMD / DI,SD_MOSI
+4,J5,"3.3 V SPI microSD breakout, exact fit open",4,VDD,3V3_AON
+4,J5,"3.3 V SPI microSD breakout, exact fit open",5,Card CLK,SD_CLK
+4,J5,"3.3 V SPI microSD breakout, exact fit open",6,GND,GND
+4,J5,"3.3 V SPI microSD breakout, exact fit open",7,Card DAT0 / DO,SD_MISO
+4,J6,3.3 V I2C OLED,1,GND,GND
+4,J6,3.3 V I2C OLED,2,3V3,3V3_AON
+4,J6,3.3 V I2C OLED,3,SCL,OLED_SCL
+4,J6,3.3 V I2C OLED,4,SDA,OLED_SDA
+4,J7,3.3 V UART header,1,GND,GND
+4,J7,3.3 V UART header,2,TX,UART_TX
+4,J7,3.3 V UART header,3,RX,UART_RX
+4,J8,5 V RGB load-only header,1,GND,GND
+4,J8,5 V RGB load-only header,2,3.3 V DATA OUT,RGB_DATA
+4,J8,5 V RGB load-only header,3,U1-only 5 V OUT,A5
+4,M1,"Waveshare RP2040-Zero, exact revision pending",INT,GP16 onboard pixel,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.1,GP0 UART0 TX,UART_TX_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.10,GP9,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.11,GP10 SPI1 SCK,SD_CLK_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.12,GP11 SPI1 TX,SD_MOSI
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.13,GP12 SPI1 RX,SD_MISO
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.14,GP13 SPI1 CS,SD_CS
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.15,GP14 PIO D+,PIO_DP
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.16,GP15 PIO D-,PIO_DM
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.17,GP26,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.18,GP27,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.19,GP28,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.2,GP1 UART0 RX,UART_RX_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.20,GP29,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.21,3V3 output,3V3_AON
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.22,GND,GND
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.23,5 V VSYS,SYS5
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.3,GP2,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.4,GP3,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.5,GP4 I2C0 SDA,OLED_SDA
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.6,GP5 I2C0 SCL,OLED_SCL
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.7,GP6,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.8,GP7,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.9,GP8,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.1,GP17 external RGB,RGB_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.2,GP18,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.3,GP19,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.4,GP20,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.5,GP21,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.1,GP22,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.2,GP23,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.3,GP24,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.4,GP25,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.5,GND,GND
+4,M1,"Waveshare RP2040-Zero, exact revision pending","T-C.A6,B6",Former D+ lands,N_DP
+4,M1,"Waveshare RP2040-Zero, exact revision pending","T-C.A7,B7",Former D- lands,N_DM
+4,M1,"Waveshare RP2040-Zero, exact revision pending","T-C.CC1,CC2",No external connection,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",T-C.VBUS,Insulated former VBUS lands,SYS5
+4,R56,22R,1,,SD_CLK_A
+4,R56,22R,2,,SD_CLK
+4,R71,100R,1,,UART_TX_A
+4,R71,100R,2,,UART_TX
+4,R72,100R,1,,UART_RX
+4,R72,100R,2,,UART_RX_A
+4,R81,100R,1,,RGB_A
+4,R81,100R,2,,RGB_DATA

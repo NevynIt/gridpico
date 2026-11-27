@@ -1,0 +1,12 @@
+IC9 B5 select screen at steady state: 3.818 to 4.503 V.
+PR1 divider nominal draw at B5 = 5.00 V: 120.2 µA.
+At 4.75 V U2 example: 4.75 V - 125 mA × (45 + 60) mΩ = 4.737 V at SYS5 before cable/board loss or transients.
+Prior 125 mA local use screen is 25 mA above the installed 100 mA declaration, before upstream overhead.
+Illustrative LDO heating at 5.0 V to 3.3 V and 125 mA: 212.5 mW before quiescent loss.
+Nominal static A5 bleed through the U3/U4 enable dividers is 17.45 kΩ total.
+IC1 nominal breaker threshold: 1.249 A.
+IC2 nominal breaker threshold: 0.507 A.
+IC4 nominal breaker threshold: 0.507 A.
+IC6 nominal breaker threshold: 0.622 A.
+Example U1-only load: 300 mA U3 + 500 mA U4 + 125 mA local = 925 mA before RGB and inrush.
+Nominal IC1 difference from this example: 324 mA before RGB and inrush, not an admitted ceiling.

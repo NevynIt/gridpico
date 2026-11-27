@@ -1,0 +1,6 @@
+PASS U1 off, U2 off  SYS5=off  outlet power=off
+PASS U1 off, U2 on  SYS5=U2  outlet power=off
+PASS U1 on, U2 off  SYS5=U1  outlet power=U1
+PASS U1 on, U2 on  SYS5=U2  outlet power=U1
+PASS deliberate B5-to-A5 feed rejected
+Static nominal reachability under ideal switch states only. Read POWER-REVIEW.md for leakage, ramps and faults.

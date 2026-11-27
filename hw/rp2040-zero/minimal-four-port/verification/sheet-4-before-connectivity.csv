@@ -1,0 +1,63 @@
+sheet,reference,value,pin,function,net
+4,J5,"3.3 V SPI microSD breakout, exact fit open",2,Card CS,SD_CS
+4,J5,"3.3 V SPI microSD breakout, exact fit open",3,Card CMD / DI,SD_MOSI
+4,J5,"3.3 V SPI microSD breakout, exact fit open",4,VDD,3V3_AON
+4,J5,"3.3 V SPI microSD breakout, exact fit open",5,Card CLK,SD_CLK
+4,J5,"3.3 V SPI microSD breakout, exact fit open",6,GND,GND
+4,J5,"3.3 V SPI microSD breakout, exact fit open",7,Card DAT0 / DO,SD_MISO
+4,J6,3.3 V I2C OLED,1,GND,GND
+4,J6,3.3 V I2C OLED,2,3V3,3V3_AON
+4,J6,3.3 V I2C OLED,3,SCL,OLED_SCL
+4,J6,3.3 V I2C OLED,4,SDA,OLED_SDA
+4,J7,3.3 V UART header,1,GND,GND
+4,J7,3.3 V UART header,2,TX,UART_TX
+4,J7,3.3 V UART header,3,RX,UART_RX
+4,J8,5 V RGB load-only header,1,GND,GND
+4,J8,5 V RGB load-only header,2,3.3 V DATA OUT,RGB_DATA
+4,J8,5 V RGB load-only header,3,U1-only 5 V OUT,A5
+4,M1,"Waveshare RP2040-Zero, exact revision pending",INT,GP16 onboard pixel,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.1,GP0 UART0 TX,UART_TX_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.10,GP9,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.11,GP10 SPI1 SCK,SD_CLK_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.12,GP11 SPI1 TX,SD_MOSI
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.13,GP12 SPI1 RX,SD_MISO
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.14,GP13 SPI1 CS,SD_CS
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.15,GP14 PIO D+,PIO_DP
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.16,GP15 PIO D-,PIO_DM
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.17,GP26,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.18,GP27,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.19,GP28,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.2,GP1 UART0 RX,UART_RX_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.20,GP29,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.21,3V3 output,3V3_AON
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.22,GND,GND
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.23,5 V VSYS,SYS5
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.3,GP2,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.4,GP3,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.5,GP4 I2C0 SDA,OLED_SDA
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.6,GP5 I2C0 SCL,OLED_SCL
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.7,GP6,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.8,GP7,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P1.9,GP8,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.1,GP17 external RGB,RGB_A
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.2,GP18,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.3,GP19,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.4,GP20,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P2.5,GP21,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.1,GP22,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.2,GP23,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.3,GP24,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.4,GP25,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",P3.5,GND,GND
+4,M1,"Waveshare RP2040-Zero, exact revision pending","T-C.A6,B6",Former D+ lands,N_DP
+4,M1,"Waveshare RP2040-Zero, exact revision pending","T-C.A7,B7",Former D- lands,N_DM
+4,M1,"Waveshare RP2040-Zero, exact revision pending","T-C.CC1,CC2",No external connection,NC
+4,M1,"Waveshare RP2040-Zero, exact revision pending",T-C.VBUS,Insulated former VBUS lands,SYS5
+4,R56,22R,1,,SD_CLK_A
+4,R56,22R,2,,SD_CLK
+4,R71,100R,1,,UART_TX_A
+4,R71,100R,2,,UART_TX
+4,R72,100R,1,,UART_RX
+4,R72,100R,2,,UART_RX_A
+4,R81,100R,1,,RGB_A
+4,R81,100R,2,,RGB_DATA

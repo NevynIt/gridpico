@@ -1,0 +1,7 @@
+PASS exact sheet 3 connectivity comparison
+6 component references; 18 source pin groups; 9 named nets; 0 intentional no-connects
+18 orthogonal wire segments; 2 marked junctions
+Unlabeled local nets traced by continuous wires: H_DM, H_DP
+Matching normalized ledger SHA-256: 13bceccff7497173f5516357782731ddf86e793ab7c1147d68a6b5f403dce535
+Verified terminal/net membership and drawing geometry only. No electrical qualification or native EDA ERC.
+PASS deleted local wire was rejected at J4.3

@@ -1,0 +1,6 @@
+Manufacturer PDF audit. Exact listed code or module model found in each PDF.
+Texas Instruments | TPS259474LRPWR | HTTP 200 | 75 pages | 8f96de389903091650d4f462dcfad3210071c3ae7093623a7978f34baf8a65b4 | https://www.ti.com/lit/ds/symlink/tps25947.pdf
+Texas Instruments | TPS2116DRLR | HTTP 200 | 25 pages | 5babd88afb84e2e65c9c0da23b75f85758c0c730e34102a0fb746ac9573ed1d5 | https://www.ti.com/lit/ds/symlink/tps2116.pdf
+Murata | GRM2195C2A393JE01 | HTTP 200 | 33 pages | 54e0b785d9e7ff0203db528b6d871ad0a4f51b4d1816c156663760bda06f0a7b | https://pim.murata.com/asset/pim4/ceramicCapacitorSMD/GRM2195C2A393JE01-01A-EN_PDF_CERAMICCAPACITORSMD
+Panasonic | 16SVPF270M | HTTP 200 | 6 pages | d9884e348623832afb8cbb12bbe979e4972fe4463f332ccbd3c0d173e2b03861 | https://industrial.panasonic.com/cdbs/www-data/pdf/AAB8000/AAB8000C177.pdf
+Waveshare | RP2040-Zero | HTTP 200 | 1 pages | bab8e6fecb8b1da565392a7510eaa8921529c4121f43a0505f708a06f1c1362e | https://files.waveshare.com/upload/4/4c/RP2040_Zero.pdf

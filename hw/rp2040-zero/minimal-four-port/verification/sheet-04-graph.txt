@@ -1,0 +1,7 @@
+PASS exact sheet 4 connectivity comparison
+9 component references; 62 source pin groups; 21 named nets; 20 intentional no-connects
+41 orthogonal wire segments; 0 marked junctions
+Unlabeled local nets traced by continuous wires: OLED_SCL, OLED_SDA, RGB_A, RGB_DATA, SD_CLK, SD_CLK_A, SD_CS, SD_MISO, SD_MOSI, UART_RX, UART_RX_A, UART_TX, UART_TX_A
+Matching normalized ledger SHA-256: e8bb0abdcf20c9614f83ea33ce681afed99a97e18424c75052682f65afdde7df
+Verified terminal/net membership and drawing geometry only. No electrical qualification or native EDA ERC.
+PASS deleted local wire was rejected at M1.P1.11

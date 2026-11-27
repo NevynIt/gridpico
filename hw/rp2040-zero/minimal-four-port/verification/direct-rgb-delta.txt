@@ -1,0 +1,4 @@
+PASS exact delta from buffered manifest a578fb3ef8688b500543c5875ff099d8c31de3015dae09e5f173bcd7e87c427d.
+PASS only IC16, C161 and R162 removed. Only R81.1 and J8.2 changed among retained terminals.
+PASS J8.1 GND, J8.2 direct GP17 through existing R81 100 ohms, J8.3 U1 A5.
+PASS 57 to 54 BOM references. Sheets 1–3 SVGs, rasters and graph ledgers and power/state checks byte-identical.

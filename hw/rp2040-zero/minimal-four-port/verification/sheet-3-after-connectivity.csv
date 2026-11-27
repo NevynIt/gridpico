@@ -1,0 +1,19 @@
+sheet,reference,value,pin,function,net
+3,J2,Upstream 4-signal device interface,1,VBUS input,U2_RAW
+3,J2,Upstream 4-signal device interface,2,D-,N_DM
+3,J2,Upstream 4-signal device interface,3,D+,N_DP
+3,J2,Upstream 4-signal device interface,4,GND,GND
+3,J2,Upstream 4-signal device interface,S,Shell,GND
+3,J4,USB-A receptacle,1,VBUS,U4_VBUS
+3,J4,USB-A receptacle,2,D-,H_DM
+3,J4,USB-A receptacle,3,D+,H_DP
+3,J4,USB-A receptacle,4,GND,GND
+3,J4,USB-A receptacle,S,Shell,GND
+3,R121,22R,1,,PIO_DP
+3,R121,22R,2,,H_DP
+3,R122,22R,1,,PIO_DM
+3,R122,22R,2,,H_DM
+3,R123,"15k, 1%",1,,H_DP
+3,R123,"15k, 1%",2,,GND
+3,R124,"15k, 1%",1,,H_DM
+3,R124,"15k, 1%",2,,GND

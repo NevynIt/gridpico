@@ -2,6 +2,8 @@
 
 - **Protected four-port (85 references)** · [Linked schematic PDF](protected/presentation/Gridpico-Four-Port-Simplified.pdf)
   · [Electrical source, BOM, pinout and powered-use holds](protected/INDEX.md)
+- **Minimal four-port (54 references)** · [Linked schematic PDF](minimal-four-port/Gridpico-Minimal-Four-Port.pdf)
+  · [U1-only outlets, direct RGB, electrical source and powered-use holds](minimal-four-port/INDEX.md)
 - **Earlier four-port minimum carrier (102 references)** · [Readable schematic PDF with datasheet links](minimal/readable/drawings/Gridpico-RP2040-Zero-Schematic.pdf)
   · [SVGs, drawing source and verification](minimal/readable/README.md)
   · [Electrical model, BOM and review holds](minimal/INDEX.md)

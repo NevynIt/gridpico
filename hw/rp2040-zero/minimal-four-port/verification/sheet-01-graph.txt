@@ -1,0 +1,7 @@
+PASS exact sheet 1 connectivity comparison
+26 component references; 81 source pin groups; 17 named nets; 10 intentional no-connects
+84 orthogonal wire segments; 18 marked junctions
+Unlabeled local nets traced by continuous wires: DV1, DV2, DV4, IL1, IL2, IL4, OV1, OV2, UV1, UV2, UV4
+Matching normalized ledger SHA-256: 42630a79aadee0e50a11071a94985b832d062725492745051f157879903f8d2e
+Verified terminal/net membership and drawing geometry only. No electrical qualification or native EDA ERC.
+PASS deleted local wire was rejected at IC1.9
