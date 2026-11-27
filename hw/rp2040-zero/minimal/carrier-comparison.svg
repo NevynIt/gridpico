@@ -1,0 +1,87 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1584" height="1020" viewBox="0 0 1584 1020" role="img">
+<rect x="0" y="0" width="1584" height="1020" stroke="#ffffff" stroke-width="1" fill="#ffffff"/>
+<rect x="0" y="0" width="1584" height="1020" stroke="#f3f6f8" stroke-width="1" fill="#f3f6f8"/>
+<rect x="0" y="0" width="1584" height="112" stroke="#132b3b" stroke-width="1" fill="#132b3b"/>
+<text x="42" y="57" fill="#ffffff" font-family="Arial,Helvetica,sans-serif" font-size="42" text-anchor="start" font-weight="700">RP2040-Zero carrier comparison</text>
+<text x="43" y="88" fill="#c7e0e8" font-family="Arial,Helvetica,sans-serif" font-size="18" text-anchor="start" font-weight="400">Historical draft, held dual-source Rev B and Jill's minimum Rev A</text>
+<text x="1542" y="58" fill="#ffd1a9" font-family="Arial,Helvetica,sans-serif" font-size="19" text-anchor="end" font-weight="700">Paper review</text>
+<rect x="254" y="139" width="415" height="107" stroke="#cedce3" stroke-width="1" fill="#ffffff"/>
+<rect x="254" y="139" width="415" height="5" stroke="#5a6c80" stroke-width="1" fill="#5a6c80"/>
+<text x="270" y="174" fill="#5a6c80" font-family="Arial,Helvetica,sans-serif" font-size="23" text-anchor="start" font-weight="700">Historical draft</text>
+<text x="270" y="197" fill="#446071" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">Published 7d5fb9b  /  Manifest 25dbfc04</text>
+<text x="270" y="225" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="20" text-anchor="start" font-weight="700">180 references  /  22 ICs</text>
+<rect x="691" y="139" width="415" height="107" stroke="#cedce3" stroke-width="1" fill="#ffffff"/>
+<rect x="691" y="139" width="415" height="5" stroke="#935232" stroke-width="1" fill="#935232"/>
+<text x="707" y="174" fill="#935232" font-family="Arial,Helvetica,sans-serif" font-size="23" text-anchor="start" font-weight="700">Held dual-source Rev B</text>
+<text x="707" y="197" fill="#446071" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">Manifest feda1dac</text>
+<text x="707" y="225" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="20" text-anchor="start" font-weight="700">183 references  /  23 ICs</text>
+<rect x="1128" y="139" width="415" height="107" stroke="#cedce3" stroke-width="1" fill="#ffffff"/>
+<rect x="1128" y="139" width="415" height="5" stroke="#086660" stroke-width="1" fill="#086660"/>
+<text x="1144" y="174" fill="#086660" font-family="Arial,Helvetica,sans-serif" font-size="23" text-anchor="start" font-weight="700">Jill's minimum Rev A</text>
+<text x="1144" y="197" fill="#446071" font-family="Arial,Helvetica,sans-serif" font-size="14" text-anchor="start" font-weight="400">Published brief 8acb1af  /  dff3f7be</text>
+<text x="1144" y="225" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="20" text-anchor="start" font-weight="700">102 references  /  11 ICs</text>
+<rect x="41" y="266" width="1502" height="109" stroke="#cedce3" stroke-width="1" fill="#ffffff"/>
+<text x="57" y="304" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="21" text-anchor="start" font-weight="700">Inputs and</text>
+<text x="57" y="331" fill="#446071" font-family="Arial,Helvetica,sans-serif" font-size="18" text-anchor="start" font-weight="400">module supply</text>
+<line x1="253" y1="279" x2="253" y2="362" stroke="#cedce3" stroke-width="1.2"/>
+<text x="269" y="298" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Independent USB-C sensing and breakers.</text>
+<text x="269" y="319" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Automatic module source mux.</text>
+<line x1="690" y1="279" x2="690" y2="362" stroke="#cedce3" stroke-width="1.2"/>
+<text x="706" y="298" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Separate protected inputs and automatic</text>
+<text x="706" y="319" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">SYS5 source transfer.</text>
+<text x="706" y="340" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">U1-loss / U2 suspend hold remains.</text>
+<line x1="1127" y1="279" x2="1127" y2="362" stroke="#cedce3" stroke-width="1.2"/>
+<text x="1143" y="298" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Passive CC when the breakout qualifies.</text>
+<text x="1143" y="319" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Independent input breakers. Power-off</text>
+<text x="1143" y="340" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">A5/B5 bridge, U1 default.</text>
+<rect x="41" y="385" width="1502" height="109" stroke="#cedce3" stroke-width="1" fill="#ffffff"/>
+<text x="57" y="423" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="21" text-anchor="start" font-weight="700">U3 / U4</text>
+<text x="57" y="450" fill="#446071" font-family="Arial,Helvetica,sans-serif" font-size="18" text-anchor="start" font-weight="400">outlet power</text>
+<line x1="253" y1="398" x2="253" y2="481" stroke="#cedce3" stroke-width="1.2"/>
+<text x="269" y="417" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">U3 fed by U1 only.</text>
+<text x="269" y="438" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">U4 has separately granted A/B branches,</text>
+<text x="269" y="459" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">a source mux and final breaker.</text>
+<line x1="690" y1="398" x2="690" y2="481" stroke="#cedce3" stroke-width="1.2"/>
+<text x="706" y="417" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Same protected paths. U4 adds slew</text>
+<text x="706" y="438" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">resistor and revised passive discharge</text>
+<text x="706" y="459" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">screen. C62 selection open.</text>
+<line x1="1127" y1="398" x2="1127" y2="481" stroke="#cedce3" stroke-width="1.2"/>
+<text x="1143" y="417" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">U3 from U1 only. U4 selects A5 directly</text>
+<text x="1143" y="438" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">or granted current-limited B via one mux</text>
+<text x="1143" y="459" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">and one final protected outlet.</text>
+<rect x="41" y="504" width="1502" height="109" stroke="#cedce3" stroke-width="1" fill="#ffffff"/>
+<text x="57" y="542" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="21" text-anchor="start" font-weight="700">U2 / U4</text>
+<text x="57" y="569" fill="#446071" font-family="Arial,Helvetica,sans-serif" font-size="18" text-anchor="start" font-weight="400">data protection</text>
+<line x1="253" y1="517" x2="253" y2="600" stroke="#cedce3" stroke-width="1.2"/>
+<text x="269" y="536" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Separate VBUS supervisors and switches.</text>
+<text x="269" y="557" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Loaded U4 detector has an electrical hold.</text>
+<line x1="690" y1="517" x2="690" y2="600" stroke="#cedce3" stroke-width="1.2"/>
+<text x="706" y="536" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Independent VBUS sense and hard U4 veto.</text>
+<text x="706" y="557" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">GP21 reports the powered IC7 fault.</text>
+<text x="706" y="578" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Powered qualification open.</text>
+<line x1="1127" y1="517" x2="1127" y2="600" stroke="#cedce3" stroke-width="1.2"/>
+<text x="1143" y="536" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Carries VBUS-qualified gates, GP9 veto</text>
+<text x="1143" y="557" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">and GP21. Two USB ESD arrays replace</text>
+<text x="1143" y="578" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">four discrete data clamps.</text>
+<rect x="41" y="623" width="1502" height="109" stroke="#cedce3" stroke-width="1" fill="#ffffff"/>
+<text x="57" y="661" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="21" text-anchor="start" font-weight="700">SD / OLED</text>
+<text x="57" y="688" fill="#446071" font-family="Arial,Helvetica,sans-serif" font-size="18" text-anchor="start" font-weight="400">and 3.3 V</text>
+<line x1="253" y1="636" x2="253" y2="719" stroke="#cedce3" stroke-width="1.2"/>
+<text x="269" y="655" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Separate switched regulator and</text>
+<text x="269" y="676" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">peripheral rail. Per-source grants.</text>
+<line x1="690" y1="636" x2="690" y2="719" stroke="#cedce3" stroke-width="1.2"/>
+<text x="706" y="655" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Retains switched, buffered peripheral rail.</text>
+<text x="706" y="676" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Actual module and accessory parts open.</text>
+<line x1="1127" y1="636" x2="1127" y2="719" stroke="#cedce3" stroke-width="1.2"/>
+<text x="1143" y="655" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Direct module 3.3 V rail on qualified builds.</text>
+<text x="1143" y="676" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">120 mA provisional total screen, including</text>
+<text x="1143" y="697" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">the Pico, pixel and accessories.</text>
+<rect x="41" y="757" width="1502" height="110" stroke="#cedce3" stroke-width="1" fill="#ffffff"/>
+<text x="58" y="790" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="21" text-anchor="start" font-weight="700">U1-only U4 option</text>
+<text x="58" y="820" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Dropping the U4 B branch and selector simplifies host power and preserves a protected U1 outlet.</text>
+<text x="58" y="841" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">It gives up U2-powered U4 and the single-supply powered cascade. Routed MIDI hops can use local host supplies.</text>
+<rect x="41" y="881" width="1502" height="109" stroke="#cedce3" stroke-width="1" fill="#ffffff"/>
+<text x="58" y="914" fill="#935232" font-family="Arial,Helvetica,sans-serif" font-size="20" text-anchor="start" font-weight="700">Open before pinout lock or powered qualification</text>
+<text x="58" y="943" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Exact module and native lands, supplied connector type and pin order, USB-C Rd and both orientations, and a qualified U1 supply.</text>
+<text x="58" y="964" fill="#1a3445" font-family="Arial,Helvetica,sans-serif" font-size="15" text-anchor="start" font-weight="400">Measure SD/OLED startup and rail margin, J2 current/suspend, and outlet backfeed, short protection, inrush, droop and discharge.</text>
+</svg>

@@ -1,4 +1,4 @@
-# Minimum carrier design review
+# Minimum carrier Rev A design review
 
 ## Connection and power choice
 
@@ -32,3 +32,9 @@ Fit qualified 3.3 V SD and OLED directly to P1.21 and the common 3.3 V rail. Che
 The paper chain is PC to A U2 as a native link, then A U4 to B U2 and B U4 to C U2 as routed MIDI hops. For a one-supply trial concept, SJ1 on A is U1 and SJ1 on B/C is U2. At 125 mA local per unit, 100 mΩ loop cables and a 5.10 V loaded head, middle U4 screens at 4.947 V. With a 4.75 V head it screens at 4.597 V. B needs a measured and independently admitted aggregate current of at least its local load and C's draw. The illustrative 250 mA total exceeds the installed 100 mA configuration. C also requires an independent current admission under B. These steady-state numbers do not close transient, protection selectivity, default-current or resume/suspend cases. Keep chain and powered qualification on hold. A U2-fed module profile is conditional even without U4 attached. [Power screen](power-budget.txt) · [Installed firmware evidence](/tmp/gridpico-rev-a-firmware-evidence.0IuPzz/RESULT.md)
 
 Default U1-backed module service keeps SD/OLED and no automatic failover. U1 loss stops the module even if the PC remains attached. The U2-to-U4 path is retained with valid B authorization. Source coordination, native session state, actual USB role/current decisions, approved descriptor and USB Host enforcement remain Assembly/Architect integration dependencies. PCB placement and the actual purchased connectors, module, microSD, OLED and U1 adapter remain open. This four-sheet bundle is a paper review with an editable net source.
+
+## Pinout lock and simplified U1-only option
+
+The schematic provides exact logical pins for the selected reference mapping. The physical connector and module pinout remains provisional. The part evidence needed before lock is the module's order identifier and PCB revision or clear identifying images, native D+/D− and VBUS land continuity, the order code or connector breakout schematic and physical pad order, and the attached cable/adapter type and current rating. USB-C upstream candidates also need both Rd terminations and both data orientations confirmed. Power qualification needs the selected SD or breakout's cold/write peak, the OLED's startup/operating draw and pull-up arrangement, and module 3.3 V rail and thermal margin with both loads. No purchased-part sheets were available in the historical review or current design inputs.
+
+A reviewed U1-only U4 option could remove the B host branch and host source selector while retaining the final U4 switch, reverse block, short protection, controlled rise and VBUS gating. That option gives up U2-powered U4 and the one-supply chain. Each unit supplying a downstream link needs its own U1 feed. The reference schematic preserves protected U2-to-U4 under published brief 8acb1af. [One-page comparison](carrier-comparison.pdf)
