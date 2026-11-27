@@ -141,6 +141,8 @@ Jill approved a development reminder that queues a short stall check for Project
 
 Jill grants standing permission to use the connected DEV rig for routine testing and updates. She disconnects it from DEV during personal use. An otherwise authorized DEV reset or firmware trial can proceed while Jill is away. If recovery needs manual BOOTSEL, bench work can pause until local help is available. Project Manager coordinates bench access and local actions.
 
+Keep the connected DEV Pico and Pi Zero on the latest working release. Project Manager schedules updates at the next handoff that preserves work in flight, checks that the release runs on the target and keeps a recovery path ready. Broader acceptance can continue after DEV deployment. Report deployed behavior and open checks separately.
+
 Other agents do not stage, commit, reset, switch branches, rebase or push unless explicitly assigned that operation. Project Manager stages specific paths and reviews the staged diff, avoiding unfinished work and shared-index races. No automatic commits occur on task completion or session pause.
 
 End with a compact result/blocker report to Project Manager, then wait. A technical escalation does not replace that completion report. No agent generates more work merely to remain busy.
