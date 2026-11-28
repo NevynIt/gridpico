@@ -24,6 +24,7 @@ static uint32_t read_le(const uint8_t *bytes, unsigned width)
     return value;
 }
 
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
 static void write_le(uint8_t *bytes, uint32_t value, unsigned width)
 {
     for (unsigned i = 0; i < width; ++i) {
@@ -31,6 +32,7 @@ static void write_le(uint8_t *bytes, uint32_t value, unsigned width)
         value >>= 8;
     }
 }
+#endif
 
 static uint32_t crc_bytes(uint32_t crc, const uint8_t *bytes, size_t count)
 {
@@ -169,6 +171,7 @@ static bool valid_intent(const gridpico_pico_pat2_intent *intent)
     return true;
 }
 
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
 static bool overlaps_intent(const gridpico_pico_pat2_intent *intent, const uint8_t *record)
 {
     const uintptr_t input = (uintptr_t)intent, output = (uintptr_t)record;
@@ -236,6 +239,7 @@ gridpico_result gridpico_pico_encode_pat2(
     write_le(commit + 8, crc, 4);
     return GRIDPICO_OK;
 }
+#endif
 
 static bool decode(const uint8_t *bytes, size_t size, uint32_t generation,
                    gridpico_pico_pat2_intent *intent)

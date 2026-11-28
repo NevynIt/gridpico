@@ -24,10 +24,12 @@ static uint32_t read_le(const uint8_t *bytes, unsigned width)
     return value;
 }
 
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
 static void write_le(uint8_t *bytes, uint32_t value, unsigned width)
 {
     for (unsigned i = 0; i < width; ++i) bytes[i] = (uint8_t)(value >> (8u * i));
 }
+#endif
 
 static uint32_t crc_bytes(uint32_t crc, const uint8_t *data, size_t length)
 {
@@ -133,6 +135,7 @@ gridpico_result gridpico_pico_inspect_pat1(
     return GRIDPICO_OK;
 }
 
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
 static gridpico_result restore(gridpico_pico_router *router, const record *item)
 {
     gridpico_apc_session_snapshot snapshot;
@@ -284,3 +287,4 @@ gridpico_result gridpico_pico_save_patch(const gridpico_pico_router *router, con
                                        .storage_issue = records[target ^ 1u].kind == UNKNOWN};
     return GRIDPICO_OK;
 }
+#endif

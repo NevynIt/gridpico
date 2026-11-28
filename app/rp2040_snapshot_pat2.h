@@ -41,6 +41,7 @@ typedef struct {
     gridpico_pico_pat2_pair pairs[GRIDPICO_PICO_PAT2_PAIRS];
 } gridpico_pico_pat2_intent;
 
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
 /* Encode exactly RECORD_BYTES into caller RAM, with the commit page at
  * DATA_BYTES. The record borrows the nonzero generation from intent. Invalid
  * intent, a short span or overlap returns INVALID with the output unchanged.
@@ -48,6 +49,7 @@ typedef struct {
  */
 gridpico_result gridpico_pico_encode_pat2(
     const gridpico_pico_pat2_intent *intent, uint8_t *record, size_t capacity);
+#endif
 
 typedef enum {
     GRIDPICO_PICO_PAT2_UNREADABLE,

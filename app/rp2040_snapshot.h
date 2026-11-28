@@ -9,6 +9,8 @@ enum {
     GRIDPICO_PICO_SAVE_SECTORS = 2,
 };
 
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
+/* Compatibility model for host PAT1 restore and Save tests. */
 typedef struct {
     uint8_t data[GRIDPICO_PICO_SAVE_PAGE];
     uint8_t commit[GRIDPICO_PICO_SAVE_PAGE];
@@ -33,6 +35,7 @@ typedef struct {
     bool storage_issue;
     bool reconcile_required;
 } gridpico_pico_save_state;
+#endif
 
 typedef enum {
     GRIDPICO_PICO_PAT1_UNREADABLE,
@@ -58,11 +61,13 @@ typedef struct {
 gridpico_result gridpico_pico_inspect_pat1(
     const uint8_t *const sectors[GRIDPICO_PICO_SAVE_SECTORS], gridpico_pico_pat1_status *out);
 
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
 /* Boot before any attachment or ingress. Boot reads but never writes storage. */
 gridpico_result gridpico_pico_boot_saved(gridpico_pico_router *router, const gridpico_pico_save_store *store,
                                       gridpico_pico_save_state *state);
 /* Explicit request in the serialized foreground. A failed save leaves live edits intact. */
 gridpico_result gridpico_pico_save_patch(const gridpico_pico_router *router, const gridpico_pico_save_store *store,
                                       gridpico_pico_save_state *state, gridpico_pico_save_plan *scratch);
+#endif
 
 #endif
