@@ -48,10 +48,10 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // Upper bound for the portable CLI projection. Smaller profiles use the same grammar.
+  // Parser bounds for the portable roster. Each directed pair has one eligible mode.
   const maxDevices = 12;
   const maxPorts = 36;
-  const maxRoutes = 13;
+  const maxRoutes = Math.floor(maxPorts * maxPorts / 4);
   const maxRecords = maxDevices + maxPorts + maxRoutes;
   const maxRevision = 0xffffffffffffffffn;
   const availabilityLabels = { free: "Free", "in-use": "In use", unavailable: "Unavailable" };
@@ -115,6 +115,17 @@ window.addEventListener("DOMContentLoaded", async () => {
       (mode === "managed" || source.device !== destination.device) && source.mode === mode && destination.mode === mode;
   }
 
+  function eligibleRouteCount(ports) {
+    let count = 0;
+    for (const source of ports.values()) {
+      if (source.direction !== "in" || source.mode === "panel") continue;
+      for (const destination of ports.values()) {
+        if (compatible(source, destination, source.mode)) count++;
+      }
+    }
+    return count;
+  }
+
   function stageRecord(projection, line) {
     const { devices, ports, routes } = projection;
     if (line.startsWith("DEVICE ")) {
@@ -135,7 +146,10 @@ window.addEventListener("DOMContentLoaded", async () => {
       const { source, destination, mode } = route;
       const routeKey = key(route);
       const previous = projection.previousRoute;
-      assert(routes.size < maxRoutes && !routes.has(routeKey) && compatible(ports.get(source), ports.get(destination), mode));
+      // All bindings precede the first route, so the verified roster is complete here.
+      projection.routeLimit ??= eligibleRouteCount(ports);
+      assert(routes.size < projection.routeLimit &&
+        !routes.has(routeKey) && compatible(ports.get(source), ports.get(destination), mode));
       assert(!previous || source > previous.source || (source === previous.source &&
         (destination > previous.destination || (destination === previous.destination && mode > previous.mode))));
       routes.set(routeKey, route.state);
@@ -180,7 +194,9 @@ window.addEventListener("DOMContentLoaded", async () => {
         return projection;
       }
       const next = Number(header[2]);
-      assert(reply.lines.length > 0 && next === offset + reply.lines.length && next < maxRecords);
+      const recordLimit = projection.routeLimit === undefined ? maxRecords :
+        projection.devices.size + projection.ports.size + projection.routeLimit;
+      assert(reply.lines.length > 0 && next === offset + reply.lines.length && next < recordLimit);
       offset = next;
     }
     assert(false);
