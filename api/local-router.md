@@ -142,6 +142,8 @@ Local submission means only that the provider queued the bytes. In the published
 
 Use the [standard WebSocket upgrade](https://www.rfc-editor.org/info/rfc6455/) on IPv4 loopback, with the URL path selecting the binding. Served pages and compatible native WebSocket clients use the same wire. The host accepts the exact `Host` and `Origin` of its own served pages. For a host listening at `127.0.0.1:8767`, a native client connects to `ws://127.0.0.1:8767` and supplies `Origin: http://127.0.0.1:8767`. The browser supplies the origin when it opens the socket from a served page. Direct-file HTML uses Web MIDI and Web Serial where supported. The opt-in [cross-host WebSocket MIDI profile](websocket-midi.md) reuses the MIDI bindings and keeps serial on loopback.
 
+For first remote CLI delivery, any client that can reach the configured CLI endpoint may connect under its existing Host, Origin and WebSocket upgrade checks. Keep the published listener scope. Keep one serial reservation per endpoint through bind, active use and retirement of its exact generation. A competing otherwise admissible connection receives HTTP `503 Service Unavailable` while the reservation is held and leaves the first connection intact.
+
 | Path | Payload | Binding |
 | --- | --- | --- |
 | `/midi/<port-id>` | Exactly one complete three-byte MIDI message per frame. | A graph input receives bytes from the client. A graph output sends bytes to the client. The successful upgrade means the direction is bound and ready. |
