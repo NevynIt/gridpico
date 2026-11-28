@@ -809,6 +809,30 @@ gridpico_result gridpico_patch_graph_check_managed_enable(
     return GRIDPICO_OK;
 }
 
+static size_t enabled_branch_count(const gridpico_patch_graph *graph)
+{
+    size_t count = 0;
+    for (size_t i = 0; i < graph->branch_limit; ++i) {
+        count += graph->branches[i].enabled;
+    }
+    return count;
+}
+
+gridpico_result gridpico_patch_graph_managed_storage_full(
+    const gridpico_patch_graph *graph, const gridpico_local_route *route, bool *out)
+{
+    if (out == NULL) {
+        return GRIDPICO_INVALID;
+    }
+    gridpico_patch_managed_enable_decision decision;
+    const gridpico_result result = gridpico_patch_graph_check_managed_enable(graph, route, &decision);
+    if (result == GRIDPICO_OK) {
+        *out = decision == GRIDPICO_PATCH_MANAGED_ENABLE_BRANCH_LIMIT && graph->branch_limit != 0 &&
+               enabled_branch_count(graph) == graph->branch_limit;
+    }
+    return result;
+}
+
 gridpico_result gridpico_patch_graph_read_local_route(void *context, const gridpico_local_route *route,
                                                      gridpico_local_route_status *out)
 {
@@ -847,6 +871,34 @@ gridpico_result gridpico_patch_graph_read_graph(void *context, gridpico_patch_gr
     return GRIDPICO_OK;
 }
 
+static void read_local_registry(const gridpico_patch_graph *graph, gridpico_local_registry *registry)
+{
+    *registry = (gridpico_local_registry){
+        .inventory = graph->inventory, .native_virtual_cable = graph->native_virtual_cable,
+    };
+    const size_t native_input = port_index(&graph->inventory, graph->native_virtual_cable.source);
+    const size_t native_output = port_index(&graph->inventory, graph->native_virtual_cable.destination);
+    if ((native_input != NO_PORT && graph->ports[native_input].apc_panel_reserved) ||
+        (native_output != NO_PORT && graph->ports[native_output].apc_led_reserved)) {
+        registry->native_virtual_cable = (gridpico_local_native_virtual_cable){0};
+    }
+    memcpy(registry->port_capabilities, graph->port_capabilities,
+           graph->inventory.port_count * sizeof graph->port_capabilities[0]);
+}
+
+static gridpico_local_enabled_route read_enabled_route(
+    const gridpico_patch_graph *graph, const gridpico_patch_graph_branch *branch)
+{
+    return (gridpico_local_enabled_route){
+        .route = {
+            .source = graph->inventory.ports[branch->source].id,
+            .destination = graph->inventory.ports[branch->destination].id,
+            .mode = branch->mode,
+        },
+        .state = branch_active(graph, branch) ? GRIDPICO_PATCH_ROUTE_ACTIVE : GRIDPICO_PATCH_ROUTE_PENDING,
+    };
+}
+
 gridpico_result gridpico_patch_graph_read_local_state(void *context, gridpico_local_graph_state *out)
 {
     const gridpico_patch_graph *graph = context;
@@ -854,32 +906,273 @@ gridpico_result gridpico_patch_graph_read_local_state(void *context, gridpico_lo
         return GRIDPICO_INVALID;
     }
 
-    *out = (gridpico_local_graph_state){
-        .revision = graph->revision,
-        .registry = {.inventory = graph->inventory, .native_virtual_cable = graph->native_virtual_cable},
-    };
-    const size_t native_input = port_index(&graph->inventory, graph->native_virtual_cable.source);
-    const size_t native_output = port_index(&graph->inventory, graph->native_virtual_cable.destination);
-    if ((native_input != NO_PORT && graph->ports[native_input].apc_panel_reserved) ||
-        (native_output != NO_PORT && graph->ports[native_output].apc_led_reserved)) {
-        out->registry.native_virtual_cable = (gridpico_local_native_virtual_cable){0};
+    *out = (gridpico_local_graph_state){.revision = graph->revision};
+    read_local_registry(graph, &out->registry);
+    for (size_t i = 0; i < graph->branch_limit; ++i) {
+        const gridpico_patch_graph_branch *branch = &graph->branches[i];
+        if (branch->enabled) {
+            out->routes[out->route_count++] = read_enabled_route(graph, branch);
+        }
     }
-    memcpy(out->registry.port_capabilities, graph->port_capabilities,
-           graph->inventory.port_count * sizeof graph->port_capabilities[0]);
+    return GRIDPICO_OK;
+}
+
+gridpico_result gridpico_patch_graph_read_route_metadata(
+    const gridpico_patch_graph *graph, gridpico_patch_graph_route_metadata *out)
+{
+    if (graph == NULL || graph->deliver_raw == NULL || out == NULL) {
+        return GRIDPICO_INVALID;
+    }
+    /* Port updates still change bindings after the revision saturates. */
+    if (graph->revision == 0 || graph->revision == UINT64_MAX) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+
+    read_local_registry(graph, &out->registry);
+    out->revision = graph->revision;
+    out->enabled_count = enabled_branch_count(graph);
+    return GRIDPICO_OK;
+}
+
+static bool route_precedes(gridpico_local_route a, gridpico_local_route b)
+{
+    if (a.source != b.source) {
+        return a.source < b.source;
+    }
+    if (a.destination != b.destination) {
+        return a.destination < b.destination;
+    }
+    return a.mode < b.mode;
+}
+
+static bool next_enabled_route(const gridpico_patch_graph *graph,
+                               const gridpico_local_enabled_route *previous,
+                               gridpico_local_enabled_route *out)
+{
+    bool found = false;
     for (size_t i = 0; i < graph->branch_limit; ++i) {
         const gridpico_patch_graph_branch *branch = &graph->branches[i];
         if (!branch->enabled) {
             continue;
         }
-        out->routes[out->route_count++] = (gridpico_local_enabled_route){
-            .route = {
-                .source = graph->inventory.ports[branch->source].id,
-                .destination = graph->inventory.ports[branch->destination].id,
-                .mode = branch->mode,
-            },
-            .state = branch_active(graph, branch) ? GRIDPICO_PATCH_ROUTE_ACTIVE : GRIDPICO_PATCH_ROUTE_PENDING,
-        };
+        const gridpico_local_enabled_route candidate = read_enabled_route(graph, branch);
+        if ((previous == NULL || route_precedes(previous->route, candidate.route)) &&
+            (!found || route_precedes(candidate.route, out->route))) {
+            *out = candidate;
+            found = true;
+        }
     }
+    return found;
+}
+
+gridpico_result gridpico_patch_graph_read_route_page(
+    const gridpico_patch_graph *graph, gridpico_revision expected_revision, size_t offset,
+    gridpico_patch_graph_route_page *out)
+{
+    if (graph == NULL || graph->deliver_raw == NULL || out == NULL) {
+        return GRIDPICO_INVALID;
+    }
+    if (expected_revision == 0 || expected_revision == UINT64_MAX || graph->revision != expected_revision) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    const size_t total = enabled_branch_count(graph);
+    if (offset > total) {
+        return GRIDPICO_INVALID;
+    }
+
+    gridpico_patch_graph_route_page page = {.revision = expected_revision, .next_offset = offset};
+    const size_t remaining = total - offset;
+    const size_t count = remaining < GRIDPICO_PATCH_GRAPH_ROUTE_PAGE_RECORDS
+        ? remaining : GRIDPICO_PATCH_GRAPH_ROUTE_PAGE_RECORDS;
+    if (count != 0) {
+        gridpico_local_enabled_route previous;
+        for (size_t i = 0; i < offset + count; ++i) {
+            gridpico_local_enabled_route next;
+            if (!next_enabled_route(graph, i == 0 ? NULL : &previous, &next)) {
+                return GRIDPICO_INVALID;
+            }
+            if (i >= offset) {
+                page.records[page.record_count++] = next;
+            }
+            previous = next;
+        }
+        page.next_offset += page.record_count;
+    }
+    *out = page;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result reject_shadow_note(void *context, const gridpico_note_delivery *delivery)
+{
+    (void)context;
+    (void)delivery;
+    return GRIDPICO_UNAVAILABLE;
+}
+
+static gridpico_result reject_shadow_raw(void *context, const gridpico_local_raw_delivery *delivery)
+{
+    (void)context;
+    (void)delivery;
+    return GRIDPICO_UNAVAILABLE;
+}
+
+gridpico_result gridpico_patch_graph_prepare_route_shadow(
+    gridpico_patch_graph *live, gridpico_revision expected_revision, gridpico_patch_graph_route_shadow *shadow)
+{
+    if (live == NULL || shadow == NULL || live == &shadow->graph || live->deliver == NULL ||
+        live->deliver == reject_shadow_note) {
+        return GRIDPICO_INVALID;
+    }
+    if (expected_revision == 0 || live->revision != expected_revision ||
+        live->route_shadow_peer != 0 || shadow->owner_address != 0) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+
+    shadow->graph = *live;
+    shadow->base_revision = expected_revision;
+    shadow->owner_address = (uintptr_t)live;
+    shadow->shadow_address = (uintptr_t)shadow;
+    shadow->graph.deliver = reject_shadow_note;
+    if (live->deliver_raw != NULL) {
+        shadow->graph.deliver_raw = reject_shadow_raw;
+    }
+    shadow->graph.delivery_context = NULL;
+    shadow->graph.route_shadow_peer = (uintptr_t)live;
+    live->route_shadow_peer = (uintptr_t)&shadow->graph;
+    return GRIDPICO_OK;
+}
+
+static bool owns_route_shadow(const gridpico_patch_graph *live, const gridpico_patch_graph_route_shadow *shadow)
+{
+    return live != NULL && shadow != NULL && live != &shadow->graph &&
+           shadow->owner_address == (uintptr_t)live && shadow->shadow_address == (uintptr_t)shadow;
+}
+
+void gridpico_patch_graph_discard_route_shadow(
+    gridpico_patch_graph *live, gridpico_patch_graph_route_shadow *shadow)
+{
+    if (!owns_route_shadow(live, shadow)) {
+        return;
+    }
+    if (live->route_shadow_peer == (uintptr_t)&shadow->graph) {
+        live->route_shadow_peer = 0;
+    }
+    if (shadow->graph.route_shadow_peer == (uintptr_t)live) {
+        shadow->graph.route_shadow_peer = 0;
+    }
+    shadow->owner_address = 0;
+    shadow->shadow_address = 0;
+    shadow->base_revision = 0;
+}
+
+static bool shadow_bindings_match(const gridpico_patch_graph *live, const gridpico_patch_graph *staged)
+{
+    const gridpico_patch_inventory *current = &live->inventory, *saved = &staged->inventory;
+    if (current->device_count != saved->device_count || current->port_count != saved->port_count ||
+        live->native_virtual_cable.source != staged->native_virtual_cable.source ||
+        live->native_virtual_cable.destination != staged->native_virtual_cable.destination) {
+        return false;
+    }
+    for (size_t i = 0; i < current->device_count; ++i) {
+        const gridpico_patch_device *a = &current->devices[i], *b = &saved->devices[i];
+        if (a->id != b->id || a->state != b->state || strncmp(a->name, b->name, sizeof a->name) != 0) {
+            return false;
+        }
+    }
+    for (size_t i = 0; i < current->port_count; ++i) {
+        const gridpico_patch_port *a = &current->ports[i], *b = &saved->ports[i];
+        const gridpico_patch_port_runtime *p = &live->ports[i], *q = &staged->ports[i];
+        if (a->id != b->id || a->device != b->device || a->direction != b->direction ||
+            a->state != b->state || a->patch_eligible != b->patch_eligible ||
+            strncmp(a->name, b->name, sizeof a->name) != 0 ||
+            live->port_capabilities[i] != staged->port_capabilities[i] || p->generation != q->generation ||
+            p->apc_led_reserved != q->apc_led_reserved || p->apc_panel_reserved != q->apc_panel_reserved ||
+            p->ephemeral_managed_output != q->ephemeral_managed_output) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool shadow_profiles_match(const gridpico_local_profile *live, const gridpico_local_profile *staged)
+{
+    return live->midi_peer_limit == staged->midi_peer_limit &&
+           live->managed_branch_limit == staged->managed_branch_limit &&
+           live->raw_branch_limit == staged->raw_branch_limit &&
+           live->managed_fanout_limit == staged->managed_fanout_limit &&
+           live->occurrence_limit == staged->occurrence_limit &&
+           live->release_credit_limit == staged->release_credit_limit &&
+           live->dynamic_device_limit == staged->dynamic_device_limit &&
+           live->dynamic_port_limit == staged->dynamic_port_limit;
+}
+
+static bool branch_equal(const gridpico_patch_graph_branch *a, const gridpico_patch_graph_branch *b)
+{
+    return a->enabled == b->enabled && a->source == b->source && a->destination == b->destination &&
+           a->mode == b->mode && a->transform.transpose_semitones == b->transform.transpose_semitones &&
+           a->transform.output_channel == b->transform.output_channel;
+}
+
+static bool valid_shadow_routes(const gridpico_patch_graph *live, const gridpico_patch_graph *staged)
+{
+    size_t managed = 0, raw = 0;
+    size_t managed_fanout[GRIDPICO_PATCH_MAX_PORTS] = {0};
+    for (size_t i = 0; i < staged->branch_limit; ++i) {
+        const gridpico_patch_graph_branch *branch = &staged->branches[i];
+        if (staged->revision == live->revision && !branch_equal(branch, &live->branches[i])) {
+            return false;
+        }
+        if (!branch->enabled) {
+            continue;
+        }
+        if (branch->source >= live->inventory.port_count || branch->destination >= live->inventory.port_count ||
+            !port_accepts(live, branch->source, GRIDPICO_PATCH_INPUT, branch->mode) ||
+            !port_accepts(live, branch->destination, GRIDPICO_PATCH_OUTPUT, branch->mode) ||
+            branch_index(staged, branch->source, branch->destination, branch->mode) != i) {
+            return false;
+        }
+        if (branch->mode == GRIDPICO_LOCAL_MANAGED) {
+            if (branch->transform.transpose_semitones < -127 || branch->transform.output_channel > 16) {
+                return false;
+            }
+            if (live->deliver_raw != NULL && (++managed > live->local_profile.managed_branch_limit ||
+                ++managed_fanout[branch->source] > live->local_profile.managed_fanout_limit)) {
+                return false;
+            }
+        } else if (++raw > live->local_profile.raw_branch_limit ||
+                   branch->transform.transpose_semitones != 0 || branch->transform.output_channel != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+gridpico_result gridpico_patch_graph_publish_route_shadow(
+    gridpico_patch_graph *live, gridpico_revision expected_revision, gridpico_patch_graph_route_shadow *shadow)
+{
+    if (live == NULL || shadow == NULL || live == &shadow->graph || live->deliver == NULL ||
+        live->deliver == reject_shadow_note) {
+        return GRIDPICO_INVALID;
+    }
+    const gridpico_patch_graph *staged = &shadow->graph;
+    if (expected_revision == 0 || live->revision != expected_revision ||
+        shadow->base_revision != expected_revision || !owns_route_shadow(live, shadow) ||
+        live->route_shadow_peer != (uintptr_t)staged || staged->route_shadow_peer != (uintptr_t)live ||
+        !shadow_bindings_match(live, staged)) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    if (staged->revision < expected_revision || staged->branch_limit != live->branch_limit ||
+        staged->deliver != reject_shadow_note ||
+        staged->deliver_raw != (live->deliver_raw == NULL ? NULL : reject_shadow_raw) ||
+        staged->delivery_context != NULL || staged->transform_note != live->transform_note ||
+        !shadow_profiles_match(&live->local_profile, &staged->local_profile) ||
+        !valid_shadow_routes(live, staged)) {
+        return GRIDPICO_INVALID;
+    }
+
+    memcpy(live->branches, staged->branches, sizeof live->branches);
+    live->revision = staged->revision;
+    gridpico_patch_graph_discard_route_shadow(live, shadow);
     return GRIDPICO_OK;
 }
 

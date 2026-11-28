@@ -31,7 +31,32 @@ typedef struct {
     gridpico_patch_graph_branch branches[GRIDPICO_PATCH_MAX_BRANCHES];
     gridpico_local_profile local_profile;
     size_t branch_limit;
+    /* The paired live/staging Graph address. Zero outside a preparation. */
+    uintptr_t route_shadow_peer;
 } gridpico_patch_graph;
+
+enum { GRIDPICO_PATCH_GRAPH_ROUTE_PAGE_RECORDS = 8 };
+
+typedef struct {
+    gridpico_revision revision;
+    gridpico_local_registry registry;
+    size_t enabled_count;
+} gridpico_patch_graph_route_metadata;
+
+typedef struct {
+    gridpico_revision revision;
+    size_t record_count;
+    size_t next_offset;
+    gridpico_local_enabled_route records[GRIDPICO_PATCH_GRAPH_ROUTE_PAGE_RECORDS];
+} gridpico_patch_graph_route_page;
+
+typedef struct {
+    gridpico_patch_graph graph;
+    gridpico_revision base_revision;
+    /* These links survive reinitialization of the embedded staging Graph. */
+    uintptr_t owner_address;
+    uintptr_t shadow_address;
+} gridpico_patch_graph_route_shadow;
 
 /* Assembly owns storage and serializes calls, including the delivery callback.
  * The default and browser initializers use the stage-one topology. The configured
@@ -78,6 +103,26 @@ gridpico_result gridpico_patch_graph_update_port(void *context,
                                                 const gridpico_patch_port_update *update);
 gridpico_result gridpico_patch_graph_set_route(void *context,
                                                const gridpico_patch_route_request *request);
+/* Local Graph readback. Revision zero and saturation return UNAVAILABLE
+ * without writing output. Pages include enabled Active and Pending routes
+ * in logical key order. */
+gridpico_result gridpico_patch_graph_read_route_metadata(
+    const gridpico_patch_graph *graph, gridpico_patch_graph_route_metadata *out);
+gridpico_result gridpico_patch_graph_read_route_page(
+    const gridpico_patch_graph *graph, gridpico_revision expected_revision, size_t offset,
+    gridpico_patch_graph_route_page *out);
+
+/* Zero-initialize stage storage before first use. Keep both addresses stable
+ * until publish succeeds or discard runs. Edit shadow->graph with the ordinary
+ * pair writer. Its transport callbacks refuse delivery. After any refusal or
+ * abandonment, discard explicitly before borrowing again. */
+gridpico_result gridpico_patch_graph_prepare_route_shadow(
+    gridpico_patch_graph *live, gridpico_revision expected_revision, gridpico_patch_graph_route_shadow *shadow);
+gridpico_result gridpico_patch_graph_publish_route_shadow(
+    gridpico_patch_graph *live, gridpico_revision expected_revision, gridpico_patch_graph_route_shadow *shadow);
+void gridpico_patch_graph_discard_route_shadow(
+    gridpico_patch_graph *live, gridpico_patch_graph_route_shadow *shadow);
+
 gridpico_result gridpico_patch_graph_read_graph(void *context, gridpico_patch_graph_state *out);
 gridpico_result gridpico_patch_graph_read_local_state(void *context, gridpico_local_graph_state *out);
 /* Caller checks output ownership and transport retirement before changing the role. */
@@ -113,6 +158,9 @@ typedef enum {
 gridpico_result gridpico_patch_graph_check_managed_enable(
     const gridpico_patch_graph *graph, const gridpico_local_route *route,
     gridpico_patch_managed_enable_decision *out);
+/* Reports actual exhaustion for an eligible new Managed pair. */
+gridpico_result gridpico_patch_graph_managed_storage_full(
+    const gridpico_patch_graph *graph, const gridpico_local_route *route, bool *out);
 gridpico_result gridpico_patch_graph_read_local_route(void *context, const gridpico_local_route *route,
                                                      gridpico_local_route_status *out);
 gridpico_result gridpico_patch_graph_submit_raw(void *context, const gridpico_local_raw_ingress *input);
