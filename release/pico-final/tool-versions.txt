@@ -1,0 +1,7 @@
+12.2.1
+cmake version 3.25.1
+1.11.1
+Python 3.11.2
+Pico SDK 2.2.0: a1438dff1d38bd9c65dbd693f0e5db4b9ae91779
+TinyUSB: 0.21.0, exact files in external-build-inputs.sha256
+Pico-PIO-USB: b186e36bea0f3bcc2ee94ca1fa81e7f71281443a

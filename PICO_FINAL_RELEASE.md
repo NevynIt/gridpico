@@ -6,7 +6,7 @@ The firmware uses normal Pico7, PIO USB, wide routing, read-only PAT2, the exist
 
 ## Reproduce the Pico build
 
-Use the tool and SDK versions in [tools.log](release/pico-final/tools.log). The [external input manifest](release/pico-final/external-build-inputs.sha256) records their exact bytes and original local paths. Use matching inputs if your paths differ. The [configure recipe](release/pico-final/configure.sh) accepts CMake path overrides after the build directory. It builds only the Pico router profile.
+Use the tool and SDK versions in [tool versions](release/pico-final/tool-versions.txt). The [external input manifest](release/pico-final/external-build-inputs.sha256) records their exact bytes and original local paths. Use matching inputs if your paths differ. The [configure recipe](release/pico-final/configure.sh) accepts CMake path overrides after the build directory. It builds only the Pico router profile.
 
 From the root of this branch, generate the mounted pages from the pinned asset commit. Use a normal clone that contains the commit, fetching `main` if necessary. The staging script reads the asset checkout's Git revision to generate `VERSION.TXT`.
 
