@@ -20,6 +20,9 @@ typedef struct {
     gridpico_patch_graph graph;
     gridpico_patch_session session;
     gridpico_apc_patch_snapshot cli_apc_scratch;
+    gridpico_local_routing_snapshot legacy_routing_scratch;
+    gridpico_patch_routing_page session_routing_scratch;
+    gridpico_patch_routing_page cli_routing_page_scratch;
 } local_fixture;
 
 typedef struct {
@@ -54,6 +57,8 @@ typedef struct {
     size_t sweep_reads;
     size_t sweep_applies;
 } forwarding_fixture;
+
+static bool corrupt_routing_page_for_cli_test;
 
 static gridpico_result unused_snapshot(void *context, gridpico_patch_snapshot *out);
 static gridpico_result read_routing_fixture(void *context,
@@ -1135,6 +1140,43 @@ static void assert_routing_record_bounds(const transcript *output)
     }
 }
 
+static void assert_routing_page_record_count(const transcript *output)
+{
+    size_t records = 0;
+    for (size_t i = 0; i + 1 < output->size; ++i) {
+        if (output->output[i] == '\r' && output->output[i + 1] == '\n') {
+            ++records;
+            ++i;
+        }
+    }
+    assert(records >= 2); /* Header and final OK. */
+    assert(records - 2 <= GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS);
+}
+
+static gridpico_result read_graph_route_metadata_adapter(
+    const void *context, gridpico_patch_graph_route_metadata *out)
+{
+    return gridpico_patch_graph_read_route_metadata(context, out);
+}
+
+static gridpico_result read_graph_route_page_adapter(
+    const void *context, gridpico_revision revision, size_t offset,
+    gridpico_patch_graph_route_page *out)
+{
+    return gridpico_patch_graph_read_route_page(context, revision, offset, out);
+}
+
+static gridpico_result read_session_routing_page_for_cli(
+    void *context, gridpico_revision revision, size_t offset,
+    gridpico_patch_routing_page *out)
+{
+    const gridpico_result result = gridpico_patch_session_read_routing_page(
+        context, revision, offset, out);
+    if (result == GRIDPICO_OK && corrupt_routing_page_for_cli_test)
+        ++out->record_count;
+    return result;
+}
+
 static void initialize_routing_snapshot(routing_fixture *fixture)
 {
     gridpico_local_routing_snapshot *snapshot = &fixture->snapshot;
@@ -1327,6 +1369,262 @@ static void test_routing_cli(transcript *terminal)
     clear(terminal);
     assert(gridpico_cli_execute_line(&cli, "routing", capture, terminal) == GRIDPICO_CAPACITY);
     assert(strcmp(terminal->output, "ERR CAPACITY\r\n") == 0);
+}
+
+static void test_j186_routing_pages_cli(transcript *terminal)
+{
+    local_fixture local = {0};
+    gridpico_local_registry registry = {0};
+    registry.inventory.device_count = 2;
+    registry.inventory.port_count = 18;
+    registry.inventory.devices[0] = (gridpico_patch_device){
+        .id = 1, .name = "Key \"A\"", .state = GRIDPICO_PATCH_DISCONNECTED,
+    };
+    registry.inventory.devices[1] = (gridpico_patch_device){
+        .id = 2, .name = "Output \"B\"", .state = GRIDPICO_PATCH_DISCONNECTED,
+    };
+    for (size_t i = 0; i < 9; ++i) {
+        const gridpico_port_id input = (gridpico_port_id)(i + 1);
+        const gridpico_port_id output = (gridpico_port_id)(i + 10);
+        const bool raw = i == 8;
+        registry.inventory.ports[i] = (gridpico_patch_port){
+            .id = input, .device = 1, .name = "Key \"input\"",
+            .direction = GRIDPICO_PATCH_INPUT,
+            .state = GRIDPICO_PATCH_DISCONNECTED, .patch_eligible = !raw,
+        };
+        registry.inventory.ports[i + 9] = (gridpico_patch_port){
+            .id = output, .device = 2, .name = "MIDI \\ output",
+            .direction = GRIDPICO_PATCH_OUTPUT,
+            .state = GRIDPICO_PATCH_DISCONNECTED, .patch_eligible = !raw,
+        };
+        registry.port_capabilities[i] = raw ? GRIDPICO_LOCAL_PORT_RAW
+                                            : GRIDPICO_LOCAL_PORT_MANAGED;
+        registry.port_capabilities[i + 9] = raw ? GRIDPICO_LOCAL_PORT_RAW
+                                                : GRIDPICO_LOCAL_PORT_MANAGED;
+    }
+    const gridpico_local_profile profile = {
+        .midi_peer_limit = 2,
+        .managed_branch_limit = GRIDPICO_LOCAL_MAX_MANAGED_BRANCHES,
+        .raw_branch_limit = GRIDPICO_LOCAL_MAX_RAW_BRANCHES,
+        .managed_fanout_limit = GRIDPICO_LOCAL_MAX_FANOUT,
+        .occurrence_limit = GRIDPICO_LOCAL_MAX_NOTE_OCCURRENCES,
+        .release_credit_limit = GRIDPICO_LOCAL_MAX_RELEASE_CREDITS,
+    };
+    const gridpico_result graph_init = gridpico_patch_graph_init_local_profile(
+        &local.graph, &registry, &profile, accept_managed_delivery,
+        accept_raw_delivery, NULL);
+    assert(graph_init == GRIDPICO_OK);
+    gridpico_patch_session_init(&local.session, &local.graph,
+                                gridpico_patch_graph_read_graph,
+                                gridpico_patch_graph_set_route);
+    gridpico_patch_session_bind_local_routes(&local.session,
+                                             gridpico_patch_graph_set_local_route,
+                                             gridpico_patch_graph_read_local_route);
+    gridpico_patch_session_bind_local_routing(&local.session,
+                                              gridpico_patch_graph_read_local_state,
+                                              read_fixture_availability, NULL);
+    gridpico_patch_session_bind_routing_pages(
+        &local.session, read_graph_route_metadata_adapter,
+        read_graph_route_page_adapter, &local.session_routing_scratch);
+
+    for (gridpico_port_id id = 1; id <= 18; ++id) {
+        const gridpico_patch_port_update update = {
+            .connection = {.endpoint = id, .generation = 2},
+            .state = GRIDPICO_PATCH_CONNECTED,
+        };
+        assert(gridpico_patch_graph_update_port(&local.graph, &update) == GRIDPICO_OK);
+    }
+    size_t enabled = 0;
+    const size_t managed_target = GRIDPICO_PATCH_MAX_BRANCHES - 1;
+    for (gridpico_port_id destination = 10; destination <= 17 &&
+         enabled < managed_target; ++destination) {
+        for (gridpico_port_id source = 1; source <= 8 &&
+             enabled < managed_target; ++source) {
+            const gridpico_local_route_request request = {
+                .route = {source, destination, GRIDPICO_LOCAL_MANAGED},
+                .enabled = true,
+            };
+            assert(gridpico_patch_session_set_local_route(&local.session, &request) ==
+                   GRIDPICO_OK);
+            ++enabled;
+        }
+    }
+    assert(enabled == managed_target);
+    const gridpico_local_route_request raw_request = {
+        .route = {9, 18, GRIDPICO_LOCAL_RAW}, .enabled = true,
+    };
+    assert(gridpico_patch_session_set_local_route(&local.session, &raw_request) ==
+           GRIDPICO_OK);
+
+    gridpico_cli_frontend paged;
+    gridpico_cli_frontend legacy;
+    assert(gridpico_cli_init(&paged, &local.session,
+                             gridpico_patch_session_read_snapshot,
+                             gridpico_session_read_device_color,
+                             gridpico_session_set_device_color,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    assert(gridpico_cli_init(&legacy, &local.session,
+                             gridpico_patch_session_read_snapshot,
+                             gridpico_session_read_device_color,
+                             gridpico_session_set_device_color,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    gridpico_cli_bind_routing_pages(
+        &paged, &local.session, gridpico_patch_session_read_routing_metadata,
+        read_session_routing_page_for_cli,
+        gridpico_patch_session_read_guarded_route,
+        gridpico_patch_session_read_local_route,
+        gridpico_patch_session_set_local_route,
+        &local.cli_routing_page_scratch);
+    gridpico_cli_bind_routing(&legacy, &local.session,
+                              gridpico_patch_session_read_local_routing,
+                              gridpico_patch_session_read_local_route,
+                              gridpico_patch_session_set_local_route,
+                              &local.legacy_routing_scratch);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&paged, "help", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "Command: routing | routing <revision> <offset>"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&paged, "help route", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(contains(terminal, "managed on|off if <revision>"));
+
+    transcript paged_reply = {0};
+    transcript legacy_reply = {0};
+    assert(gridpico_cli_execute_line(&paged, "routing", capture, &paged_reply) ==
+           GRIDPICO_OK);
+    assert(gridpico_cli_execute_line(&legacy, "routing", capture, &legacy_reply) ==
+           GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, legacy_reply.output) == 0);
+    assert_routing_record_bounds(&paged_reply);
+    compare_terminal_reply(&paged, terminal, "routing", GRIDPICO_OK);
+
+    gridpico_patch_routing_metadata metadata = {0};
+    assert(gridpico_patch_session_read_routing_metadata(&local.session, &metadata) ==
+           GRIDPICO_OK);
+    char human_continuation[GRIDPICO_CLI_LINE_BYTES];
+    assert(snprintf(human_continuation, sizeof human_continuation, "routing %llu 8",
+                    (unsigned long long)metadata.revision) > 0);
+    clear(&paged_reply);
+    clear(&legacy_reply);
+    assert(gridpico_cli_execute_line(&paged, human_continuation, capture,
+                                    &paged_reply) == GRIDPICO_OK);
+    assert(gridpico_cli_execute_line(&legacy, human_continuation, capture,
+                                    &legacy_reply) == GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, legacy_reply.output) == 0);
+
+    clear(&paged_reply);
+    clear(&legacy_reply);
+    assert(gridpico_cli_execute_line(&paged, "format machine", capture,
+                                    &paged_reply) == GRIDPICO_OK);
+    assert(gridpico_cli_execute_line(&legacy, "format machine", capture,
+                                    &legacy_reply) == GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, legacy_reply.output) == 0);
+    const size_t total = metadata.graph.registry.inventory.device_count +
+                         metadata.graph.registry.inventory.port_count +
+                         metadata.graph.enabled_count;
+    for (size_t offset = 0; offset <= total;
+         offset += GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS) {
+        char command[GRIDPICO_CLI_LINE_BYTES];
+        if (offset == 0) {
+            strcpy(command, "routing");
+        } else {
+            const int size = snprintf(command, sizeof command, "routing %llu %zu",
+                                      (unsigned long long)metadata.revision, offset);
+            assert(size > 0 && (size_t)size < sizeof command);
+        }
+        clear(&paged_reply);
+        clear(&legacy_reply);
+        assert(gridpico_cli_execute_line(&paged, command, capture, &paged_reply) ==
+               GRIDPICO_OK);
+        assert(gridpico_cli_execute_line(&legacy, command, capture, &legacy_reply) ==
+               GRIDPICO_OK);
+        assert(strcmp(paged_reply.output, legacy_reply.output) == 0);
+        assert_routing_record_bounds(&paged_reply);
+        assert_routing_page_record_count(&paged_reply);
+        compare_terminal_reply(&paged, terminal, command, GRIDPICO_OK);
+    }
+    char terminal_page[GRIDPICO_CLI_LINE_BYTES];
+    assert(snprintf(terminal_page, sizeof terminal_page, "routing %llu %zu",
+                    (unsigned long long)metadata.revision, total) > 0);
+    clear(&paged_reply);
+    clear(&legacy_reply);
+    assert(gridpico_cli_execute_line(&paged, terminal_page, capture, &paged_reply) ==
+           GRIDPICO_OK);
+    assert(gridpico_cli_execute_line(&legacy, terminal_page, capture, &legacy_reply) ==
+           GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, legacy_reply.output) == 0);
+    char terminal_expected[GRIDPICO_CLI_RECORD_BYTES];
+    const int terminal_size = snprintf(terminal_expected, sizeof terminal_expected,
+                                       "ROUTING %llu -\r\nOK\r\n",
+                                       (unsigned long long)metadata.revision);
+    assert(terminal_size > 0 && (size_t)terminal_size < sizeof terminal_expected);
+    assert(strcmp(paged_reply.output, terminal_expected) == 0);
+    assert_routing_record_bounds(&paged_reply);
+    char invalid_page[GRIDPICO_CLI_LINE_BYTES];
+    assert(snprintf(invalid_page, sizeof invalid_page, "routing %llu %zu",
+                    (unsigned long long)metadata.revision, total + 1) > 0);
+    clear(&paged_reply);
+    assert(gridpico_cli_execute_line(&paged, invalid_page, capture, &paged_reply) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(paged_reply.output, "ERR INVALID\r\n") == 0);
+
+    const gridpico_revision old_revision = metadata.revision;
+    corrupt_routing_page_for_cli_test = true;
+    clear(&paged_reply);
+    assert(gridpico_cli_execute_line(&paged, "routing", capture, &paged_reply) ==
+           GRIDPICO_INVALID);
+    corrupt_routing_page_for_cli_test = false;
+    assert(strcmp(paged_reply.output, "ERR INVALID\r\n") == 0);
+    const gridpico_patch_port_update detach = {
+        .connection = {.endpoint = 1, .generation = 2},
+        .state = GRIDPICO_PATCH_DISCONNECTED,
+    };
+    assert(gridpico_patch_graph_update_port(&local.graph, &detach) == GRIDPICO_OK);
+    const gridpico_patch_port_update reconnect = {
+        .connection = {.endpoint = 1, .generation = 3},
+        .state = GRIDPICO_PATCH_CONNECTED,
+    };
+    assert(gridpico_patch_graph_update_port(&local.graph, &reconnect) == GRIDPICO_OK);
+    clear(&paged_reply);
+    char stale_page[GRIDPICO_CLI_LINE_BYTES];
+    assert(snprintf(stale_page, sizeof stale_page, "routing %llu 8",
+                    (unsigned long long)old_revision) > 0);
+    assert(gridpico_cli_execute_line(&paged, stale_page, capture, &paged_reply) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(paged_reply.output, "ERR UNAVAILABLE\r\n") == 0);
+
+    assert(gridpico_patch_session_read_routing_metadata(&local.session, &metadata) ==
+           GRIDPICO_OK);
+    const gridpico_local_route pair = {1, 10, GRIDPICO_LOCAL_MANAGED};
+    char guarded[GRIDPICO_CLI_LINE_BYTES];
+    assert(snprintf(guarded, sizeof guarded, "route 1 10 managed off if %llu",
+                    (unsigned long long)metadata.revision) > 0);
+    clear(&paged_reply);
+    assert(gridpico_cli_execute_line(&paged, guarded, capture, &paged_reply) ==
+           GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, "ROUTE 1 10 MANAGED OFF\r\nOK\r\n") == 0);
+    clear(&paged_reply);
+    assert(snprintf(guarded, sizeof guarded, "route 1 10 managed on if %llu",
+                    (unsigned long long)metadata.revision) > 0);
+    assert(gridpico_cli_execute_line(&paged, guarded, capture, &paged_reply) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(paged_reply.output, "ERR UNAVAILABLE\r\n") == 0);
+    gridpico_local_route_status status = {0};
+    assert(gridpico_patch_session_read_local_route(&local.session, &pair, &status) ==
+           GRIDPICO_OK);
+    assert(status.state == GRIDPICO_PATCH_ROUTE_OFF);
+    clear(&paged_reply);
+    assert(gridpico_cli_execute_line(&paged, "route 1 10 managed", capture,
+                                    &paged_reply) == GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, "ROUTE 1 10 MANAGED OFF\r\nOK\r\n") == 0);
+    assert(gridpico_patch_session_read_routing_metadata(&local.session, &metadata) ==
+           GRIDPICO_OK);
+    assert(snprintf(guarded, sizeof guarded, "route 1 10 managed on if %llu",
+                    (unsigned long long)metadata.revision) > 0);
+    clear(&paged_reply);
+    assert(gridpico_cli_execute_line(&paged, guarded, capture, &paged_reply) ==
+           GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, "ROUTE 1 10 MANAGED ACTIVE\r\nOK\r\n") == 0);
 }
 
 static void test_guarded_route_cli(transcript *terminal)
@@ -1659,6 +1957,7 @@ int main(void)
     test_monitor_cli(&terminal);
     test_local_route_cli(&terminal);
     test_routing_cli(&terminal);
+    test_j186_routing_pages_cli(&terminal);
     test_guarded_route_cli(&terminal);
     test_platform_cli(&terminal);
     test_forwarding_cli(&terminal);

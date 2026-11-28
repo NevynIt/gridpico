@@ -5,6 +5,7 @@
 #include "api/patchbay_controls.h"
 #include "api/local_router.h"
 #include "api/routing.h"
+#include "core/session/patch_session.h"
 #include "third_party/embedded_cli.h"
 
 enum {
@@ -48,6 +49,19 @@ typedef struct {
     gridpico_local_read_route_fn routing_read_route;
     gridpico_local_set_route_fn routing_set_route;
     gridpico_local_routing_snapshot *routing_scratch;
+    /* Optional Session-private compatibility reader. It avoids materializing
+     * the complete route vector on the selected profile. */
+    gridpico_result (*routing_read_metadata)(void *context,
+                                             gridpico_patch_routing_metadata *out);
+    gridpico_result (*routing_read_page)(void *context,
+                                         gridpico_revision expected_revision,
+                                         size_t offset,
+                                         gridpico_patch_routing_page *out);
+    gridpico_result (*routing_read_guarded_pair)(void *context,
+                                                 gridpico_revision expected_revision,
+                                                 const gridpico_local_route *route,
+                                                 gridpico_local_route_status *out);
+    gridpico_patch_routing_page *routing_page_scratch;
     /* Optional target-scoped explicit APC role provider. */
     void *apc_roles_context;
     gridpico_apc_read_roles_fn read_apc_roles;
@@ -131,6 +145,27 @@ void gridpico_cli_bind_routing(gridpico_cli_frontend *frontend, void *context,
                               gridpico_local_read_route_fn read_route,
                               gridpico_local_set_route_fn set_route,
                               gridpico_local_routing_snapshot *scratch);
+
+/* Opt a selected compatibility profile into Session-private paged Routing.
+ * The page scratch remains caller-owned and disjoint from the provider's own
+ * scratch; read_route/set_route perform typed readback/edit in one serialized
+ * command turn.
+ */
+void gridpico_cli_bind_routing_pages(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_result (*read_metadata)(void *context,
+                                     gridpico_patch_routing_metadata *out),
+    gridpico_result (*read_page)(void *context,
+                                 gridpico_revision expected_revision,
+                                 size_t offset,
+                                 gridpico_patch_routing_page *out),
+    gridpico_result (*read_guarded_pair)(void *context,
+                                         gridpico_revision expected_revision,
+                                         const gridpico_local_route *route,
+                                         gridpico_local_route_status *out),
+    gridpico_local_read_route_fn read_route,
+    gridpico_local_set_route_fn set_route,
+    gridpico_patch_routing_page *scratch);
 
 /* Bind optional explicit APC Panel/LED role control before input processing. */
 void gridpico_cli_bind_apc_roles(gridpico_cli_frontend *frontend, void *context,
