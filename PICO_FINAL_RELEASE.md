@@ -4,6 +4,12 @@ This branch preserves the exact firmware source for UF2 `a56bcafdc693820a2bdb9ed
 
 The firmware uses normal Pico7, PIO USB, wide routing, read-only PAT2, the existing CDC CLI, physical APC and CDC CC123, and the read-only MSC asset drive. The exact image passed independent static audit and was installed on the DEV Pico on 2026-11-28 at 12:18:01 UTC. Physical flash readback, no-write BOOTSEL return, and the read-only FAT mount with all five file hashes passed. Real mounted-browser MIDI and FM audio and physical Shift+Record remain separate acceptance checks. The [artifact manifest](release/pico-final/artifacts.sha256) identifies the tested binary and the original recovered ELF. This source branch contains no firmware binaries.
 
+## DEV closeout status
+
+The same Pico completed a no-write BOOTSEL recovery on 2026-11-28 at 15:14:10 UTC and returned at USB generation 33. The 2 MiB flash readback still matched `4e446820eb35d01386be04f81d1e380f175538d33c50a37133f883ffe570632e`. The fresh PIO USB census found the USB MIDI Interface and MicroFreak. Circuit Tracks and the APC did not enumerate, so no physical Panel or LED role was available for a Shift+Record test. The retained downstream control failure could not be attributed to a device.
+
+The installed read-only volume contains `HOME.HTM`, `INDEX.HTM` (Web APC), `FM.HTM`, `DIAG.HTM`, and `VERSION.TXT`. All five file hashes passed through an actual read-only mount. The mounted-browser MIDI and audio check remains open. Computer MIDI Out 3 was unavailable before a browser receiver was attached. The full illustrated operator manual and its conditional on-drive copy are pending final interaction evidence.
+
 ## Reproduce the Pico build
 
 Use the tool and SDK versions in [tool versions](release/pico-final/tool-versions.txt). The [external input manifest](release/pico-final/external-build-inputs.sha256) records their exact bytes and original local paths. Use matching inputs if your paths differ. The [configure recipe](release/pico-final/configure.sh) accepts CMake path overrides after the build directory. It builds only the Pico router profile.
