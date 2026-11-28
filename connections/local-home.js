@@ -21,6 +21,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   }
 
   const { actions, roles } = adapter.capabilities;
+  const target = adapter.target;
+  if (location.origin === "http://192.168.0.223:18768" && adapter.capabilityStatus === "ready" &&
+      adapter.trustedLan === true && target?.origin === location.origin && target.capabilities === adapter.capabilities) {
+    router.textContent = "Pi router · " + location.origin;
+    document.querySelector("#home-pico-cdc").hidden = actions.picoCdc !== true;
+  }
   if (!actions.cli) {
     routing.textContent = "Routing unavailable on this connection. Open Routing for access options.";
   }
