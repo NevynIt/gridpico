@@ -1,4 +1,5 @@
 #include "app/patch_runtime.h"
+#include "app/local_runtime.h"
 
 #include <assert.h>
 #include <stdio.h>
@@ -19,6 +20,9 @@ typedef struct {
     gridpico_patch_graph graph;
     gridpico_patch_session session;
     gridpico_apc_patch_snapshot cli_apc_scratch;
+    gridpico_local_routing_snapshot legacy_routing_scratch;
+    gridpico_patch_routing_page session_routing_scratch;
+    gridpico_patch_routing_page cli_routing_page_scratch;
 } local_fixture;
 
 typedef struct {
@@ -46,9 +50,20 @@ typedef struct {
     gridpico_result panic_apply_result;
     size_t panic_reads;
     size_t panic_applies;
+    gridpico_panic_sweep_status sweep_status;
+    gridpico_result sweep_read_result;
+    gridpico_result sweep_apply_result;
+    bool sweep_apply_ignore_guard;
+    size_t sweep_reads;
+    size_t sweep_applies;
 } forwarding_fixture;
 
+static bool corrupt_routing_page_for_cli_test;
+
 static gridpico_result unused_snapshot(void *context, gridpico_patch_snapshot *out);
+static gridpico_result read_routing_fixture(void *context,
+                                            gridpico_local_routing_snapshot *out);
+static void initialize_routing_snapshot(routing_fixture *fixture);
 
 static gridpico_result read_forwarding(void *context, gridpico_forwarding_status *out)
 {
@@ -94,6 +109,28 @@ static gridpico_result apply_panic(void *context, gridpico_panic_stage_report *o
     return GRIDPICO_OK;
 }
 
+static gridpico_result read_panic_sweep(void *context,
+                                        gridpico_panic_sweep_status *out)
+{
+    forwarding_fixture *fixture = context;
+    ++fixture->sweep_reads;
+    if (fixture->sweep_read_result != GRIDPICO_OK) return fixture->sweep_read_result;
+    *out = fixture->sweep_status;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result apply_panic_sweep(void *context, uint64_t expected_cycle,
+                                         gridpico_panic_sweep_status *out)
+{
+    forwarding_fixture *fixture = context;
+    ++fixture->sweep_applies;
+    if (fixture->sweep_apply_result != GRIDPICO_OK) return fixture->sweep_apply_result;
+    if (!fixture->sweep_apply_ignore_guard &&
+        expected_cycle != fixture->sweep_status.cycle) return GRIDPICO_UNAVAILABLE;
+    *out = fixture->sweep_status;
+    return GRIDPICO_OK;
+}
+
 static void capture(void *context, const char *bytes, size_t size)
 {
     transcript *out = context;
@@ -107,6 +144,15 @@ static void clear(transcript *out)
 {
     out->size = 0;
     out->output[0] = '\0';
+}
+
+static void select_machine_format(gridpico_cli_frontend *cli, transcript *terminal)
+{
+    clear(terminal);
+    assert(gridpico_cli_execute_line(cli, "format machine", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT MACHINE\r\nOK\r\n") == 0);
+    assert(cli->machine_format);
+    clear(terminal);
 }
 
 static bool contains(const transcript *out, const char *expected)
@@ -153,6 +199,7 @@ static void test_forwarding_cli(transcript *terminal)
     gridpico_cli_frontend cli;
     assert(gridpico_cli_init(&cli, &fixture, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     clear(terminal);
     assert(gridpico_cli_execute_line(&cli, "forwarding", capture, terminal) ==
            GRIDPICO_UNAVAILABLE);
@@ -382,6 +429,284 @@ static void test_forwarding_cli(transcript *terminal)
                            GRIDPICO_OK);
 }
 
+static void test_panic_sweep_cli(transcript *terminal)
+{
+    forwarding_fixture fixture = {
+        .status = {.revision = 4, .running = true},
+        .read_result = GRIDPICO_OK,
+        .apply_result = GRIDPICO_OK,
+        .panic_read_result = GRIDPICO_OK,
+        .panic_apply_result = GRIDPICO_OK,
+        .sweep_read_result = GRIDPICO_OK,
+        .sweep_apply_result = GRIDPICO_OK,
+        .panic_report = {.state = GRIDPICO_PANIC_STAGE_COMPLETE},
+        .sweep_status = {
+            .cycle = 0,
+            .window = GRIDPICO_PANIC_IDLE,
+            .cc123 = {.state = GRIDPICO_PANIC_STAGE_NONE},
+            .sweep = {.state = GRIDPICO_PANIC_STAGE_NONE},
+        },
+    };
+    gridpico_cli_frontend cli;
+    assert(gridpico_cli_init(&cli, &fixture, unused_snapshot, NULL, NULL,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
+    gridpico_panic_stage_report panic_scratch = {0};
+    gridpico_panic_sweep_status sweep_scratch = {0};
+
+    /* Recognized well-formed forms are unavailable until every M1a/M1b
+     * callback and caller-owned report is bound; malformed remains INVALID. */
+    gridpico_cli_bind_musical_control(&cli, &fixture, read_forwarding,
+                                      apply_forwarding, read_panic, apply_panic,
+                                      &panic_scratch);
+    gridpico_cli_bind_panic_sweep(&cli, read_panic_sweep, NULL, &sweep_scratch);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help panic", capture, terminal) == GRIDPICO_OK);
+    assert(!contains(terminal, "panic sweep"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(fixture.sweep_reads == 0 && fixture.sweep_applies == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 0", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    assert(fixture.sweep_reads == 0 && fixture.sweep_applies == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 18446744073709551616",
+                                    capture, terminal) == GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+
+    gridpico_cli_bind_panic_sweep(&cli, read_panic_sweep, apply_panic_sweep,
+                                  &sweep_scratch);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "help panic", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "panic sweep status | panic sweep if <cycle>"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_WINDOW 0 IDLE - -\r\n"
+                  "PANIC_STAGE CC123 NONE 0\r\n"
+                  "PANIC_STAGE SWEEP NONE 0\r\n"
+                  "OK\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_STAGE CC123 COMPLETE 0\r\nOK\r\n") == 0);
+
+    fixture.sweep_status = (gridpico_panic_sweep_status){
+        .cycle = 9,
+        .window = GRIDPICO_PANIC_WAIT,
+        .wait_us = 1000001,
+        .remaining_us = 10000000,
+        .cc123 = {
+            .state = GRIDPICO_PANIC_STAGE_RUNNING,
+            .count = 1,
+            .outputs = {{{5, 7}, 16, 3, GRIDPICO_PANIC_OUTPUT_PENDING}},
+        },
+        .sweep = {.state = GRIDPICO_PANIC_STAGE_NONE},
+    };
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_WINDOW 9 WAIT 1000001 10000000\r\n"
+                  "PANIC_STAGE CC123 RUNNING 1\r\n"
+                  "PANIC_OUT 5 7 16 3 PENDING\r\n"
+                  "PANIC_STAGE SWEEP NONE 0\r\n"
+                  "OK\r\n") == 0);
+
+    /* At the first admitted tick, CC123 can still be in flight. A status read
+     * remains valid; activation is delegated to the provider and may refuse
+     * busy without changing the last committed CLI scratch snapshot. */
+    fixture.sweep_status = (gridpico_panic_sweep_status){
+        .cycle = 1,
+        .window = GRIDPICO_PANIC_OPEN,
+        .remaining_us = 8999999,
+        .cc123 = {
+            .state = GRIDPICO_PANIC_STAGE_RUNNING,
+            .count = 1,
+            .outputs = {{{5, 7}, 16, 3, GRIDPICO_PANIC_OUTPUT_PENDING}},
+        },
+        .sweep = {.state = GRIDPICO_PANIC_STAGE_NONE},
+    };
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_WINDOW 1 OPEN 0 8999999\r\n"
+                  "PANIC_STAGE CC123 RUNNING 1\r\n"
+                  "PANIC_OUT 5 7 16 3 PENDING\r\n"
+                  "PANIC_STAGE SWEEP NONE 0\r\n"
+                  "OK\r\n") == 0);
+    const gridpico_panic_sweep_status open_scratch = sweep_scratch;
+    fixture.sweep_apply_result = GRIDPICO_UNAVAILABLE;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 1", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(memcmp(&open_scratch, &sweep_scratch, sizeof open_scratch) == 0);
+    fixture.sweep_apply_result = GRIDPICO_OK;
+
+    fixture.sweep_status = (gridpico_panic_sweep_status){
+        .cycle = 9,
+        .window = GRIDPICO_PANIC_CLOSED,
+        .remaining_us = 712,
+        .cc123 = {
+            .state = GRIDPICO_PANIC_STAGE_COMPLETE,
+            .count = 1,
+            .outputs = {{{5, 7}, 16, 16, GRIDPICO_PANIC_OUTPUT_COMPLETE}},
+        },
+        .sweep = {
+            .state = GRIDPICO_PANIC_STAGE_RUNNING,
+            .count = 1,
+            .outputs = {{{8, 12}, 2048, 9, GRIDPICO_PANIC_OUTPUT_PENDING}},
+        },
+    };
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 9", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "PANIC_WINDOW 9 CLOSED - 712\r\n"
+                  "PANIC_STAGE CC123 COMPLETE 1\r\n"
+                  "PANIC_OUT 5 7 16 16 COMPLETE\r\n"
+                  "PANIC_STAGE SWEEP RUNNING 1\r\n"
+                  "PANIC_OUT 8 12 2048 9 PENDING\r\n"
+                  "OK\r\n") == 0);
+    assert(fixture.sweep_applies == 2);
+
+    fixture.sweep_status.cc123.state = GRIDPICO_PANIC_STAGE_RUNNING;
+    fixture.sweep_status.cc123.outputs[0].state = GRIDPICO_PANIC_OUTPUT_PENDING;
+    fixture.sweep_apply_ignore_guard = true;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 9", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    fixture.sweep_status.cc123.state = GRIDPICO_PANIC_STAGE_COMPLETE;
+    fixture.sweep_status.cc123.outputs[0].state = GRIDPICO_PANIC_OUTPUT_COMPLETE;
+    fixture.sweep_apply_ignore_guard = false;
+
+    fixture.sweep_status.sweep.state = GRIDPICO_PANIC_STAGE_NONE;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 9", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    fixture.sweep_status.sweep.state = GRIDPICO_PANIC_STAGE_RUNNING;
+
+    /* UNCONFIRMED is the only row whose accepted count renders as '-'. */
+    fixture.sweep_status.sweep.state = GRIDPICO_PANIC_STAGE_COMPLETE;
+    fixture.sweep_status.sweep.outputs[0] = (gridpico_panic_output){
+        .output = {8, 12}, .requested_count = 2048,
+        .accepted_count = 0, .state = GRIDPICO_PANIC_OUTPUT_UNCONFIRMED,
+    };
+    fixture.sweep_status.cc123.state = GRIDPICO_PANIC_STAGE_CANCELLED;
+    fixture.sweep_status.cc123.outputs[0].state = GRIDPICO_PANIC_OUTPUT_CANCELLED;
+    fixture.sweep_status.cc123.outputs[0].accepted_count = 4;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(contains(terminal, "PANIC_OUT 8 12 2048 - UNCONFIRMED\r\n"));
+
+    /* Provider failures and false successful values never leak partial rows. */
+    fixture.sweep_apply_result = GRIDPICO_UNAVAILABLE;
+    const gridpico_panic_sweep_status saved_apply_scratch = sweep_scratch;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 22", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(memcmp(&saved_apply_scratch, &sweep_scratch,
+                  sizeof saved_apply_scratch) == 0);
+    fixture.sweep_apply_result = GRIDPICO_OK;
+
+    fixture.sweep_read_result = GRIDPICO_UNAVAILABLE;
+    const gridpico_panic_sweep_status saved_scratch = sweep_scratch;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(terminal->output, "ERR UNAVAILABLE\r\n") == 0);
+    assert(memcmp(&saved_scratch, &sweep_scratch, sizeof saved_scratch) == 0);
+    fixture.sweep_read_result = GRIDPICO_OK;
+    fixture.sweep_status.window = GRIDPICO_PANIC_OPEN;
+    fixture.sweep_status.wait_us = 1;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    fixture.sweep_status.window = GRIDPICO_PANIC_CLOSED;
+    fixture.sweep_status.wait_us = 0;
+    fixture.sweep_status.sweep.outputs[0].requested_count = 2047;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    fixture.sweep_status.sweep.outputs[0].requested_count = 2048;
+    fixture.sweep_status.cycle = 23;
+    fixture.sweep_apply_ignore_guard = true;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep if 22", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0);
+    fixture.sweep_apply_ignore_guard = false;
+    fixture.sweep_status.cycle = 22;
+
+    /* The full portable cohort uses the documented 76-record/3728-byte
+     * machine envelope; every record validates before the first write. */
+    fixture.sweep_status = (gridpico_panic_sweep_status){
+        .cycle = 22, .window = GRIDPICO_PANIC_CLOSED,
+        .cc123 = {.state = GRIDPICO_PANIC_STAGE_COMPLETE,
+                  .count = GRIDPICO_PATCH_MAX_PORTS},
+        .sweep = {.state = GRIDPICO_PANIC_STAGE_COMPLETE,
+                  .count = GRIDPICO_PATCH_MAX_PORTS},
+    };
+    for (size_t i = 0; i < GRIDPICO_PATCH_MAX_PORTS; ++i) {
+        fixture.sweep_status.cc123.outputs[i] = (gridpico_panic_output){
+            .output = {(gridpico_port_id)(i + 1), UINT32_MAX},
+            .requested_count = 16, .accepted_count = 0,
+            .state = GRIDPICO_PANIC_OUTPUT_REFUSED,
+        };
+        fixture.sweep_status.sweep.outputs[i] = (gridpico_panic_output){
+            .output = {(gridpico_port_id)(i + 1), UINT32_MAX},
+            .requested_count = 2048, .accepted_count = 0,
+            .state = GRIDPICO_PANIC_OUTPUT_REFUSED,
+        };
+    }
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(terminal->size <= 3728);
+    size_t rows = 0;
+    for (const char *cursor = terminal->output;
+         (cursor = strstr(cursor, "PANIC_OUT ")) != NULL; cursor += 10) ++rows;
+    assert(rows == GRIDPICO_PATCH_MAX_PORTS * 2);
+
+    /* Human negotiation and prose conversion remain session-local. */
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "format human", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT HUMAN\r\nOK\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(terminal->size <= 8192);
+    assert(contains(terminal, "Panic timing window: PANIC_WINDOW 22 CLOSED - 0\r\n"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(strcmp(terminal->output,
+                  "All-notes-off stage: PANIC_STAGE CC123 COMPLETE 0\r\n"
+                  "Done.\r\n") == 0);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "panic sweep status", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(contains(terminal, "Panic timing window: PANIC_WINDOW 22 CLOSED - 0\r\n"));
+    assert(contains(terminal, "Done.\r\n"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&cli, "format machine", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT MACHINE\r\nOK\r\n") == 0);
+}
+
 static void initialize_monitor_inventory(gridpico_patch_inventory *inventory)
 {
     *inventory = (gridpico_patch_inventory){
@@ -423,6 +748,7 @@ static void test_monitor_cli(transcript *terminal)
                              gridpico_session_read_device_color,
                              gridpico_session_set_device_color,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     const gridpico_patch_route_request route = {
         .source = 1,
         .destination = GRIDPICO_PATCH_MONITOR_PORT_ID,
@@ -552,6 +878,7 @@ static void test_local_route_cli(transcript *terminal)
                              gridpico_session_read_device_color,
                              gridpico_session_set_device_color,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     cli.set_local_route = gridpico_patch_session_set_local_route;
     cli.read_local_route = gridpico_patch_session_read_local_route;
     cli.read_local_routing = gridpico_patch_session_read_local_routing;
@@ -633,6 +960,143 @@ static gridpico_result unused_snapshot(void *context, gridpico_patch_snapshot *o
     return GRIDPICO_UNAVAILABLE;
 }
 
+static void test_format_cli(transcript *terminal)
+{
+    patch_runtime runtime;
+    assert(patch_runtime_init(&runtime) == GRIDPICO_OK);
+    gridpico_cli_frontend first;
+    gridpico_cli_frontend second;
+    assert(patch_runtime_bind_cli(&runtime, &first, capture, terminal) == GRIDPICO_OK);
+    assert(patch_runtime_bind_cli(&runtime, &second, capture, terminal) == GRIDPICO_OK);
+    assert(!first.machine_format && !second.machine_format);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "inventory", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "Device #1 \"APC Key 25 mk2\": connected; color unset.\r\n"));
+    assert(contains(terminal, "Port #1 \"Keybed\" on device #1 APC Key 25 mk2: in, connected; Patch slot row:1:1.\r\n"));
+    assert(contains(terminal, "Done.\r\n"));
+    assert(!contains(terminal, "DEVICE 1 connected"));
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "help color set", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(contains(terminal, "Command: color set <device> #RRGGBB -- set and read back a device color"));
+    assert(contains(terminal, "Done.\r\n"));
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "status", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "Status at revision 0: 2 devices, 5 ports, 0 active and 0 pending routes."));
+
+    routing_fixture routing = {0};
+    initialize_routing_snapshot(&routing);
+    gridpico_cli_frontend routing_cli;
+    assert(gridpico_cli_init(&routing_cli, &routing, unused_snapshot, NULL, NULL,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    routing_cli.read_local_routing = read_routing_fixture;
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&routing_cli, "routing 41 24", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(contains(terminal, "Routing revision 41: end of snapshot."));
+    assert(contains(terminal,
+                    "Route from port #1 Keybed to port #5 Monitor (MANAGED): ACTIVE."));
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "format machine", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT MACHINE\r\nOK\r\n") == 0);
+    assert(first.machine_format && !second.machine_format);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "inventory", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "DEVICE 1 connected unset \"APC Key 25 mk2\"\r\n"));
+    assert(contains(terminal, "OK\r\n"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&second, "inventory", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "Device #1 \"APC Key 25 mk2\""));
+    assert(!second.machine_format);
+
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "format machine extra", capture, terminal) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(terminal->output, "ERR INVALID\r\n") == 0 && first.machine_format);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "format human", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT HUMAN\r\nOK\r\n") == 0);
+    assert(!first.machine_format);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&first, "format human", capture, terminal) == GRIDPICO_OK);
+    assert(strcmp(terminal->output, "FORMAT HUMAN\r\nOK\r\n") == 0);
+
+    /* Reinitializing a frontend for a replacement lease starts in Human. */
+    assert(patch_runtime_bind_cli(&runtime, &first, capture, terminal) == GRIDPICO_OK);
+    assert(!first.machine_format);
+    clear(terminal);
+    gridpico_cli_process(&first);
+    assert(strcmp(terminal->output, "> ") == 0);
+    clear(terminal);
+    gridpico_cli_receive(&first, "format machine\r\n",
+                         sizeof("format machine\r\n") - 1);
+    gridpico_cli_process(&first);
+    assert(strcmp(terminal->output, "FORMAT MACHINE\r\nOK\r\n") == 0);
+
+    clear(terminal);
+    gridpico_cli_receive(&first, "inventory\n", sizeof("inventory\n") - 1);
+    gridpico_cli_process(&first);
+    assert(contains(terminal, "DEVICE 1 connected unset \"APC Key 25 mk2\"\r\n"));
+    assert(!contains(terminal, "inventory\r\n"));
+    assert(!contains(terminal, "> "));
+    assert(contains(terminal, "OK\r\n"));
+
+    clear(terminal);
+    gridpico_cli_receive(&first, "format human\n", sizeof("format human\n") - 1);
+    gridpico_cli_process(&first);
+    assert(strcmp(terminal->output, "FORMAT HUMAN\r\nOK\r\n") == 0);
+    clear(terminal);
+    gridpico_cli_receive(&first, "status\n", sizeof("status\n") - 1);
+    gridpico_cli_process(&first);
+    assert(contains(terminal, "status ") &&
+           contains(terminal, "Status at revision 0:"));
+    assert(contains(terminal, "Done.\r\n> "));
+}
+
+static void test_format_serial_lease(void)
+{
+    local_runtime runtime;
+    assert(local_runtime_init(&runtime) == GRIDPICO_OK);
+    assert(local_runtime_serial_bind(&runtime, 1) == GRIDPICO_OK);
+    assert(!runtime.cli.machine_format);
+
+    /* Discard the attachment's startup prompt before bootstrapping format. */
+    runtime.serial_count = 0;
+    const char machine[] = "format machine\n";
+    assert(local_runtime_serial(&runtime, 1, machine, sizeof machine - 1) == GRIDPICO_OK);
+    assert(runtime.cli.machine_format);
+    assert(runtime.serial_count == sizeof("FORMAT MACHINE\r\nOK\r\n") - 1);
+    assert(memcmp(runtime.serial_bytes, "FORMAT MACHINE\r\nOK\r\n",
+                  runtime.serial_count) == 0);
+
+    /* A full staged writer cannot confirm the next complete acknowledgement. */
+    runtime.serial_count = LOCAL_SERIAL_QUEUE - 1;
+    const char human[] = "format human\n";
+    assert(local_runtime_serial(&runtime, 1, human, sizeof human - 1) ==
+           GRIDPICO_CAPACITY);
+    assert(runtime.serial.fault && !runtime.cli.machine_format);
+    assert(local_runtime_finish(&runtime, GRIDPICO_OK) == GRIDPICO_OK);
+    assert(!runtime.serial.attached);
+
+    assert(local_runtime_serial_bind(&runtime, 2) == GRIDPICO_OK);
+    assert(!runtime.cli.machine_format);
+    runtime.serial_count = 0;
+    const char inventory[] = "inventory\n";
+    assert(local_runtime_serial(&runtime, 2, inventory, sizeof inventory - 1) == GRIDPICO_OK);
+    assert(runtime.serial_count < sizeof(((transcript *)0)->output));
+    transcript reply = {0};
+    memcpy(reply.output, runtime.serial_bytes, runtime.serial_count);
+    reply.output[runtime.serial_count] = '\0';
+    reply.size = runtime.serial_count;
+    assert(contains(&reply, "Device #1 \"Web APC\""));
+    assert(!contains(&reply, "DEVICE 1 connected"));
+}
+
 static gridpico_result read_routing_fixture(void *context,
                                             gridpico_local_routing_snapshot *out)
 {
@@ -674,6 +1138,43 @@ static void assert_routing_record_bounds(const transcript *output)
             ++i;
         }
     }
+}
+
+static void assert_routing_page_record_count(const transcript *output)
+{
+    size_t records = 0;
+    for (size_t i = 0; i + 1 < output->size; ++i) {
+        if (output->output[i] == '\r' && output->output[i + 1] == '\n') {
+            ++records;
+            ++i;
+        }
+    }
+    assert(records >= 2); /* Header and final OK. */
+    assert(records - 2 <= GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS);
+}
+
+static gridpico_result read_graph_route_metadata_adapter(
+    const void *context, gridpico_patch_graph_route_metadata *out)
+{
+    return gridpico_patch_graph_read_route_metadata(context, out);
+}
+
+static gridpico_result read_graph_route_page_adapter(
+    const void *context, gridpico_revision revision, size_t offset,
+    gridpico_patch_graph_route_page *out)
+{
+    return gridpico_patch_graph_read_route_page(context, revision, offset, out);
+}
+
+static gridpico_result read_session_routing_page_for_cli(
+    void *context, gridpico_revision revision, size_t offset,
+    gridpico_patch_routing_page *out)
+{
+    const gridpico_result result = gridpico_patch_session_read_routing_page(
+        context, revision, offset, out);
+    if (result == GRIDPICO_OK && corrupt_routing_page_for_cli_test)
+        ++out->record_count;
+    return result;
 }
 
 static void initialize_routing_snapshot(routing_fixture *fixture)
@@ -764,6 +1265,7 @@ static void test_routing_cli(transcript *terminal)
     gridpico_cli_frontend cli;
     assert(gridpico_cli_init(&cli, &fixture, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     cli.read_local_routing = read_routing_fixture;
 
     clear(terminal);
@@ -849,6 +1351,7 @@ static void test_routing_cli(transcript *terminal)
     gridpico_cli_frontend unavailable_cli;
     assert(gridpico_cli_init(&unavailable_cli, &fixture, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&unavailable_cli, terminal);
     clear(terminal);
     assert(gridpico_cli_execute_line(&unavailable_cli, "routing", capture, terminal) ==
            GRIDPICO_UNAVAILABLE);
@@ -868,6 +1371,262 @@ static void test_routing_cli(transcript *terminal)
     assert(strcmp(terminal->output, "ERR CAPACITY\r\n") == 0);
 }
 
+static void test_j186_routing_pages_cli(transcript *terminal)
+{
+    local_fixture local = {0};
+    gridpico_local_registry registry = {0};
+    registry.inventory.device_count = 2;
+    registry.inventory.port_count = 18;
+    registry.inventory.devices[0] = (gridpico_patch_device){
+        .id = 1, .name = "Key \"A\"", .state = GRIDPICO_PATCH_DISCONNECTED,
+    };
+    registry.inventory.devices[1] = (gridpico_patch_device){
+        .id = 2, .name = "Output \"B\"", .state = GRIDPICO_PATCH_DISCONNECTED,
+    };
+    for (size_t i = 0; i < 9; ++i) {
+        const gridpico_port_id input = (gridpico_port_id)(i + 1);
+        const gridpico_port_id output = (gridpico_port_id)(i + 10);
+        const bool raw = i == 8;
+        registry.inventory.ports[i] = (gridpico_patch_port){
+            .id = input, .device = 1, .name = "Key \"input\"",
+            .direction = GRIDPICO_PATCH_INPUT,
+            .state = GRIDPICO_PATCH_DISCONNECTED, .patch_eligible = !raw,
+        };
+        registry.inventory.ports[i + 9] = (gridpico_patch_port){
+            .id = output, .device = 2, .name = "MIDI \\ output",
+            .direction = GRIDPICO_PATCH_OUTPUT,
+            .state = GRIDPICO_PATCH_DISCONNECTED, .patch_eligible = !raw,
+        };
+        registry.port_capabilities[i] = raw ? GRIDPICO_LOCAL_PORT_RAW
+                                            : GRIDPICO_LOCAL_PORT_MANAGED;
+        registry.port_capabilities[i + 9] = raw ? GRIDPICO_LOCAL_PORT_RAW
+                                                : GRIDPICO_LOCAL_PORT_MANAGED;
+    }
+    const gridpico_local_profile profile = {
+        .midi_peer_limit = 2,
+        .managed_branch_limit = GRIDPICO_LOCAL_MAX_MANAGED_BRANCHES,
+        .raw_branch_limit = GRIDPICO_LOCAL_MAX_RAW_BRANCHES,
+        .managed_fanout_limit = GRIDPICO_LOCAL_MAX_FANOUT,
+        .occurrence_limit = GRIDPICO_LOCAL_MAX_NOTE_OCCURRENCES,
+        .release_credit_limit = GRIDPICO_LOCAL_MAX_RELEASE_CREDITS,
+    };
+    const gridpico_result graph_init = gridpico_patch_graph_init_local_profile(
+        &local.graph, &registry, &profile, accept_managed_delivery,
+        accept_raw_delivery, NULL);
+    assert(graph_init == GRIDPICO_OK);
+    gridpico_patch_session_init(&local.session, &local.graph,
+                                gridpico_patch_graph_read_graph,
+                                gridpico_patch_graph_set_route);
+    gridpico_patch_session_bind_local_routes(&local.session,
+                                             gridpico_patch_graph_set_local_route,
+                                             gridpico_patch_graph_read_local_route);
+    gridpico_patch_session_bind_local_routing(&local.session,
+                                              gridpico_patch_graph_read_local_state,
+                                              read_fixture_availability, NULL);
+    gridpico_patch_session_bind_routing_pages(
+        &local.session, read_graph_route_metadata_adapter,
+        read_graph_route_page_adapter, &local.session_routing_scratch);
+
+    for (gridpico_port_id id = 1; id <= 18; ++id) {
+        const gridpico_patch_port_update update = {
+            .connection = {.endpoint = id, .generation = 2},
+            .state = GRIDPICO_PATCH_CONNECTED,
+        };
+        assert(gridpico_patch_graph_update_port(&local.graph, &update) == GRIDPICO_OK);
+    }
+    size_t enabled = 0;
+    const size_t managed_target = GRIDPICO_PATCH_MAX_BRANCHES - 1;
+    for (gridpico_port_id destination = 10; destination <= 17 &&
+         enabled < managed_target; ++destination) {
+        for (gridpico_port_id source = 1; source <= 8 &&
+             enabled < managed_target; ++source) {
+            const gridpico_local_route_request request = {
+                .route = {source, destination, GRIDPICO_LOCAL_MANAGED},
+                .enabled = true,
+            };
+            assert(gridpico_patch_session_set_local_route(&local.session, &request) ==
+                   GRIDPICO_OK);
+            ++enabled;
+        }
+    }
+    assert(enabled == managed_target);
+    const gridpico_local_route_request raw_request = {
+        .route = {9, 18, GRIDPICO_LOCAL_RAW}, .enabled = true,
+    };
+    assert(gridpico_patch_session_set_local_route(&local.session, &raw_request) ==
+           GRIDPICO_OK);
+
+    gridpico_cli_frontend paged;
+    gridpico_cli_frontend legacy;
+    assert(gridpico_cli_init(&paged, &local.session,
+                             gridpico_patch_session_read_snapshot,
+                             gridpico_session_read_device_color,
+                             gridpico_session_set_device_color,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    assert(gridpico_cli_init(&legacy, &local.session,
+                             gridpico_patch_session_read_snapshot,
+                             gridpico_session_read_device_color,
+                             gridpico_session_set_device_color,
+                             NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    gridpico_cli_bind_routing_pages(
+        &paged, &local.session, gridpico_patch_session_read_routing_metadata,
+        read_session_routing_page_for_cli,
+        gridpico_patch_session_read_guarded_route,
+        gridpico_patch_session_read_local_route,
+        gridpico_patch_session_set_local_route,
+        &local.cli_routing_page_scratch);
+    gridpico_cli_bind_routing(&legacy, &local.session,
+                              gridpico_patch_session_read_local_routing,
+                              gridpico_patch_session_read_local_route,
+                              gridpico_patch_session_set_local_route,
+                              &local.legacy_routing_scratch);
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&paged, "help", capture, terminal) == GRIDPICO_OK);
+    assert(contains(terminal, "Command: routing | routing <revision> <offset>"));
+    clear(terminal);
+    assert(gridpico_cli_execute_line(&paged, "help route", capture, terminal) ==
+           GRIDPICO_OK);
+    assert(contains(terminal, "managed on|off if <revision>"));
+
+    transcript paged_reply = {0};
+    transcript legacy_reply = {0};
+    assert(gridpico_cli_execute_line(&paged, "routing", capture, &paged_reply) ==
+           GRIDPICO_OK);
+    assert(gridpico_cli_execute_line(&legacy, "routing", capture, &legacy_reply) ==
+           GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, legacy_reply.output) == 0);
+    assert_routing_record_bounds(&paged_reply);
+    compare_terminal_reply(&paged, terminal, "routing", GRIDPICO_OK);
+
+    gridpico_patch_routing_metadata metadata = {0};
+    assert(gridpico_patch_session_read_routing_metadata(&local.session, &metadata) ==
+           GRIDPICO_OK);
+    char human_continuation[GRIDPICO_CLI_LINE_BYTES];
+    assert(snprintf(human_continuation, sizeof human_continuation, "routing %llu 8",
+                    (unsigned long long)metadata.revision) > 0);
+    clear(&paged_reply);
+    clear(&legacy_reply);
+    assert(gridpico_cli_execute_line(&paged, human_continuation, capture,
+                                    &paged_reply) == GRIDPICO_OK);
+    assert(gridpico_cli_execute_line(&legacy, human_continuation, capture,
+                                    &legacy_reply) == GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, legacy_reply.output) == 0);
+
+    clear(&paged_reply);
+    clear(&legacy_reply);
+    assert(gridpico_cli_execute_line(&paged, "format machine", capture,
+                                    &paged_reply) == GRIDPICO_OK);
+    assert(gridpico_cli_execute_line(&legacy, "format machine", capture,
+                                    &legacy_reply) == GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, legacy_reply.output) == 0);
+    const size_t total = metadata.graph.registry.inventory.device_count +
+                         metadata.graph.registry.inventory.port_count +
+                         metadata.graph.enabled_count;
+    for (size_t offset = 0; offset <= total;
+         offset += GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS) {
+        char command[GRIDPICO_CLI_LINE_BYTES];
+        if (offset == 0) {
+            strcpy(command, "routing");
+        } else {
+            const int size = snprintf(command, sizeof command, "routing %llu %zu",
+                                      (unsigned long long)metadata.revision, offset);
+            assert(size > 0 && (size_t)size < sizeof command);
+        }
+        clear(&paged_reply);
+        clear(&legacy_reply);
+        assert(gridpico_cli_execute_line(&paged, command, capture, &paged_reply) ==
+               GRIDPICO_OK);
+        assert(gridpico_cli_execute_line(&legacy, command, capture, &legacy_reply) ==
+               GRIDPICO_OK);
+        assert(strcmp(paged_reply.output, legacy_reply.output) == 0);
+        assert_routing_record_bounds(&paged_reply);
+        assert_routing_page_record_count(&paged_reply);
+        compare_terminal_reply(&paged, terminal, command, GRIDPICO_OK);
+    }
+    char terminal_page[GRIDPICO_CLI_LINE_BYTES];
+    assert(snprintf(terminal_page, sizeof terminal_page, "routing %llu %zu",
+                    (unsigned long long)metadata.revision, total) > 0);
+    clear(&paged_reply);
+    clear(&legacy_reply);
+    assert(gridpico_cli_execute_line(&paged, terminal_page, capture, &paged_reply) ==
+           GRIDPICO_OK);
+    assert(gridpico_cli_execute_line(&legacy, terminal_page, capture, &legacy_reply) ==
+           GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, legacy_reply.output) == 0);
+    char terminal_expected[GRIDPICO_CLI_RECORD_BYTES];
+    const int terminal_size = snprintf(terminal_expected, sizeof terminal_expected,
+                                       "ROUTING %llu -\r\nOK\r\n",
+                                       (unsigned long long)metadata.revision);
+    assert(terminal_size > 0 && (size_t)terminal_size < sizeof terminal_expected);
+    assert(strcmp(paged_reply.output, terminal_expected) == 0);
+    assert_routing_record_bounds(&paged_reply);
+    char invalid_page[GRIDPICO_CLI_LINE_BYTES];
+    assert(snprintf(invalid_page, sizeof invalid_page, "routing %llu %zu",
+                    (unsigned long long)metadata.revision, total + 1) > 0);
+    clear(&paged_reply);
+    assert(gridpico_cli_execute_line(&paged, invalid_page, capture, &paged_reply) ==
+           GRIDPICO_INVALID);
+    assert(strcmp(paged_reply.output, "ERR INVALID\r\n") == 0);
+
+    const gridpico_revision old_revision = metadata.revision;
+    corrupt_routing_page_for_cli_test = true;
+    clear(&paged_reply);
+    assert(gridpico_cli_execute_line(&paged, "routing", capture, &paged_reply) ==
+           GRIDPICO_INVALID);
+    corrupt_routing_page_for_cli_test = false;
+    assert(strcmp(paged_reply.output, "ERR INVALID\r\n") == 0);
+    const gridpico_patch_port_update detach = {
+        .connection = {.endpoint = 1, .generation = 2},
+        .state = GRIDPICO_PATCH_DISCONNECTED,
+    };
+    assert(gridpico_patch_graph_update_port(&local.graph, &detach) == GRIDPICO_OK);
+    const gridpico_patch_port_update reconnect = {
+        .connection = {.endpoint = 1, .generation = 3},
+        .state = GRIDPICO_PATCH_CONNECTED,
+    };
+    assert(gridpico_patch_graph_update_port(&local.graph, &reconnect) == GRIDPICO_OK);
+    clear(&paged_reply);
+    char stale_page[GRIDPICO_CLI_LINE_BYTES];
+    assert(snprintf(stale_page, sizeof stale_page, "routing %llu 8",
+                    (unsigned long long)old_revision) > 0);
+    assert(gridpico_cli_execute_line(&paged, stale_page, capture, &paged_reply) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(paged_reply.output, "ERR UNAVAILABLE\r\n") == 0);
+
+    assert(gridpico_patch_session_read_routing_metadata(&local.session, &metadata) ==
+           GRIDPICO_OK);
+    const gridpico_local_route pair = {1, 10, GRIDPICO_LOCAL_MANAGED};
+    char guarded[GRIDPICO_CLI_LINE_BYTES];
+    assert(snprintf(guarded, sizeof guarded, "route 1 10 managed off if %llu",
+                    (unsigned long long)metadata.revision) > 0);
+    clear(&paged_reply);
+    assert(gridpico_cli_execute_line(&paged, guarded, capture, &paged_reply) ==
+           GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, "ROUTE 1 10 MANAGED OFF\r\nOK\r\n") == 0);
+    clear(&paged_reply);
+    assert(snprintf(guarded, sizeof guarded, "route 1 10 managed on if %llu",
+                    (unsigned long long)metadata.revision) > 0);
+    assert(gridpico_cli_execute_line(&paged, guarded, capture, &paged_reply) ==
+           GRIDPICO_UNAVAILABLE);
+    assert(strcmp(paged_reply.output, "ERR UNAVAILABLE\r\n") == 0);
+    gridpico_local_route_status status = {0};
+    assert(gridpico_patch_session_read_local_route(&local.session, &pair, &status) ==
+           GRIDPICO_OK);
+    assert(status.state == GRIDPICO_PATCH_ROUTE_OFF);
+    clear(&paged_reply);
+    assert(gridpico_cli_execute_line(&paged, "route 1 10 managed", capture,
+                                    &paged_reply) == GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, "ROUTE 1 10 MANAGED OFF\r\nOK\r\n") == 0);
+    assert(gridpico_patch_session_read_routing_metadata(&local.session, &metadata) ==
+           GRIDPICO_OK);
+    assert(snprintf(guarded, sizeof guarded, "route 1 10 managed on if %llu",
+                    (unsigned long long)metadata.revision) > 0);
+    clear(&paged_reply);
+    assert(gridpico_cli_execute_line(&paged, guarded, capture, &paged_reply) ==
+           GRIDPICO_OK);
+    assert(strcmp(paged_reply.output, "ROUTE 1 10 MANAGED ACTIVE\r\nOK\r\n") == 0);
+}
+
 static void test_guarded_route_cli(transcript *terminal)
 {
     routing_fixture fixture = {0};
@@ -879,6 +1638,7 @@ static void test_guarded_route_cli(transcript *terminal)
     gridpico_cli_frontend cli;
     assert(gridpico_cli_init(&cli, NULL, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     gridpico_cli_bind_routing(&cli, &fixture, read_routing_fixture,
                               read_fixture_route, set_fixture_route, &fixture.scratch);
 
@@ -934,6 +1694,7 @@ static void test_guarded_route_cli(transcript *terminal)
     gridpico_cli_frontend unavailable;
     assert(gridpico_cli_init(&unavailable, NULL, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&unavailable, terminal);
     clear(terminal);
     assert(gridpico_cli_execute_line(&unavailable, "route 1 5 managed on if 41",
                                     capture, terminal) == GRIDPICO_UNAVAILABLE);
@@ -965,6 +1726,7 @@ static void test_platform_cli(transcript *terminal)
     gridpico_cli_frontend cli;
     assert(gridpico_cli_init(&cli, &platform, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, terminal);
     cli.read_device_color = gridpico_session_read_device_color;
     cli.set_device_color = gridpico_session_set_device_color;
     cli.set_local_route = gridpico_patch_session_set_local_route;
@@ -1050,6 +1812,7 @@ static void test_platform_cli(transcript *terminal)
     gridpico_cli_frontend no_platform_cli;
     assert(gridpico_cli_init(&no_platform_cli, &platform, unused_snapshot, NULL, NULL,
                              NULL, NULL, capture, terminal) == GRIDPICO_OK);
+    select_machine_format(&no_platform_cli, terminal);
     gridpico_cli_bind_platform(&no_platform_cli, GRIDPICO_CLI_PLATFORM_BOOTSEL, NULL, NULL);
     clear(terminal);
     assert(gridpico_cli_execute_line(&no_platform_cli, "help", capture, terminal) ==
@@ -1069,12 +1832,16 @@ static void test_platform_cli(transcript *terminal)
 
 int main(void)
 {
+    transcript terminal = {0};
+    test_format_cli(&terminal);
+    test_format_serial_lease();
+
     patch_runtime runtime;
     assert(patch_runtime_init(&runtime) == GRIDPICO_OK);
 
-    transcript terminal = {0};
     gridpico_cli_frontend cli;
     assert(patch_runtime_bind_cli(&runtime, &cli, capture, &terminal) == GRIDPICO_OK);
+    select_machine_format(&cli, &terminal);
     assert(cli.set_local_route == NULL && cli.read_local_route == NULL);
     assert(gridpico_cli_execute_line(&cli, "route 1 2 managed", capture, &terminal) ==
            GRIDPICO_UNAVAILABLE);
@@ -1190,8 +1957,10 @@ int main(void)
     test_monitor_cli(&terminal);
     test_local_route_cli(&terminal);
     test_routing_cli(&terminal);
+    test_j186_routing_pages_cli(&terminal);
     test_guarded_route_cli(&terminal);
     test_platform_cli(&terminal);
     test_forwarding_cli(&terminal);
+    test_panic_sweep_cli(&terminal);
     return 0;
 }

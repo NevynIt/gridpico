@@ -29,7 +29,10 @@ build = Path(sys.argv[1])
 )
 PY
 extra=()
-if [[ ${1:-} == --apply ]]; then
+if [[ ${1:-} == --boot ]]; then
+    extra=(-O0 -DGRIDPICO_RP2040_PAT2_BOOT_READ app/rp2040_pat2_apply.c app/rp2040_auto_routes.c
+           app/rp2040_snapshot.c)
+elif [[ ${1:-} == --apply ]]; then
     extra=(-O0 -DGRIDPICO_PAT2_APPLY_HOST app/rp2040_pat2_ram_commit.c app/rp2040_pat2_apply.c app/rp2040_pat2_capture.c app/rp2040_auto_routes.c app/rp2040_snapshot.c
            frontends/cli/cli_frontend.c)
 fi

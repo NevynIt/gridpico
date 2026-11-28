@@ -5,6 +5,7 @@
 #include "api/patchbay_controls.h"
 #include "api/local_router.h"
 #include "api/routing.h"
+#include "core/session/patch_session.h"
 #include "third_party/embedded_cli.h"
 
 enum {
@@ -48,6 +49,19 @@ typedef struct {
     gridpico_local_read_route_fn routing_read_route;
     gridpico_local_set_route_fn routing_set_route;
     gridpico_local_routing_snapshot *routing_scratch;
+    /* Optional Session-private compatibility reader. It avoids materializing
+     * the complete route vector on the selected profile. */
+    gridpico_result (*routing_read_metadata)(void *context,
+                                             gridpico_patch_routing_metadata *out);
+    gridpico_result (*routing_read_page)(void *context,
+                                         gridpico_revision expected_revision,
+                                         size_t offset,
+                                         gridpico_patch_routing_page *out);
+    gridpico_result (*routing_read_guarded_pair)(void *context,
+                                                 gridpico_revision expected_revision,
+                                                 const gridpico_local_route *route,
+                                                 gridpico_local_route_status *out);
+    gridpico_patch_routing_page *routing_page_scratch;
     /* Optional target-scoped explicit APC role provider. */
     void *apc_roles_context;
     gridpico_apc_read_roles_fn read_apc_roles;
@@ -64,10 +78,15 @@ typedef struct {
     void *musical_control_context;
     gridpico_read_forwarding_fn read_forwarding;
     gridpico_apply_forwarding_fn apply_forwarding;
-    /* M1a Panic providers stay unbound in the forwarding-only candidate. */
+    /* Shared M1a Panic providers, optionally extended by M1b. */
     gridpico_read_panic_fn read_panic;
     gridpico_apply_panic_fn apply_panic;
     gridpico_panic_stage_report *panic_scratch;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    gridpico_read_panic_sweep_fn read_panic_sweep;
+    gridpico_apply_panic_sweep_fn apply_panic_sweep;
+    gridpico_panic_sweep_status *panic_sweep_scratch;
+#endif
     unsigned platform_capabilities;
     gridpico_cli_start_platform_fn start_platform;
     void *platform_context;
@@ -78,6 +97,16 @@ typedef struct {
     bool help_bindings_registered;
     gridpico_cli_write_fn terminal_write;
     void *terminal_write_context;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    /* Reply format is scoped to this initialized CLI session. */
+    bool machine_format;
+    /* Embedded terminal editor output is filtered around format negotiation. */
+    char editor_prefix[GRIDPICO_CLI_LINE_BYTES];
+    size_t editor_prefix_size;
+    unsigned editor_suppress_linebreak;
+    unsigned editor_prompt_pending;
+    bool editor_suppress_prompt;
+#endif
 } gridpico_cli_frontend;
 
 /* Bind a typed Session snapshot reader and caller-owned terminal output. */
@@ -117,6 +146,27 @@ void gridpico_cli_bind_routing(gridpico_cli_frontend *frontend, void *context,
                               gridpico_local_set_route_fn set_route,
                               gridpico_local_routing_snapshot *scratch);
 
+/* Opt a selected compatibility profile into Session-private paged Routing.
+ * The page scratch remains caller-owned and disjoint from the provider's own
+ * scratch; read_route/set_route perform typed readback/edit in one serialized
+ * command turn.
+ */
+void gridpico_cli_bind_routing_pages(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_result (*read_metadata)(void *context,
+                                     gridpico_patch_routing_metadata *out),
+    gridpico_result (*read_page)(void *context,
+                                 gridpico_revision expected_revision,
+                                 size_t offset,
+                                 gridpico_patch_routing_page *out),
+    gridpico_result (*read_guarded_pair)(void *context,
+                                         gridpico_revision expected_revision,
+                                         const gridpico_local_route *route,
+                                         gridpico_local_route_status *out),
+    gridpico_local_read_route_fn read_route,
+    gridpico_local_set_route_fn set_route,
+    gridpico_patch_routing_page *scratch);
+
 /* Bind optional explicit APC Panel/LED role control before input processing. */
 void gridpico_cli_bind_apc_roles(gridpico_cli_frontend *frontend, void *context,
                                 gridpico_apc_read_roles_fn read_roles,
@@ -145,6 +195,15 @@ void gridpico_cli_bind_musical_control(
     gridpico_read_panic_fn read_panic,
     gridpico_apply_panic_fn apply_panic,
     gridpico_panic_stage_report *panic_scratch);
+
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+/* Bind the optional M1b extension on the existing musical-control context. */
+void gridpico_cli_bind_panic_sweep(
+    gridpico_cli_frontend *frontend,
+    gridpico_read_panic_sweep_fn read_sweep,
+    gridpico_apply_panic_sweep_fn apply_sweep,
+    gridpico_panic_sweep_status *sweep_scratch);
+#endif
 
 /* Execute a complete UTF-8 command line. Diagnostics and serial terminal
  * command callbacks use this same handler. Synchronous commands emit CRLF

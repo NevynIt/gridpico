@@ -3,6 +3,20 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
+
+static bool routing_pages_bound(const gridpico_cli_frontend *frontend);
+static bool routing_pages_opted(const gridpico_cli_frontend *frontend);
+static gridpico_result read_paged_routing_metadata(
+    gridpico_cli_frontend *frontend, gridpico_patch_routing_metadata **out);
+static gridpico_result read_paged_route_status(
+    gridpico_cli_frontend *frontend, const gridpico_patch_routing_metadata *metadata,
+    const gridpico_local_route *route, gridpico_local_route_status *status);
+static gridpico_result write_routing_route(gridpico_cli_write_fn write, void *context,
+                                           const gridpico_local_enabled_route *route);
+static gridpico_result write_routing_header(gridpico_cli_write_fn write, void *context,
+                                            gridpico_revision revision, size_t next,
+                                            bool at_end);
 
 _Static_assert(GRIDPICO_CLI_LINE_BYTES <= UINT16_MAX,
                "embedded-cli uses 16-bit configured capacities");
@@ -53,6 +67,316 @@ static bool write_record(gridpico_cli_write_fn write, void *context,
            write_bytes(write, context, "\r\n", 2);
 }
 
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+typedef struct {
+    gridpico_cli_frontend *frontend;
+    gridpico_cli_write_fn write;
+    void *context;
+    const gridpico_local_routing_snapshot *routing_snapshot;
+    const gridpico_patch_routing_metadata *routing_metadata;
+    char line[GRIDPICO_LOCAL_ROUTING_RECORD_BYTES];
+    size_t size;
+    bool carriage_return;
+    bool overflow;
+} human_reply_writer;
+
+static const char *human_port_name(const human_reply_writer *writer,
+                                   gridpico_port_id id)
+{
+    const gridpico_cli_frontend *frontend = writer->frontend;
+    if (writer->routing_metadata != NULL) {
+        const gridpico_patch_inventory *inventory =
+            &writer->routing_metadata->graph.registry.inventory;
+        for (size_t i = 0; i < inventory->port_count &&
+                           i < GRIDPICO_PATCH_MAX_PORTS; ++i) {
+            if (inventory->ports[i].id == id) return inventory->ports[i].name;
+        }
+    }
+    if (writer->routing_snapshot != NULL) {
+        const gridpico_patch_inventory *inventory =
+            &writer->routing_snapshot->graph.registry.inventory;
+        for (size_t i = 0; i < inventory->port_count &&
+                           i < GRIDPICO_PATCH_MAX_PORTS; ++i) {
+            if (inventory->ports[i].id == id) return inventory->ports[i].name;
+        }
+    }
+    if (frontend->routing_scratch != NULL) {
+        const gridpico_patch_inventory *inventory =
+            &frontend->routing_scratch->graph.registry.inventory;
+        for (size_t i = 0; i < inventory->port_count &&
+                           i < GRIDPICO_PATCH_MAX_PORTS; ++i) {
+            if (inventory->ports[i].id == id) return inventory->ports[i].name;
+        }
+    }
+    const gridpico_patch_inventory *inventory =
+        &frontend->snapshot_scratch.inventory;
+    for (size_t i = 0; i < inventory->port_count &&
+                       i < GRIDPICO_PATCH_MAX_PORTS; ++i) {
+        if (inventory->ports[i].id == id) return inventory->ports[i].name;
+    }
+    return NULL;
+}
+
+static const char *human_device_name(const human_reply_writer *writer,
+                                     gridpico_device_id id)
+{
+    const gridpico_cli_frontend *frontend = writer->frontend;
+    if (writer->routing_metadata != NULL) {
+        const gridpico_patch_inventory *inventory =
+            &writer->routing_metadata->graph.registry.inventory;
+        for (size_t i = 0; i < inventory->device_count &&
+                           i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+            if (inventory->devices[i].id == id) return inventory->devices[i].name;
+        }
+    }
+    if (writer->routing_snapshot != NULL) {
+        const gridpico_patch_inventory *inventory =
+            &writer->routing_snapshot->graph.registry.inventory;
+        for (size_t i = 0; i < inventory->device_count &&
+                           i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+            if (inventory->devices[i].id == id) return inventory->devices[i].name;
+        }
+    }
+    if (frontend->routing_scratch != NULL) {
+        const gridpico_patch_inventory *inventory =
+            &frontend->routing_scratch->graph.registry.inventory;
+        for (size_t i = 0; i < inventory->device_count &&
+                           i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+            if (inventory->devices[i].id == id) return inventory->devices[i].name;
+        }
+    }
+    const gridpico_patch_inventory *inventory =
+        &frontend->snapshot_scratch.inventory;
+    for (size_t i = 0; i < inventory->device_count &&
+                       i < GRIDPICO_PATCH_MAX_DEVICES; ++i) {
+        if (inventory->devices[i].id == id) return inventory->devices[i].name;
+    }
+    return NULL;
+}
+
+static bool human_emit(gridpico_cli_write_fn write, void *context,
+                       const char *text)
+{
+    return write_text(write, context, text) && write_bytes(write, context, "\r\n", 2);
+}
+
+static bool human_render_record(human_reply_writer *writer,
+                                const char *line, size_t length)
+{
+    char output[GRIDPICO_LOCAL_ROUTING_RECORD_BYTES + 96];
+    unsigned first = 0;
+    unsigned second = 0;
+    unsigned third = 0;
+    unsigned fourth = 0;
+    unsigned long long wide = 0;
+    char word1[24] = {0};
+    char word2[24] = {0};
+    char word3[32] = {0};
+    int used = 0;
+    const char *name = NULL;
+    const char *device_name = NULL;
+    const char *format = NULL;
+
+    if (length == 2 && memcmp(line, "OK", 2) == 0) {
+        return human_emit(writer->write, writer->context, "Done.");
+    }
+    if (length == 11 && memcmp(line, "ERR INVALID", 11) == 0)
+        return human_emit(writer->write, writer->context,
+                          "Invalid command or arguments.");
+    if (length == 12 && memcmp(line, "ERR CAPACITY", 12) == 0)
+        return human_emit(writer->write, writer->context,
+                          "Capacity limit: the bounded command or reply is too large.");
+    if (length == 15 && memcmp(line, "ERR UNAVAILABLE", 15) == 0)
+        return human_emit(writer->write, writer->context,
+                          "Unavailable on this session or target; check its current state and retry.");
+
+    if (sscanf(line, "DEVICE %u %23s %31s %n", &first, word1, word3, &used) == 3 &&
+        used > 0 && (size_t)used <= length) {
+        name = line + used;
+        const int size = snprintf(output, sizeof output,
+                                  "Device #%u %s: %s; color %s.",
+                                  first, name, word1, word3);
+        if (size < 0 || (size_t)size >= sizeof output) return false;
+        return human_emit(writer->write, writer->context, output);
+    }
+    if (sscanf(line, "PORT %u %u %23s %23s %31s %n", &first, &second,
+               word1, word2, word3, &used) == 5 && used > 0 &&
+        (size_t)used <= length) {
+        name = line + used;
+        device_name = human_device_name(writer, (gridpico_device_id)second);
+        const int size = snprintf(output, sizeof output,
+                                  "Port #%u %s on device #%u%s%s: %s, %s; Patch slot %s.",
+                                  first, name, second, device_name == NULL ? "" : " ",
+                                  device_name == NULL ? "" : device_name,
+                                  word1, word2, word3);
+        if (size < 0 || (size_t)size >= sizeof output) return false;
+        return human_emit(writer->write, writer->context, output);
+    }
+    if (sscanf(line, "STATUS %llu %u %u %u %u", &wide, &first, &second,
+               &third, &fourth) == 5) {
+        const int size = snprintf(output, sizeof output,
+                                  "Status at revision %llu: %u devices, %u ports, %u active and %u pending routes.",
+                                  wide, first, second, third, fourth);
+        if (size < 0 || (size_t)size >= sizeof output) return false;
+        return human_emit(writer->write, writer->context, output);
+    }
+    if (sscanf(line, "COLOR %u %31s", &first, word3) == 2) {
+        device_name = human_device_name(writer, (gridpico_device_id)first);
+        const int size = snprintf(output, sizeof output,
+                                  "Color for device #%u%s%s: %s.", first,
+                                  device_name == NULL ? "" : " ",
+                                  device_name == NULL ? "" : device_name, word3);
+        if (size < 0 || (size_t)size >= sizeof output) return false;
+        return human_emit(writer->write, writer->context, output);
+    }
+    if (sscanf(line, "ROUTING %llu %31s", &wide, word3) == 2) {
+        if (strcmp(word3, "-") == 0) {
+            const int size = snprintf(output, sizeof output,
+                                      "Routing revision %llu: end of snapshot.", wide);
+            if (size < 0 || (size_t)size >= sizeof output) return false;
+        } else {
+            const int size = snprintf(output, sizeof output,
+                                      "Routing revision %llu. Continue with `routing %llu %s`.",
+                                      wide, wide, word3);
+            if (size < 0 || (size_t)size >= sizeof output) return false;
+        }
+        return human_emit(writer->write, writer->context, output);
+    }
+    if (sscanf(line, "ROUTE %u %u %23s %23s", &first, &second,
+               word1, word2) == 4) {
+        const char *source_name = human_port_name(writer, (gridpico_port_id)first);
+        const char *destination_name = human_port_name(writer, (gridpico_port_id)second);
+        const int size = snprintf(output, sizeof output,
+                                  "Route from port #%u%s%s to port #%u%s%s (%s): %s.",
+                                  first, source_name == NULL ? "" : " ",
+                                  source_name == NULL ? "" : source_name,
+                                  second, destination_name == NULL ? "" : " ",
+                                  destination_name == NULL ? "" : destination_name,
+                                  word1, word2);
+        if (size < 0 || (size_t)size >= sizeof output) return false;
+        return human_emit(writer->write, writer->context, output);
+    }
+    if (sscanf(line, "BINDING %u %u %23s %23s %23s %n", &first, &second,
+               word1, word2, word3, &used) == 5 && used > 0 &&
+        (size_t)used <= length) {
+        name = line + used;
+        device_name = human_device_name(writer, (gridpico_device_id)second);
+        const int size = snprintf(output, sizeof output,
+                                  "Binding %s (port #%u on device #%u%s%s): %s, %s, %s.",
+                                  name, first, second, device_name == NULL ? "" : " ",
+                                  device_name == NULL ? "" : device_name,
+                                  word1, word2, word3);
+        if (size < 0 || (size_t)size >= sizeof output) return false;
+        return human_emit(writer->write, writer->context, output);
+    }
+    if (length >= sizeof("COMMAND ") - 1 &&
+        memcmp(line, "COMMAND ", sizeof("COMMAND ") - 1) == 0) {
+        const int size = snprintf(output, sizeof output, "Command: %.*s",
+                                  (int)(length - (sizeof("COMMAND ") - 1)),
+                                  line + sizeof("COMMAND ") - 1);
+        if (size < 0 || (size_t)size >= sizeof output) return false;
+        return human_emit(writer->write, writer->context, output);
+    }
+
+    if (length >= 4 && memcmp(line, "LOG ", 4) == 0) format = "Log";
+    else if (length >= sizeof("AUTO_EXPLAIN ") - 1 &&
+             memcmp(line, "AUTO_EXPLAIN ", sizeof("AUTO_EXPLAIN ") - 1) == 0)
+        format = "Automatic-routing explanation";
+    else if (length >= sizeof("AUTO_SKIP ") - 1 &&
+             memcmp(line, "AUTO_SKIP ", sizeof("AUTO_SKIP ") - 1) == 0)
+        format = "Skipped automatic route";
+    else if (length >= sizeof("AUTO ") - 1 &&
+             memcmp(line, "AUTO ", sizeof("AUTO ") - 1) == 0)
+        format = "Automatic routing";
+    else if (length >= sizeof("APC ") - 1 &&
+             memcmp(line, "APC ", sizeof("APC ") - 1) == 0) format = "APC roles";
+    else if (length >= sizeof("FORWARDING ") - 1 &&
+             memcmp(line, "FORWARDING ", sizeof("FORWARDING ") - 1) == 0)
+        format = "Master forwarding";
+    else if (length >= sizeof("PANIC_STAGE ") - 1 &&
+             memcmp(line, "PANIC_STAGE ", sizeof("PANIC_STAGE ") - 1) == 0)
+        format = "All-notes-off stage";
+    else if (length >= sizeof("PANIC_OUT ") - 1 &&
+             memcmp(line, "PANIC_OUT ", sizeof("PANIC_OUT ") - 1) == 0)
+        format = "All-notes-off output";
+    else if (length >= sizeof("PANIC_WINDOW ") - 1 &&
+             memcmp(line, "PANIC_WINDOW ", sizeof("PANIC_WINDOW ") - 1) == 0)
+        format = "Panic timing window";
+    else if (length >= sizeof("TRANSFORM ") - 1 &&
+             memcmp(line, "TRANSFORM ", sizeof("TRANSFORM ") - 1) == 0)
+        format = "Route transform";
+    else if (length >= sizeof("TRANSPORT ") - 1 &&
+             memcmp(line, "TRANSPORT ", sizeof("TRANSPORT ") - 1) == 0)
+        format = "Transport";
+    else format = "Result";
+
+    const size_t prefix = strlen(format);
+    if (prefix + 2 + length >= sizeof output) return false;
+    memcpy(output, format, prefix);
+    output[prefix] = ':';
+    output[prefix + 1] = ' ';
+    memcpy(output + prefix + 2, line, length);
+    output[prefix + 2 + length] = '\0';
+    return human_emit(writer->write, writer->context, output);
+}
+
+static void human_reply_write(void *context, const char *bytes, size_t size)
+{
+    human_reply_writer *writer = context;
+    if (writer->overflow) return;
+    for (size_t i = 0; i < size; ++i) {
+        const char byte = bytes[i];
+        if (writer->carriage_return) {
+            writer->carriage_return = false;
+            if (byte == '\n') {
+                writer->line[writer->size] = '\0';
+                if (!human_render_record(writer, writer->line, writer->size)) {
+                    writer->overflow = true;
+                    return;
+                }
+                writer->size = 0;
+                continue;
+            }
+        }
+        if (byte == '\r') {
+            writer->carriage_return = true;
+        } else if (writer->size + 1 < sizeof writer->line) {
+            writer->line[writer->size++] = byte;
+        } else {
+            writer->overflow = true;
+            return;
+        }
+    }
+}
+
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((noinline))
+#endif
+static void human_reply_use_routing_snapshot(
+    gridpico_cli_write_fn write, void *context,
+    const gridpico_local_routing_snapshot *snapshot)
+{
+    if (write == human_reply_write && context != NULL)
+        ((human_reply_writer *)context)->routing_snapshot = snapshot;
+}
+
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+static void human_reply_use_routing_metadata(
+    gridpico_cli_write_fn write, void *context,
+    const gridpico_patch_routing_metadata *metadata)
+{
+    if (write == human_reply_write && context != NULL)
+        ((human_reply_writer *)context)->routing_metadata = metadata;
+}
+#endif
+#endif
+
+#if defined(GRIDPICO_RP2040_MATRIX_CLI)
+#define CLI_HELP_ENTRY_CAPACITY 15
+#else
+#define CLI_HELP_ENTRY_CAPACITY 16
+#endif
+
 typedef struct {
     enum {
         CLI_COMMAND_HELP,
@@ -67,6 +391,9 @@ typedef struct {
         CLI_COMMAND_AUTOROUTE,
         CLI_COMMAND_FORWARDING,
         CLI_COMMAND_PANIC,
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+        CLI_COMMAND_FORMAT,
+#endif
         CLI_COMMAND_TRACE,
         CLI_COMMAND_HUBTRACE,
         CLI_COMMAND_BOOTSEL
@@ -111,6 +438,10 @@ static const cli_help_entry help_panic = {
     CLI_COMMAND_PANIC, "panic", "panic | panic status -- start CC123 All Notes Off or read its stage"};
 static const cli_help_entry help_panic_readonly = {
     CLI_COMMAND_PANIC, "panic", "panic status -- read the current CC123 All Notes Off stage"};
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+static const cli_help_entry help_panic_sweep = {
+    CLI_COMMAND_PANIC, "panic", "panic | panic status | panic sweep status | panic sweep if <cycle> -- start/read CC123 or read/guard the timed Note Off sweep"};
+#endif
 static const cli_help_entry help_trace = {
     CLI_COMMAND_TRACE, "trace", "trace -- request platform TRACE diagnostics"};
 static const cli_help_entry help_hubtrace = {
@@ -119,13 +450,21 @@ static const cli_help_entry help_bootsel = {
     CLI_COMMAND_BOOTSEL, "BOOTSEL", "BOOTSEL -- exact uppercase bytes plus LF after DTR; handled by the platform byte parser"};
 static const cli_help_entry help_self = {
     CLI_COMMAND_HELP, "help", "help [command] -- list available commands or show command forms"};
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+static const cli_help_entry help_format = {
+    CLI_COMMAND_FORMAT, "format", "format machine|human -- select terse records or readable replies for this session"};
+#endif
 static const cli_help_entry help_color_get = {
     CLI_COMMAND_COLOR, "color get", "color get <device> -- read a device color"};
 static const cli_help_entry help_color_set = {
     CLI_COMMAND_COLOR, "color set", "color set <device> #RRGGBB -- set and read back a device color"};
 
 static const cli_help_entry *const command_table[] = {
-    &help_self, &help_inventory, &help_status, &help_logs, &help_color,
+    &help_self,
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    &help_format,
+#endif
+    &help_inventory, &help_status, &help_logs, &help_color,
     &help_route, &help_routing, &help_apc_readonly, &help_transform, &help_trace,
     &help_autoroute, &help_forwarding, &help_panic, &help_hubtrace, &help_bootsel
 };
@@ -150,6 +489,9 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
     size_t count = 0;
     if (capacity < 3) return 0;
     entries[count++] = &help_self;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    if (count < capacity) entries[count++] = &help_format;
+#endif
     entries[count++] = &help_inventory;
     entries[count++] = &help_status;
     if (frontend->read_logs != NULL && count < capacity) entries[count++] = &help_logs;
@@ -157,22 +499,29 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
         entries[count++] = frontend->set_device_color != NULL
                                ? &help_color : &help_color_readonly;
     }
-    const bool target_callbacks = frontend->routing_read_route != NULL ||
+    const bool target_callbacks = routing_pages_opted(frontend) ||
+                                  frontend->routing_read_route != NULL ||
                                   frontend->routing_set_route != NULL ||
                                   frontend->routing_read != NULL;
     const bool route_pair = target_callbacks
         ? frontend->routing_read_route != NULL && frontend->routing_set_route != NULL
         : frontend->read_local_route != NULL && frontend->set_local_route != NULL;
     if (route_pair && count < capacity) {
-        const bool guarded = frontend->routing_read != NULL &&
-                             frontend->routing_read_route != NULL &&
-                             frontend->routing_set_route != NULL &&
-                             frontend->routing_scratch != NULL;
+        const bool guarded = routing_pages_opted(frontend)
+            ? frontend->routing_read_metadata != NULL &&
+              frontend->routing_read_guarded_pair != NULL &&
+              frontend->routing_set_route != NULL
+            : frontend->routing_read != NULL &&
+              frontend->routing_read_route != NULL &&
+              frontend->routing_set_route != NULL &&
+              frontend->routing_scratch != NULL;
         entries[count++] = guarded ? &help_route_guarded : &help_route;
     }
-    const bool routing_available = frontend->routing_read != NULL
-        ? frontend->routing_scratch != NULL
-        : frontend->read_local_routing != NULL;
+    const bool routing_available = routing_pages_opted(frontend)
+        ? routing_pages_bound(frontend)
+        : (frontend->routing_read != NULL
+            ? frontend->routing_scratch != NULL
+            : frontend->read_local_routing != NULL);
     if (routing_available && count < capacity)
         entries[count++] = &help_routing;
     if (frontend->read_apc_roles != NULL && count < capacity) {
@@ -195,6 +544,15 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
     }
     if (frontend->read_panic != NULL && frontend->panic_scratch != NULL &&
         count < capacity) {
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+        const bool sweep_available = frontend->apply_panic != NULL &&
+            frontend->read_panic_sweep != NULL &&
+            frontend->apply_panic_sweep != NULL &&
+            frontend->panic_sweep_scratch != NULL;
+        if (sweep_available)
+            entries[count++] = &help_panic_sweep;
+        else
+#endif
         entries[count++] = frontend->apply_panic != NULL ? &help_panic
                                                           : &help_panic_readonly;
     }
@@ -212,7 +570,7 @@ static size_t help_entries(const gridpico_cli_frontend *frontend,
 static gridpico_result execute_help(gridpico_cli_frontend *frontend, const char *topic,
                                     gridpico_cli_write_fn write, void *context)
 {
-    const cli_help_entry *entries[15];
+    const cli_help_entry *entries[CLI_HELP_ENTRY_CAPACITY];
     const size_t count = help_entries(frontend, entries, sizeof entries / sizeof entries[0]);
     if (topic != NULL) {
         if (strcmp(topic, "TRACE") == 0) topic = "trace";
@@ -234,7 +592,11 @@ static gridpico_result execute_help(gridpico_cli_frontend *frontend, const char 
             }
             if (selected == NULL) {
                 static const char *const known[] = {
-                    "help", "inventory", "status", "logs", "color", "route",
+                    "help",
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+                    "format",
+#endif
+                    "inventory", "status", "logs", "color", "route",
                     "routing", "apc", "transform", "trace", "hubtrace",
                     "autoroute", "forwarding", "panic", "BOOTSEL"
                 };
@@ -773,6 +1135,40 @@ static gridpico_result execute_local_route(gridpico_cli_frontend *frontend, cons
     if (!parse_local_route_command(line, &route, &has_enabled, &enabled)) {
         return GRIDPICO_INVALID;
     }
+    if (routing_pages_opted(frontend)) {
+        if (!routing_pages_bound(frontend) ||
+            frontend->routing_read_guarded_pair == NULL ||
+            frontend->routing_read_route == NULL ||
+            (has_enabled && frontend->routing_set_route == NULL))
+            return GRIDPICO_UNAVAILABLE;
+        gridpico_patch_routing_metadata *metadata = NULL;
+        gridpico_result result = read_paged_routing_metadata(frontend, &metadata);
+        if (result != GRIDPICO_OK) return result;
+        gridpico_local_route_status status = {0};
+        result = read_paged_route_status(frontend, metadata, &route, &status);
+        if (result != GRIDPICO_OK) return result;
+        if (has_enabled) {
+            const gridpico_local_route_request request = {.route = route,
+                                                          .enabled = enabled};
+            result = frontend->routing_set_route(frontend->routing_context, &request);
+            if (result != GRIDPICO_OK) return result;
+            result = frontend->routing_read_route(frontend->routing_context, &route,
+                                                  &status);
+            if (result != GRIDPICO_OK) return result;
+            if ((status.state != GRIDPICO_PATCH_ROUTE_OFF &&
+                 status.state != GRIDPICO_PATCH_ROUTE_PENDING &&
+                 status.state != GRIDPICO_PATCH_ROUTE_ACTIVE) || status.revision == 0)
+                return GRIDPICO_INVALID;
+        }
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+        human_reply_use_routing_metadata(write, context, metadata);
+#endif
+        result = write_local_route_record(write, context, &route, &status);
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+        human_reply_use_routing_metadata(write, context, NULL);
+#endif
+        return result;
+    }
     const bool target_callbacks = frontend->routing_read_route != NULL ||
                                   frontend->routing_set_route != NULL ||
                                   frontend->routing_read != NULL;
@@ -931,6 +1327,195 @@ static gridpico_result validate_local_routing_snapshot(
 }
 
 static int compare_local_routes(const gridpico_local_enabled_route *left,
+                                const gridpico_local_enabled_route *right);
+
+static gridpico_result validate_routing_metadata(
+    const gridpico_patch_routing_metadata *metadata)
+{
+    if (metadata == NULL || metadata->revision == 0 || metadata->graph.revision == 0)
+        return GRIDPICO_INVALID;
+    const gridpico_local_registry *registry = &metadata->graph.registry;
+    const gridpico_patch_inventory *inventory = &registry->inventory;
+    if (inventory->device_count > GRIDPICO_PATCH_MAX_DEVICES ||
+        inventory->port_count > GRIDPICO_PATCH_MAX_PORTS)
+        return GRIDPICO_CAPACITY;
+
+    for (size_t i = 0; i < inventory->device_count; ++i) {
+        size_t name_length;
+        if (inventory->devices[i].id == 0 ||
+            !bounded_name_length(inventory->devices[i].name, &name_length) ||
+            connection_name(inventory->devices[i].state) == NULL) return GRIDPICO_INVALID;
+        for (size_t j = 0; j < i; ++j) {
+            if (inventory->devices[j].id == inventory->devices[i].id)
+                return GRIDPICO_INVALID;
+        }
+    }
+    for (size_t i = 0; i < inventory->port_count; ++i) {
+        const gridpico_patch_port *port = &inventory->ports[i];
+        size_t name_length;
+        if (port->id == 0 || !bounded_name_length(port->name, &name_length) ||
+            connection_name(port->state) == NULL ||
+            (port->direction != GRIDPICO_PATCH_INPUT &&
+             port->direction != GRIDPICO_PATCH_OUTPUT) ||
+            registry->port_capabilities[i] < GRIDPICO_LOCAL_PORT_MANAGED ||
+            registry->port_capabilities[i] > GRIDPICO_LOCAL_PORT_PANEL ||
+            metadata->availability[i] < GRIDPICO_LOCAL_UNAVAILABLE ||
+            metadata->availability[i] > GRIDPICO_LOCAL_IN_USE ||
+            find_device_index(inventory, port->device) < 0) return GRIDPICO_INVALID;
+        for (size_t j = 0; j < i; ++j) {
+            if (inventory->ports[j].id == port->id) return GRIDPICO_INVALID;
+        }
+    }
+
+    /* Selected pages can represent every eligible visible directed pair.
+     * Bound the count by the validated roster and mode capabilities, not the
+     * fixed legacy route-vector extent. The nested scan is at most 36 x 36.
+     */
+    size_t eligible_pairs = 0;
+    for (size_t source_index = 0; source_index < inventory->port_count;
+         ++source_index) {
+        const gridpico_patch_port *source = &inventory->ports[source_index];
+        const gridpico_local_port_capability source_capability =
+            registry->port_capabilities[source_index];
+        if (source->direction != GRIDPICO_PATCH_INPUT ||
+            (source_capability != GRIDPICO_LOCAL_PORT_RAW &&
+             (source_capability != GRIDPICO_LOCAL_PORT_MANAGED ||
+              !source->patch_eligible)))
+            continue;
+        for (size_t destination_index = 0;
+             destination_index < inventory->port_count; ++destination_index) {
+            const gridpico_patch_port *destination =
+                &inventory->ports[destination_index];
+            if (destination->direction != GRIDPICO_PATCH_OUTPUT ||
+                registry->port_capabilities[destination_index] != source_capability ||
+                (source_capability == GRIDPICO_LOCAL_PORT_MANAGED &&
+                 !destination->patch_eligible))
+                continue;
+            ++eligible_pairs;
+        }
+    }
+    if (metadata->graph.enabled_count > eligible_pairs) return GRIDPICO_INVALID;
+    return GRIDPICO_OK;
+}
+
+static bool compatible_metadata_route(const gridpico_patch_routing_metadata *metadata,
+                                      const gridpico_local_route *route)
+{
+    const gridpico_local_registry *registry = &metadata->graph.registry;
+    const gridpico_patch_inventory *inventory = &registry->inventory;
+    const gridpico_patch_port *source = NULL;
+    const gridpico_patch_port *destination = NULL;
+    size_t source_index = 0;
+    size_t destination_index = 0;
+    for (size_t i = 0; i < inventory->port_count; ++i) {
+        if (inventory->ports[i].id == route->source) {
+            source = &inventory->ports[i];
+            source_index = i;
+        }
+        if (inventory->ports[i].id == route->destination) {
+            destination = &inventory->ports[i];
+            destination_index = i;
+        }
+    }
+    if (source == NULL || destination == NULL ||
+        source->direction != GRIDPICO_PATCH_INPUT ||
+        destination->direction != GRIDPICO_PATCH_OUTPUT) return false;
+    const gridpico_local_port_capability expected = route->mode == GRIDPICO_LOCAL_MANAGED
+        ? GRIDPICO_LOCAL_PORT_MANAGED : GRIDPICO_LOCAL_PORT_RAW;
+    return registry->port_capabilities[source_index] == expected &&
+           registry->port_capabilities[destination_index] == expected &&
+           (route->mode != GRIDPICO_LOCAL_MANAGED ||
+            (source->patch_eligible && destination->patch_eligible));
+}
+
+static gridpico_result validate_routing_page(const gridpico_patch_routing_page *page,
+                                             gridpico_revision expected_revision,
+                                             size_t offset)
+{
+    if (page == NULL || (expected_revision == 0 && offset != 0)) return GRIDPICO_INVALID;
+    const gridpico_result metadata_result = validate_routing_metadata(&page->metadata);
+    if (metadata_result != GRIDPICO_OK) return metadata_result;
+    if (expected_revision != 0 && page->metadata.revision != expected_revision)
+        return GRIDPICO_UNAVAILABLE;
+
+    const gridpico_patch_inventory *inventory =
+        &page->metadata.graph.registry.inventory;
+    const size_t roster = inventory->device_count + inventory->port_count;
+    const size_t total = roster + page->metadata.graph.enabled_count;
+    if (offset > total) return GRIDPICO_INVALID;
+    const size_t expected_count = total - offset < GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS
+                                      ? total - offset : GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS;
+    const size_t next = offset + expected_count;
+    const size_t route_start = offset > roster ? offset : roster;
+    const size_t expected_routes = next > route_start ? next - route_start : 0;
+    if (page->record_count != expected_count || page->next_offset != next ||
+        page->route_count != expected_routes ||
+        page->route_count > GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS) return GRIDPICO_INVALID;
+
+    for (size_t i = 0; i < page->route_count; ++i) {
+        const gridpico_local_enabled_route *entry = &page->routes[i];
+        if ((entry->state != GRIDPICO_PATCH_ROUTE_PENDING &&
+             entry->state != GRIDPICO_PATCH_ROUTE_ACTIVE) ||
+            (entry->route.mode != GRIDPICO_LOCAL_MANAGED &&
+             entry->route.mode != GRIDPICO_LOCAL_RAW) ||
+            !compatible_metadata_route(&page->metadata, &entry->route) ||
+            (i != 0 && compare_local_routes(&page->routes[i - 1], entry) >= 0))
+            return GRIDPICO_INVALID;
+    }
+    return GRIDPICO_OK;
+}
+
+static bool routing_pages_bound(const gridpico_cli_frontend *frontend)
+{
+    return frontend->routing_read_metadata != NULL &&
+           frontend->routing_read_page != NULL &&
+           frontend->routing_page_scratch != NULL;
+}
+
+static bool routing_pages_opted(const gridpico_cli_frontend *frontend)
+{
+    return frontend->routing_read_metadata != NULL ||
+           frontend->routing_read_page != NULL ||
+           frontend->routing_read_guarded_pair != NULL ||
+           frontend->routing_page_scratch != NULL;
+}
+
+static gridpico_result read_paged_routing_metadata(
+    gridpico_cli_frontend *frontend, gridpico_patch_routing_metadata **out)
+{
+    if (!routing_pages_bound(frontend) || frontend->routing_read_metadata == NULL ||
+        out == NULL) return GRIDPICO_UNAVAILABLE;
+    gridpico_patch_routing_page *page = frontend->routing_page_scratch;
+    const gridpico_result result = frontend->routing_read_metadata(
+        frontend->routing_context, &page->metadata);
+    if (result != GRIDPICO_OK) return result;
+    const gridpico_result validation = validate_routing_metadata(&page->metadata);
+    if (validation != GRIDPICO_OK) return validation;
+    *out = &page->metadata;
+    return GRIDPICO_OK;
+}
+
+static gridpico_result read_paged_route_status(
+    gridpico_cli_frontend *frontend, const gridpico_patch_routing_metadata *metadata,
+    const gridpico_local_route *route, gridpico_local_route_status *status)
+{
+    if (frontend->routing_read_guarded_pair == NULL) return GRIDPICO_UNAVAILABLE;
+    if (route == NULL || status == NULL ||
+        (route->mode != GRIDPICO_LOCAL_MANAGED && route->mode != GRIDPICO_LOCAL_RAW) ||
+        !compatible_metadata_route(metadata, route)) return GRIDPICO_INVALID;
+    gridpico_local_route_status value = {0};
+    const gridpico_result result = frontend->routing_read_guarded_pair(
+        frontend->routing_context, metadata->revision, route, &value);
+    if (result != GRIDPICO_OK) return result;
+    if (value.revision != metadata->graph.revision ||
+        (value.state != GRIDPICO_PATCH_ROUTE_OFF &&
+         value.state != GRIDPICO_PATCH_ROUTE_PENDING &&
+         value.state != GRIDPICO_PATCH_ROUTE_ACTIVE)) return GRIDPICO_INVALID;
+    *status = value;
+    return GRIDPICO_OK;
+}
+
+static int compare_local_routes(const gridpico_local_enabled_route *left,
                                 const gridpico_local_enabled_route *right)
 {
     if (left->route.source != right->route.source)
@@ -974,6 +1559,42 @@ static gridpico_result execute_guarded_route(gridpico_cli_frontend *frontend, co
 {
     guarded_route_command command;
     if (!parse_guarded_route_command(line, &command)) return GRIDPICO_INVALID;
+    if (routing_pages_opted(frontend)) {
+        if (!routing_pages_bound(frontend) ||
+            frontend->routing_read_guarded_pair == NULL ||
+            frontend->routing_read_route == NULL ||
+            frontend->routing_set_route == NULL) return GRIDPICO_UNAVAILABLE;
+        gridpico_patch_routing_metadata *metadata = NULL;
+        gridpico_result result = read_paged_routing_metadata(frontend, &metadata);
+        if (result != GRIDPICO_OK) return result;
+        if (metadata->revision != command.revision) return GRIDPICO_UNAVAILABLE;
+        gridpico_local_route_status guarded_status = {0};
+        result = read_paged_route_status(frontend, metadata, &command.route,
+                                         &guarded_status);
+        if (result != GRIDPICO_OK) return result;
+        const gridpico_local_route_request request = {
+            .route = command.route,
+            .enabled = command.enabled,
+        };
+        result = frontend->routing_set_route(frontend->routing_context, &request);
+        if (result != GRIDPICO_OK) return result;
+        gridpico_local_route_status status = {0};
+        result = frontend->routing_read_route(frontend->routing_context,
+                                              &command.route, &status);
+        if (result != GRIDPICO_OK) return result;
+        if ((status.state != GRIDPICO_PATCH_ROUTE_OFF &&
+             status.state != GRIDPICO_PATCH_ROUTE_PENDING &&
+             status.state != GRIDPICO_PATCH_ROUTE_ACTIVE) || status.revision == 0)
+            return GRIDPICO_INVALID;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+        human_reply_use_routing_metadata(write, context, metadata);
+#endif
+        result = write_local_route_record(write, context, &command.route, &status);
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+        human_reply_use_routing_metadata(write, context, NULL);
+#endif
+        return result;
+    }
     if (frontend->routing_read == NULL || frontend->routing_read_route == NULL ||
         frontend->routing_set_route == NULL || frontend->routing_scratch == NULL)
         return GRIDPICO_UNAVAILABLE;
@@ -998,6 +1619,9 @@ static gridpico_result execute_guarded_route(gridpico_cli_frontend *frontend, co
     const gridpico_result read_result = frontend->routing_read_route(
         frontend->routing_context, &command.route, &status);
     if (read_result != GRIDPICO_OK) return read_result;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    human_reply_use_routing_snapshot(write, context, snapshot);
+#endif
     return write_local_route_record(write, context, &command.route, &status);
 }
 
@@ -1090,6 +1714,166 @@ static gridpico_result write_routing_port(gridpico_cli_write_fn write, void *con
                               capability, availability);
     if (size < 0 || (size_t)size >= sizeof prefix) return GRIDPICO_CAPACITY;
     return write_routing_named_record(write, context, prefix, port->name);
+}
+
+static gridpico_result write_routing_metadata_device(
+    gridpico_cli_write_fn write, void *context,
+    const gridpico_patch_routing_metadata *metadata, size_t index)
+{
+    const gridpico_patch_inventory *inventory = &metadata->graph.registry.inventory;
+    const gridpico_patch_device *device = &inventory->devices[index];
+    const gridpico_device_color *color = &metadata->colors[index];
+    char prefix[80];
+    const int size = color->is_set
+        ? snprintf(prefix, sizeof prefix, "DEVICE %u %s #%02X%02X%02X ",
+                   (unsigned)device->id, connection_name(device->state),
+                   color->rgb.red, color->rgb.green, color->rgb.blue)
+        : snprintf(prefix, sizeof prefix, "DEVICE %u %s unset ",
+                   (unsigned)device->id, connection_name(device->state));
+    if (size < 0 || (size_t)size >= sizeof prefix) return GRIDPICO_CAPACITY;
+    return write_routing_named_record(write, context, prefix, device->name);
+}
+
+static gridpico_result write_routing_metadata_port(
+    gridpico_cli_write_fn write, void *context,
+    const gridpico_patch_routing_metadata *metadata, size_t index)
+{
+    const gridpico_patch_inventory *inventory = &metadata->graph.registry.inventory;
+    const gridpico_patch_port *port = &inventory->ports[index];
+    const char *direction = port->direction == GRIDPICO_PATCH_INPUT ? "in" : "out";
+    const char *capability = routing_capability_name(
+        metadata->graph.registry.port_capabilities[index]);
+    const char *availability = routing_availability_name(metadata->availability[index]);
+    if (capability == NULL || availability == NULL) return GRIDPICO_INVALID;
+    char prefix[96];
+    const int size = snprintf(prefix, sizeof prefix, "BINDING %u %u %s %s %s ",
+                              (unsigned)port->id, (unsigned)port->device, direction,
+                              capability, availability);
+    if (size < 0 || (size_t)size >= sizeof prefix) return GRIDPICO_CAPACITY;
+    return write_routing_named_record(write, context, prefix, port->name);
+}
+
+static void routing_page_preflight_write(void *context, const char *bytes, size_t size)
+{
+    bounded_routing_record *record = context;
+    if (!record->valid || size > sizeof record->bytes - record->size) {
+        record->valid = false;
+        return;
+    }
+    memcpy(record->bytes + record->size, bytes, size);
+    record->size += size;
+}
+
+static gridpico_result routing_page_preflight_record(
+    const gridpico_patch_routing_page *page, size_t page_offset,
+    size_t record_index, gridpico_cli_write_fn write, void *context)
+{
+    const gridpico_patch_inventory *inventory =
+        &page->metadata.graph.registry.inventory;
+    const size_t offset = record_index;
+    if (offset < inventory->device_count) {
+        return write_routing_metadata_device(write, context,
+                                             &page->metadata, offset);
+    }
+    if (offset < inventory->device_count + inventory->port_count) {
+        return write_routing_metadata_port(write, context,
+                                          &page->metadata,
+                                          offset - inventory->device_count);
+    }
+    const size_t route_start = inventory->device_count + inventory->port_count;
+    const size_t route_page_start = page_offset > route_start ? page_offset : route_start;
+    const size_t route_index = record_index - route_page_start;
+    if (route_index >= page->route_count) return GRIDPICO_INVALID;
+    return write_routing_route(write, context, &page->routes[route_index]);
+}
+
+static gridpico_result preflight_paged_routing_reply(
+    const gridpico_patch_routing_page *page, size_t offset)
+{
+    bounded_routing_record preflight = {.valid = true};
+    const size_t next = page->next_offset;
+    const size_t total = page->metadata.graph.registry.inventory.device_count +
+                         page->metadata.graph.registry.inventory.port_count +
+                         page->metadata.graph.enabled_count;
+    gridpico_result result = write_routing_header(routing_page_preflight_write,
+                                                   &preflight, page->metadata.revision,
+                                                   next, next == total);
+    if (result != GRIDPICO_OK) return result;
+    if (!preflight.valid || preflight.size > GRIDPICO_LOCAL_ROUTING_RECORD_BYTES)
+        return GRIDPICO_CAPACITY;
+    for (size_t i = 0; i < page->record_count; ++i) {
+        preflight.size = 0;
+        preflight.valid = true;
+        result = routing_page_preflight_record(page, offset, offset + i,
+                                               routing_page_preflight_write,
+                                               &preflight);
+        if (result != GRIDPICO_OK) return result;
+        if (!preflight.valid || preflight.size > GRIDPICO_LOCAL_ROUTING_RECORD_BYTES)
+            return GRIDPICO_CAPACITY;
+    }
+    return GRIDPICO_OK;
+}
+
+static gridpico_result write_routing_paged_page(
+    const gridpico_patch_routing_page *page, gridpico_revision expected_revision,
+    size_t offset,
+    gridpico_cli_write_fn write, void *context)
+{
+    const gridpico_result validation = validate_routing_page(page, expected_revision,
+                                                              offset);
+    if (validation != GRIDPICO_OK) return validation;
+    const gridpico_result preflight = preflight_paged_routing_reply(page, offset);
+    if (preflight != GRIDPICO_OK) return preflight;
+
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    human_reply_use_routing_metadata(write, context, &page->metadata);
+#endif
+    const size_t total = page->metadata.graph.registry.inventory.device_count +
+                         page->metadata.graph.registry.inventory.port_count +
+                         page->metadata.graph.enabled_count;
+    gridpico_result result = write_routing_header(write, context,
+                                                  page->metadata.revision,
+                                                  page->next_offset,
+                                                  page->next_offset == total);
+    for (size_t i = 0; result == GRIDPICO_OK && i < page->record_count; ++i) {
+        const size_t record_index = offset + i;
+        if (record_index < page->metadata.graph.registry.inventory.device_count) {
+            result = write_routing_metadata_device(write, context, &page->metadata,
+                                                   record_index);
+        } else if (record_index < page->metadata.graph.registry.inventory.device_count +
+                                 page->metadata.graph.registry.inventory.port_count) {
+            result = write_routing_metadata_port(
+                write, context, &page->metadata,
+                record_index - page->metadata.graph.registry.inventory.device_count);
+        } else {
+            const size_t roster = page->metadata.graph.registry.inventory.device_count +
+                                  page->metadata.graph.registry.inventory.port_count;
+            const size_t page_route_start = offset > roster ? offset : roster;
+            result = write_routing_route(write, context,
+                                         &page->routes[record_index - page_route_start]);
+        }
+    }
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    human_reply_use_routing_metadata(write, context, NULL);
+#endif
+    return result;
+}
+
+static gridpico_result execute_routing_paged(gridpico_cli_frontend *frontend,
+                                             bool continuation,
+                                             gridpico_revision requested_revision,
+                                             size_t offset,
+                                             gridpico_cli_write_fn write,
+                                             void *context)
+{
+    if (!routing_pages_bound(frontend)) return GRIDPICO_UNAVAILABLE;
+    if ((continuation && requested_revision == 0) ||
+        (!continuation && (requested_revision != 0 || offset != 0))) return GRIDPICO_INVALID;
+    gridpico_patch_routing_page *page = frontend->routing_page_scratch;
+    const gridpico_result result = frontend->routing_read_page(
+        frontend->routing_context, requested_revision, offset, page);
+    if (result != GRIDPICO_OK) return result;
+    return write_routing_paged_page(page, requested_revision, offset, write, context);
 }
 
 static gridpico_result write_routing_route(gridpico_cli_write_fn write, void *context,
@@ -1189,6 +1973,9 @@ static gridpico_result execute_routing_target(gridpico_cli_frontend *frontend,
     if (continuation && snapshot->revision != requested_revision) return GRIDPICO_UNAVAILABLE;
     if (offset > GRIDPICO_PATCH_MAX_DEVICES + GRIDPICO_PATCH_MAX_PORTS +
                      GRIDPICO_PATCH_MAX_BRANCHES) return GRIDPICO_INVALID;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    human_reply_use_routing_snapshot(write, context, snapshot);
+#endif
     return write_routing_page(snapshot, offset, write, context);
 }
 
@@ -1206,7 +1993,14 @@ static gridpico_result execute_routing_legacy(gridpico_cli_frontend *frontend,
     if (continuation && snapshot.revision != requested_revision) return GRIDPICO_UNAVAILABLE;
     if (offset > GRIDPICO_PATCH_MAX_DEVICES + GRIDPICO_PATCH_MAX_PORTS +
                      GRIDPICO_PATCH_MAX_BRANCHES) return GRIDPICO_INVALID;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    human_reply_use_routing_snapshot(write, context, &snapshot);
+    const gridpico_result page_result = write_routing_page(&snapshot, offset, write, context);
+    human_reply_use_routing_snapshot(write, context, NULL);
+    return page_result;
+#else
     return write_routing_page(&snapshot, offset, write, context);
+#endif
 }
 
 static gridpico_result execute_routing(gridpico_cli_frontend *frontend, const char *line,
@@ -1217,6 +2011,9 @@ static gridpico_result execute_routing(gridpico_cli_frontend *frontend, const ch
     size_t offset;
     if (!parse_routing_command(line, &continuation, &requested_revision, &offset))
         return GRIDPICO_INVALID;
+    if (routing_pages_opted(frontend))
+        return execute_routing_paged(frontend, continuation, requested_revision, offset,
+                                      write, context);
     if (frontend->routing_read != NULL)
         return execute_routing_target(frontend, continuation, requested_revision, offset,
                                       write, context);
@@ -1482,7 +2279,16 @@ static gridpico_result execute_forwarding(gridpico_cli_frontend *frontend,
 }
 
 enum {
-    CLI_PANIC_RESPONSE_BYTES = 1692,
+    CLI_PANIC_RESPONSE_BYTES =
+#if defined(PICO_ON_DEVICE) && PICO_ON_DEVICE && \
+    defined(PICO_RP2040) && PICO_RP2040 && \
+    defined(GRIDPICO_RP2040_MATRIX_CLI) && \
+    defined(GRIDPICO_RP2040_PICO7_NORMAL) && \
+    !defined(GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
+        45 * GRIDPICO_PATCH_MAX_PORTS + 36,
+#else
+        1692,
+#endif
     CLI_PANIC_RESPONSE_RECORDS = 38
 };
 
@@ -1490,6 +2296,17 @@ _Static_assert(GRIDPICO_PATCH_MAX_PORTS <= 36,
                "M1a Panic transcript bound assumes at most 36 outputs");
 _Static_assert(GRIDPICO_PATCH_MAX_PORTS * 45 + 36 <= CLI_PANIC_RESPONSE_BYTES,
                "M1a Panic transcript must fit before admission");
+#if defined(PICO_ON_DEVICE) && PICO_ON_DEVICE && \
+    defined(PICO_RP2040) && PICO_RP2040 && \
+    defined(GRIDPICO_RP2040_MATRIX_CLI) && \
+    defined(GRIDPICO_RP2040_PICO7_NORMAL) && \
+    !defined(GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
+_Static_assert(CLI_PANIC_RESPONSE_BYTES == 891,
+               "Normal Pico7 Panic response staging is fixed at 891 bytes");
+#else
+_Static_assert(CLI_PANIC_RESPONSE_BYTES == 1692,
+               "Other profiles retain their Panic response staging");
+#endif
 _Static_assert(GRIDPICO_PATCH_MAX_PORTS + 2 <= CLI_PANIC_RESPONSE_RECORDS,
                "M1a Panic transcript record bound is too small");
 
@@ -1522,7 +2339,8 @@ static const char *panic_output_state_name(gridpico_panic_output_state state)
     return NULL;
 }
 
-static bool panic_stage_valid(const gridpico_panic_stage_report *report)
+static bool panic_stage_valid_limit(const gridpico_panic_stage_report *report,
+                                   uint16_t max_requested)
 {
     if (report == NULL || panic_stage_state_name(report->state) == NULL ||
         report->count > GRIDPICO_PATCH_MAX_PORTS ||
@@ -1533,7 +2351,8 @@ static bool panic_stage_valid(const gridpico_panic_stage_report *report)
         const gridpico_panic_output *output = &report->outputs[i];
         if (output->output.endpoint == 0 || output->output.endpoint <= previous ||
             output->output.generation == 0 || output->requested_count == 0 ||
-            output->requested_count > 16 || output->accepted_count > output->requested_count ||
+            output->requested_count > max_requested ||
+            output->accepted_count > output->requested_count ||
             panic_output_state_name(output->state) == NULL) return false;
         if (output->state == GRIDPICO_PANIC_OUTPUT_COMPLETE &&
             output->accepted_count != output->requested_count) return false;
@@ -1544,6 +2363,11 @@ static bool panic_stage_valid(const gridpico_panic_stage_report *report)
         previous = output->output.endpoint;
     }
     return true;
+}
+
+static bool panic_stage_valid(const gridpico_panic_stage_report *report)
+{
+    return panic_stage_valid_limit(report, 16);
 }
 
 static bool panic_response_add(panic_response *response,
@@ -1620,6 +2444,14 @@ static gridpico_result read_or_start_panic(gridpico_cli_frontend *frontend,
                ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
 }
 
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+static gridpico_result execute_panic_sweep(gridpico_cli_frontend *frontend,
+                                           const char *line,
+                                           gridpico_cli_write_fn write,
+                                           void *context,
+                                           bool *response_emitted);
+#endif
+
 static gridpico_result execute_panic(gridpico_cli_frontend *frontend,
                                      const char *line,
                                      gridpico_cli_write_fn write,
@@ -1628,14 +2460,32 @@ static gridpico_result execute_panic(gridpico_cli_frontend *frontend,
 {
     if (response_emitted == NULL) return GRIDPICO_INVALID;
     *response_emitted = false;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    if (strncmp(line, "panic sweep", sizeof("panic sweep") - 1) == 0 &&
+        (line[sizeof("panic sweep") - 1] == '\0' ||
+         line[sizeof("panic sweep") - 1] == ' '))
+        return execute_panic_sweep(frontend, line, write, context,
+                                   response_emitted);
+#endif
     if (strcmp(line, "panic") == 0) {
         /* Keep the no-provider path out of the staged-reply frame. */
         if (frontend->read_panic == NULL || frontend->apply_panic == NULL ||
             frontend->panic_scratch == NULL) return GRIDPICO_UNAVAILABLE;
+#if defined(PICO_ON_DEVICE) && PICO_ON_DEVICE && \
+    defined(PICO_RP2040) && PICO_RP2040 && \
+    defined(GRIDPICO_RP2040_MATRIX_CLI) && \
+    defined(GRIDPICO_RP2040_PICO7_NORMAL) && \
+    !defined(GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
+        /* Acceptance is acknowledged by the ordinary executor reply; status
+         * remains available separately through the bounded report formatter. */
+        return frontend->apply_panic(frontend->musical_control_context,
+                                     frontend->panic_scratch);
+#else
         const gridpico_result result =
             read_or_start_panic(frontend, true, write, context);
         *response_emitted = result == GRIDPICO_OK;
         return result;
+#endif
     }
     if (strcmp(line, "panic status") == 0) {
         /* Status only needs the reader and its caller-owned report. */
@@ -1648,6 +2498,258 @@ static gridpico_result execute_panic(gridpico_cli_frontend *frontend,
     }
     return GRIDPICO_INVALID;
 }
+
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+enum {
+    CLI_PANIC_M1B_MACHINE_BYTES = 3728,
+    CLI_PANIC_M1B_RECORDS = 76,
+    CLI_PANIC_M1B_REPLY_BYTES = 8192,
+    CLI_PANIC_M1B_HUMAN_EXTRA_PER_RECORD = 26
+};
+
+_Static_assert(GRIDPICO_PATCH_MAX_PORTS <= 36,
+               "M1b Panic transcript bound assumes at most 36 outputs");
+_Static_assert(CLI_PANIC_M1B_MACHINE_BYTES +
+                   CLI_PANIC_M1B_RECORDS * CLI_PANIC_M1B_HUMAN_EXTRA_PER_RECORD <=
+                   CLI_PANIC_M1B_REPLY_BYTES,
+               "M1b Human transcript must fit the bounded 8 KiB reply");
+_Static_assert(GRIDPICO_PATCH_MAX_PORTS * 2 + 4 <= CLI_PANIC_M1B_RECORDS,
+               "M1b Panic transcript record bound is too small");
+
+typedef struct {
+    char bytes[CLI_PANIC_M1B_MACHINE_BYTES];
+    size_t size;
+    size_t records;
+} panic_m1b_reply;
+
+typedef struct {
+    char bytes[CLI_PANIC_M1B_REPLY_BYTES];
+    size_t size;
+    bool overflow;
+} panic_m1b_human_capture;
+
+static const char *panic_window_name(gridpico_panic_window window)
+{
+    switch (window) {
+    case GRIDPICO_PANIC_IDLE: return "IDLE";
+    case GRIDPICO_PANIC_WAIT: return "WAIT";
+    case GRIDPICO_PANIC_OPEN: return "OPEN";
+    case GRIDPICO_PANIC_CLOSED: return "CLOSED";
+    }
+    return NULL;
+}
+
+static bool panic_sweep_stage_valid(const gridpico_panic_stage_report *report)
+{
+    if (!panic_stage_valid_limit(report, 2048)) return false;
+    for (size_t i = 0; i < report->count; ++i) {
+        const uint16_t requested = report->outputs[i].requested_count;
+        if (requested < 128 || requested > 2048 || requested % 128 != 0)
+            return false;
+    }
+    return true;
+}
+
+static bool panic_sweep_status_valid(const gridpico_panic_sweep_status *status)
+{
+    if (status == NULL || panic_window_name(status->window) == NULL ||
+        !panic_stage_valid(&status->cc123) ||
+        !panic_sweep_stage_valid(&status->sweep)) return false;
+
+    switch (status->window) {
+    case GRIDPICO_PANIC_IDLE:
+        return status->cycle == 0 && status->wait_us == 0 &&
+               status->remaining_us == 0 &&
+               status->cc123.state == GRIDPICO_PANIC_STAGE_NONE &&
+               status->sweep.state == GRIDPICO_PANIC_STAGE_NONE;
+    case GRIDPICO_PANIC_WAIT:
+        return status->cycle != 0 && status->wait_us != 0 &&
+               status->wait_us <= 1000001u &&
+               status->remaining_us > status->wait_us &&
+               status->remaining_us <= 10000000u &&
+               status->sweep.state == GRIDPICO_PANIC_STAGE_NONE;
+    case GRIDPICO_PANIC_OPEN:
+        return status->cycle != 0 && status->wait_us == 0 &&
+               status->remaining_us != 0 && status->remaining_us < 9000000u &&
+               status->cc123.state != GRIDPICO_PANIC_STAGE_NONE &&
+               status->sweep.state == GRIDPICO_PANIC_STAGE_NONE;
+    case GRIDPICO_PANIC_CLOSED:
+        return status->cycle != 0 && status->wait_us == 0 &&
+               status->remaining_us <= 10000000u;
+    }
+    return false;
+}
+
+static bool panic_m1b_add(panic_m1b_reply *reply,
+                          const char *record, size_t length)
+{
+    if (reply == NULL || record == NULL ||
+        reply->records >= CLI_PANIC_M1B_RECORDS ||
+        reply->size > CLI_PANIC_M1B_MACHINE_BYTES ||
+        length > CLI_PANIC_M1B_MACHINE_BYTES - reply->size ||
+        2 > CLI_PANIC_M1B_MACHINE_BYTES - reply->size - length) return false;
+    memcpy(reply->bytes + reply->size, record, length);
+    reply->size += length;
+    memcpy(reply->bytes + reply->size, "\r\n", 2);
+    reply->size += 2;
+    ++reply->records;
+    return true;
+}
+
+static bool panic_m1b_format(panic_m1b_reply *reply,
+                             unsigned port, unsigned generation,
+                             unsigned requested, unsigned accepted,
+                             const char *state)
+{
+    char record[GRIDPICO_CLI_RECORD_BYTES];
+    int length;
+    if (accepted == UINT_MAX) {
+        length = snprintf(record, sizeof record, "PANIC_OUT %u %u %u - %s",
+                          port, generation, requested, state);
+    } else {
+        length = snprintf(record, sizeof record, "PANIC_OUT %u %u %u %u %s",
+                          port, generation, requested, accepted, state);
+    }
+    return length >= 0 && (size_t)length < sizeof record &&
+           panic_m1b_add(reply, record, (size_t)length);
+}
+
+static bool panic_m1b_add_window(panic_m1b_reply *reply,
+                                 const gridpico_panic_sweep_status *status)
+{
+    char record[GRIDPICO_CLI_RECORD_BYTES];
+    int length;
+    if (status->window == GRIDPICO_PANIC_IDLE) {
+        length = snprintf(record, sizeof record, "PANIC_WINDOW 0 IDLE - -");
+    } else if (status->window == GRIDPICO_PANIC_WAIT ||
+               status->window == GRIDPICO_PANIC_OPEN) {
+        length = snprintf(record, sizeof record, "PANIC_WINDOW %llu %s %u %u",
+                          (unsigned long long)status->cycle,
+                          panic_window_name(status->window), status->wait_us,
+                          status->remaining_us);
+    } else {
+        length = snprintf(record, sizeof record, "PANIC_WINDOW %llu CLOSED - %u",
+                          (unsigned long long)status->cycle,
+                          status->remaining_us);
+    }
+    return length >= 0 && (size_t)length < sizeof record &&
+           panic_m1b_add(reply, record, (size_t)length);
+}
+
+static bool panic_m1b_add_stage(panic_m1b_reply *reply, const char *name,
+                                const gridpico_panic_stage_report *stage)
+{
+    char record[GRIDPICO_CLI_RECORD_BYTES];
+    const int length = snprintf(record, sizeof record, "PANIC_STAGE %s %s %u",
+                                name, panic_stage_state_name(stage->state),
+                                (unsigned)stage->count);
+    if (length < 0 || (size_t)length >= sizeof record ||
+        !panic_m1b_add(reply, record, (size_t)length)) return false;
+    for (size_t i = 0; i < stage->count; ++i) {
+        const gridpico_panic_output *output = &stage->outputs[i];
+        const bool unknown = output->state == GRIDPICO_PANIC_OUTPUT_UNCONFIRMED;
+        if (!panic_m1b_format(reply, (unsigned)output->output.endpoint,
+                              (unsigned)output->output.generation,
+                              (unsigned)output->requested_count,
+                              unknown ? UINT_MAX : (unsigned)output->accepted_count,
+                              panic_output_state_name(output->state))) return false;
+    }
+    return true;
+}
+
+static void panic_m1b_capture_write(void *context, const char *bytes, size_t size)
+{
+    panic_m1b_human_capture *capture = context;
+    if (capture == NULL || capture->overflow) return;
+    if (capture->size > sizeof capture->bytes ||
+        size > sizeof capture->bytes - capture->size) {
+        capture->overflow = true;
+        return;
+    }
+    memcpy(capture->bytes + capture->size, bytes, size);
+    capture->size += size;
+}
+
+static gridpico_result emit_panic_sweep_status(
+    gridpico_cli_frontend *frontend, gridpico_cli_write_fn write, void *context)
+{
+    const gridpico_panic_sweep_status *status = frontend->panic_sweep_scratch;
+    if (!panic_sweep_status_valid(status)) return GRIDPICO_INVALID;
+    panic_m1b_reply reply = {0};
+    if (!panic_m1b_add_window(&reply, status) ||
+        !panic_m1b_add_stage(&reply, "CC123", &status->cc123) ||
+        !panic_m1b_add_stage(&reply, "SWEEP", &status->sweep) ||
+        !panic_m1b_add(&reply, "OK", 2)) return GRIDPICO_CAPACITY;
+
+    if (frontend->machine_format)
+        return write_bytes(write, context, reply.bytes, reply.size)
+                   ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
+
+    panic_m1b_human_capture human_capture = {0};
+    human_reply_writer human = {
+        .frontend = frontend,
+        .write = panic_m1b_capture_write,
+        .context = &human_capture,
+    };
+    human_reply_write(&human, reply.bytes, reply.size);
+    if (human.overflow || human_capture.overflow) return GRIDPICO_CAPACITY;
+    return write_bytes(write, context, human_capture.bytes, human_capture.size)
+               ? GRIDPICO_OK : GRIDPICO_UNAVAILABLE;
+}
+
+static bool panic_sweep_bound(const gridpico_cli_frontend *frontend)
+{
+    return frontend->read_panic != NULL && frontend->apply_panic != NULL &&
+           frontend->panic_scratch != NULL &&
+           frontend->read_panic_sweep != NULL &&
+           frontend->apply_panic_sweep != NULL &&
+           frontend->panic_sweep_scratch != NULL;
+}
+
+static gridpico_result execute_panic_sweep(gridpico_cli_frontend *frontend,
+                                           const char *line,
+                                           gridpico_cli_write_fn write,
+                                           void *context,
+                                           bool *response_emitted)
+{
+    *response_emitted = false;
+    if (strcmp(line, "panic sweep status") == 0) {
+        if (!panic_sweep_bound(frontend)) return GRIDPICO_UNAVAILABLE;
+        const gridpico_result result = frontend->read_panic_sweep(
+            frontend->musical_control_context, frontend->panic_sweep_scratch);
+        if (result != GRIDPICO_OK) return result;
+        const gridpico_result emitted =
+            emit_panic_sweep_status(frontend, write, context);
+        *response_emitted = emitted == GRIDPICO_OK;
+        return emitted;
+    }
+
+    static const char prefix[] = "panic sweep if ";
+    if (strncmp(line, prefix, sizeof prefix - 1) == 0) {
+        uint64_t cycle = 0;
+        const char *guard = line + sizeof prefix - 1;
+        if (!parse_unsigned_decimal(guard, strlen(guard), &cycle) || cycle == 0)
+            return GRIDPICO_INVALID;
+        if (!panic_sweep_bound(frontend)) return GRIDPICO_UNAVAILABLE;
+        const gridpico_result result = frontend->apply_panic_sweep(
+            frontend->musical_control_context, cycle,
+            frontend->panic_sweep_scratch);
+        if (result != GRIDPICO_OK) return result;
+        const gridpico_panic_sweep_status *status = frontend->panic_sweep_scratch;
+        if (!panic_sweep_status_valid(status) || status->cycle != cycle ||
+            status->window != GRIDPICO_PANIC_CLOSED ||
+            status->cc123.state == GRIDPICO_PANIC_STAGE_NONE ||
+            status->cc123.state == GRIDPICO_PANIC_STAGE_RUNNING ||
+            status->sweep.state == GRIDPICO_PANIC_STAGE_NONE)
+            return GRIDPICO_INVALID;
+        const gridpico_result emitted =
+            emit_panic_sweep_status(frontend, write, context);
+        *response_emitted = emitted == GRIDPICO_OK;
+        return emitted;
+    }
+    return GRIDPICO_INVALID;
+}
+#endif
 
 static const char *apc_role_state_name(gridpico_apc_role_state state, bool led)
 {
@@ -1889,14 +2991,20 @@ static void terminal_application_command(EmbeddedCli *cli, char *args, void *con
     }
     line[offset] = '\0';
     (void)gridpico_cli_execute_line(frontend, line, terminal_response, cli);
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    frontend->editor_prompt_pending = 2;
+#endif
 }
 
 static bool register_help_bindings(gridpico_cli_frontend *frontend)
 {
-    const cli_help_entry *entries[15];
+    const cli_help_entry *entries[CLI_HELP_ENTRY_CAPACITY];
     const size_t count = help_entries(frontend, entries, sizeof entries / sizeof entries[0]);
     for (size_t i = 0; i < count; ++i) {
         if (strcmp(entries[i]->name, "help") == 0) continue;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+        if (strcmp(entries[i]->name, "format") == 0) continue;
+#endif
         if (!embeddedCliAddBinding(frontend->terminal, (CliCommandBinding){
                 .name = entries[i]->name,
                 .help = entries[i]->detail,
@@ -1931,12 +3039,37 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
     if (frontend == NULL || frontend->read_snapshot == NULL || write == NULL || line == NULL) {
         return GRIDPICO_INVALID;
     }
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    if (strcmp(line, "format machine") == 0 || strcmp(line, "format human") == 0) {
+        const bool machine = strcmp(line, "format machine") == 0;
+        const char *acknowledgement = machine
+            ? "FORMAT MACHINE\r\nOK\r\n"
+            : "FORMAT HUMAN\r\nOK\r\n";
+        if (!write_bytes(write, write_context, acknowledgement,
+                         strlen(acknowledgement))) return GRIDPICO_UNAVAILABLE;
+        frontend->machine_format = machine;
+        frontend->editor_suppress_prompt = true;
+        return GRIDPICO_OK;
+    }
+
+    human_reply_writer human = {
+        .frontend = frontend,
+        .write = write,
+        .context = write_context,
+    };
+    gridpico_cli_write_fn command_write = frontend->machine_format
+                                              ? write : human_reply_write;
+    void *command_context = frontend->machine_format ? write_context : &human;
+#else
+#define command_write write
+#define command_context write_context
+#endif
     bool asynchronous = false;
     bool response_emitted = false;
     bool inventory = false;
     gridpico_result result = parse_command(line, &inventory);
     if (result == GRIDPICO_OK && inventory) {
-        result = write_inventory(frontend, write, write_context);
+        result = write_inventory(frontend, command_write, command_context);
     } else if (result == GRIDPICO_INVALID) {
         const cli_help_entry *entry = command_for_line(line);
         if (entry == NULL) {
@@ -1950,61 +3083,61 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
                      strcmp(topic, "color set") != 0))) {
                     result = GRIDPICO_INVALID;
                 } else {
-                    result = execute_help(frontend, topic, write, write_context);
+                    result = execute_help(frontend, topic, command_write, command_context);
                 }
                 break;
             }
             case CLI_COMMAND_INVENTORY:
                 result = strcmp(line, "inventory") == 0
-                             ? write_inventory(frontend, write, write_context)
+                             ? write_inventory(frontend, command_write, command_context)
                              : GRIDPICO_INVALID;
                 break;
             case CLI_COMMAND_STATUS:
                 result = strcmp(line, "status") == 0
-                             ? execute_status(frontend, write, write_context)
+                             ? execute_status(frontend, command_write, command_context)
                              : GRIDPICO_INVALID;
                 break;
             case CLI_COMMAND_LOGS:
                 result = strcmp(line, "logs") == 0
-                             ? execute_logs(frontend, write, write_context)
+                             ? execute_logs(frontend, command_write, command_context)
                              : GRIDPICO_INVALID;
                 break;
             case CLI_COMMAND_COLOR:
                 result = strncmp(line, "color ", 6) == 0
-                             ? execute_color(frontend, line, write, write_context)
+                             ? execute_color(frontend, line, command_write, command_context)
                              : GRIDPICO_INVALID;
                 break;
             case CLI_COMMAND_ROUTE:
                 if (strncmp(line, "route ", 6) != 0) {
                     result = GRIDPICO_INVALID;
                 } else if (strstr(line, " if ") != NULL) {
-                    result = execute_guarded_route(frontend, line, write, write_context);
+                    result = execute_guarded_route(frontend, line, command_write, command_context);
                 } else {
-                    result = execute_local_route(frontend, line, write, write_context);
+                    result = execute_local_route(frontend, line, command_write, command_context);
                 }
                 break;
             case CLI_COMMAND_ROUTING:
                 result = strcmp(line, "routing") == 0 || strncmp(line, "routing ", 8) == 0
-                             ? execute_routing(frontend, line, write, write_context)
+                             ? execute_routing(frontend, line, command_write, command_context)
                              : GRIDPICO_INVALID;
                 break;
             case CLI_COMMAND_APC:
                 result = strcmp(line, "apc") == 0 || strncmp(line, "apc ", 4) == 0
-                             ? execute_apc_roles(frontend, line, write, write_context)
+                             ? execute_apc_roles(frontend, line, command_write, command_context)
                              : GRIDPICO_INVALID;
                 break;
             case CLI_COMMAND_TRANSFORM:
                 result = strncmp(line, "transform ", sizeof("transform ") - 1) == 0
-                             ? execute_note_transform(frontend, line, write, write_context)
+                             ? execute_note_transform(frontend, line, command_write, command_context)
                              : GRIDPICO_INVALID;
                 break;
             case CLI_COMMAND_AUTOROUTE:
                 if (strcmp(line, "autoroute") == 0) {
-                    result = execute_auto_route_summary(frontend, write, write_context);
+                    result = execute_auto_route_summary(frontend, command_write, command_context);
                 } else if (strcmp(line, "autoroute explain") == 0 ||
                            strncmp(line, "autoroute explain ",
                                    sizeof("autoroute explain ") - 1) == 0) {
-                    result = execute_auto_route_explain(frontend, line, write, write_context);
+                    result = execute_auto_route_explain(frontend, line, command_write, command_context);
                 } else {
                     result = GRIDPICO_INVALID;
                 }
@@ -2013,17 +3146,22 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
                 result = strncmp(line, "forwarding", sizeof("forwarding") - 1) == 0 &&
                          (line[sizeof("forwarding") - 1] == '\0' ||
                           line[sizeof("forwarding") - 1] == ' ')
-                             ? execute_forwarding(frontend, line, write, write_context)
+                             ? execute_forwarding(frontend, line, command_write, command_context)
                              : GRIDPICO_INVALID;
                 break;
             case CLI_COMMAND_PANIC:
                 result = strncmp(line, "panic", sizeof("panic") - 1) == 0 &&
                          (line[sizeof("panic") - 1] == '\0' ||
                           line[sizeof("panic") - 1] == ' ')
-                             ? execute_panic(frontend, line, write, write_context,
+                             ? execute_panic(frontend, line, command_write, command_context,
                                              &response_emitted)
                              : GRIDPICO_INVALID;
                 break;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+            case CLI_COMMAND_FORMAT:
+                result = GRIDPICO_INVALID;
+                break;
+#endif
             case CLI_COMMAND_TRACE:
             case CLI_COMMAND_HUBTRACE: {
                 const unsigned capability = entry->command == CLI_COMMAND_TRACE
@@ -2048,13 +3186,36 @@ gridpico_result gridpico_cli_execute_line(gridpico_cli_frontend *frontend,
         }
     }
     if (!asynchronous && !response_emitted) {
+#if defined(GRIDPICO_RP2040_MATRIX_CLI)
         (void)write_record(write, write_context,
                            result == GRIDPICO_OK ? "OK" : error_record(result),
                            strlen(result == GRIDPICO_OK ? "OK" : error_record(result)));
+#else
+        if (frontend->machine_format) {
+            (void)write_record(write, write_context,
+                               result == GRIDPICO_OK ? "OK" : error_record(result),
+                               strlen(result == GRIDPICO_OK ? "OK" : error_record(result)));
+        } else if (!human.overflow) {
+            const char *final_record = result == GRIDPICO_OK ? "OK" : error_record(result);
+            human_reply_write(&human, final_record, strlen(final_record));
+            human_reply_write(&human, "\r\n", 2);
+        }
+    }
+    if (!frontend->machine_format && human.overflow) {
+        (void)human_emit(write, write_context,
+                         "Capacity limit: the bounded human-readable reply is too large.");
+        return GRIDPICO_CAPACITY;
+#endif
     }
     return result;
 }
 
+#if defined(GRIDPICO_RP2040_MATRIX_CLI)
+#undef command_write
+#undef command_context
+#endif
+
+#if defined(GRIDPICO_RP2040_MATRIX_CLI)
 static void terminal_write_char(EmbeddedCli *cli, char c)
 {
     gridpico_cli_frontend *frontend = cli->appContext;
@@ -2062,13 +3223,88 @@ static void terminal_write_char(EmbeddedCli *cli, char c)
         frontend->terminal_write(frontend->terminal_write_context, &c, 1);
     }
 }
+#else
+static void terminal_write_char(EmbeddedCli *cli, char c)
+{
+    gridpico_cli_frontend *frontend = cli->appContext;
+    EmbeddedCliImpl *implementation = (EmbeddedCliImpl *)cli->_impl;
+    const char *line = implementation->cmdBuffer;
+    const size_t line_size = implementation->cmdSize;
+    const bool exact_format =
+        (line_size == sizeof("format machine") - 1 &&
+         memcmp(line, "format machine", sizeof("format machine") - 1) == 0) ||
+        (line_size == sizeof("format human") - 1 &&
+         memcmp(line, "format human", sizeof("format human") - 1) == 0);
+
+    if (frontend->editor_suppress_linebreak != 0) {
+        --frontend->editor_suppress_linebreak;
+        return;
+    }
+    if (frontend->machine_format) return;
+    if (frontend->editor_prompt_pending != 0) {
+        --frontend->editor_prompt_pending;
+        if (!frontend->machine_format && !frontend->editor_suppress_prompt &&
+            frontend->terminal_write != NULL)
+            frontend->terminal_write(frontend->terminal_write_context, &c, 1);
+        if (frontend->editor_prompt_pending == 0)
+            frontend->editor_suppress_prompt = false;
+        return;
+    }
+
+    if (c == '\r' || c == '\n') {
+        if (exact_format) {
+            frontend->editor_prefix_size = 0;
+            frontend->editor_suppress_linebreak = 1;
+            return;
+        }
+        if (frontend->editor_prefix_size != 0 && frontend->terminal_write != NULL) {
+            frontend->terminal_write(frontend->terminal_write_context,
+                                     frontend->editor_prefix,
+                                     frontend->editor_prefix_size);
+            frontend->editor_prefix_size = 0;
+        }
+    } else if (c >= 0x20 && c <= 0x7e) {
+        const bool format_prefix =
+            (line_size <= sizeof("format machine") - 1 &&
+             memcmp(line, "format machine", line_size) == 0) ||
+            (line_size <= sizeof("format human") - 1 &&
+             memcmp(line, "format human", line_size) == 0);
+        if (format_prefix && frontend->editor_prefix_size < sizeof frontend->editor_prefix) {
+            frontend->editor_prefix[frontend->editor_prefix_size++] = c;
+            return;
+        }
+        if (frontend->editor_prefix_size != 0 && frontend->terminal_write != NULL) {
+            frontend->terminal_write(frontend->terminal_write_context,
+                                     frontend->editor_prefix,
+                                     frontend->editor_prefix_size);
+            frontend->editor_prefix_size = 0;
+        }
+    } else if (frontend->editor_prefix_size != 0 && frontend->terminal_write != NULL) {
+        frontend->terminal_write(frontend->terminal_write_context,
+                                 frontend->editor_prefix,
+                                 frontend->editor_prefix_size);
+        frontend->editor_prefix_size = 0;
+    }
+    if (frontend->terminal_write != NULL) {
+        frontend->terminal_write(frontend->terminal_write_context, &c, 1);
+    }
+}
+#endif
 
 static void terminal_response(void *context, const char *bytes, size_t size)
 {
     EmbeddedCli *cli = context;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    gridpico_cli_frontend *frontend = cli->appContext;
+#endif
+#if defined(GRIDPICO_RP2040_MATRIX_CLI)
     for (size_t i = 0; i < size; ++i) {
         terminal_write_char(cli, bytes[i]);
     }
+#else
+    if (frontend->terminal_write != NULL)
+        frontend->terminal_write(frontend->terminal_write_context, bytes, size);
+#endif
 }
 
 static void terminal_command(EmbeddedCli *cli, CliCommand *command)
@@ -2090,6 +3326,9 @@ static void terminal_command(EmbeddedCli *cli, CliCommand *command)
     }
     line[offset] = '\0';
     (void)gridpico_cli_execute_line(frontend, line, terminal_response, cli);
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    frontend->editor_prompt_pending = 2;
+#endif
 }
 
 gridpico_result gridpico_cli_init(gridpico_cli_frontend *frontend,
@@ -2114,6 +3353,9 @@ gridpico_result gridpico_cli_init(gridpico_cli_frontend *frontend,
     frontend->read_logs = read_logs;
     frontend->terminal_write = terminal_write;
     frontend->terminal_write_context = terminal_write_context;
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+    frontend->editor_prompt_pending = 2;
+#endif
     EmbeddedCliConfig config = *embeddedCliDefaultConfig();
     config.invitation = "> ";
     config.rxBufferSize = GRIDPICO_CLI_RX_BYTES;
@@ -2172,6 +3414,40 @@ void gridpico_cli_bind_routing(gridpico_cli_frontend *frontend, void *context,
     frontend->routing_read_route = read_route;
     frontend->routing_set_route = set_route;
     frontend->routing_scratch = read_routing == NULL ? NULL : scratch;
+    frontend->routing_read_metadata = NULL;
+    frontend->routing_read_page = NULL;
+    frontend->routing_read_guarded_pair = NULL;
+    frontend->routing_page_scratch = NULL;
+}
+
+void gridpico_cli_bind_routing_pages(
+    gridpico_cli_frontend *frontend, void *context,
+    gridpico_result (*read_metadata)(void *context,
+                                     gridpico_patch_routing_metadata *out),
+    gridpico_result (*read_page)(void *context,
+                                 gridpico_revision expected_revision,
+                                 size_t offset,
+                                 gridpico_patch_routing_page *out),
+    gridpico_result (*read_guarded_pair)(void *context,
+                                         gridpico_revision expected_revision,
+                                         const gridpico_local_route *route,
+                                         gridpico_local_route_status *out),
+    gridpico_local_read_route_fn read_route,
+    gridpico_local_set_route_fn set_route,
+    gridpico_patch_routing_page *scratch)
+{
+    if (frontend == NULL) return;
+    frontend->routing_context = context;
+    frontend->routing_read = NULL;
+    frontend->routing_scratch = NULL;
+    frontend->routing_read_metadata = read_metadata;
+    frontend->routing_read_page = read_page;
+    frontend->routing_read_guarded_pair = read_guarded_pair;
+    frontend->routing_read_route = read_route;
+    frontend->routing_set_route = set_route;
+    frontend->routing_page_scratch =
+        read_metadata != NULL || read_page != NULL || read_guarded_pair != NULL
+            ? scratch : NULL;
 }
 
 void gridpico_cli_bind_apc_roles(gridpico_cli_frontend *frontend, void *context,
@@ -2227,6 +3503,20 @@ void gridpico_cli_bind_musical_control(
     frontend->apply_panic = apply_panic;
     frontend->panic_scratch = panic_scratch;
 }
+
+#if !defined(GRIDPICO_RP2040_MATRIX_CLI)
+void gridpico_cli_bind_panic_sweep(
+    gridpico_cli_frontend *frontend,
+    gridpico_read_panic_sweep_fn read_sweep,
+    gridpico_apply_panic_sweep_fn apply_sweep,
+    gridpico_panic_sweep_status *sweep_scratch)
+{
+    if (frontend == NULL) return;
+    frontend->read_panic_sweep = read_sweep;
+    frontend->apply_panic_sweep = apply_sweep;
+    frontend->panic_sweep_scratch = sweep_scratch;
+}
+#endif
 
 void gridpico_cli_receive(gridpico_cli_frontend *frontend, const char *bytes, size_t size)
 {

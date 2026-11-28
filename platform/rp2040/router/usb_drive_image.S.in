@@ -1,0 +1,9 @@
+    /* The SDK's copy-to-RAM map keeps .flashdata* in XIP flash. */
+    .section .flashdata.gridpico_usb_drive,"a",%progbits
+    .balign 512
+    .global __gridpico_usb_drive_start
+    .global __gridpico_usb_drive_end
+__gridpico_usb_drive_start:
+    .incbin "@gridpico_usb_drive_image@"
+__gridpico_usb_drive_end:
+    .section .note.GNU-stack,"",%progbits

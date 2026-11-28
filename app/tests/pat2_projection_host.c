@@ -1,4 +1,8 @@
 #include "app/rp2040_pat2_projection.h"
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+#include "app/rp2040_pat2_apply.h"
+#include "app/rp2040_auto_routes.h"
+#endif
 #ifdef GRIDPICO_PAT2_APPLY_HOST
 #include "app/rp2040_pat2_capture.h"
 #include "app/rp2040_pat2_ram_commit.h"
@@ -38,7 +42,29 @@ static bool fixture_path(uint8_t address)
 
 /* Only the role's already verified transport-path predicate is mocked. */
 #define observed_path(address, path) ((void)(path), fixture_path(address))
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+static unsigned boot_reads;
+static gridpico_result count_boot_read(const uint8_t *a, const uint8_t *b,
+    gridpico_pico_pat2_status *status, gridpico_pico_pat2_intent *intent)
+{
+    const uint8_t *views[] = {a, b};
+    static uint8_t before[GRIDPICO_PICO_SAVE_SECTORS][GRIDPICO_PICO_SAVE_SECTOR];
+    for (size_t i = 0; i < GRIDPICO_PICO_SAVE_SECTORS; ++i) {
+        if (views[i] != NULL) memcpy(before[i], views[i], sizeof(before[i]));
+    }
+    ++boot_reads;
+    const gridpico_result result = gridpico_pico_read_pat2(a, b, status, intent);
+    for (size_t i = 0; i < GRIDPICO_PICO_SAVE_SECTORS; ++i) {
+        if (views[i] != NULL) assert(memcmp(before[i], views[i], sizeof(before[i])) == 0);
+    }
+    return result;
+}
+#define gridpico_pico_read_pat2 count_boot_read
+#endif
 #include "firmware.inc"
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+#undef gridpico_pico_read_pat2
+#endif
 #undef observed_path
 
 static void observe(uint8_t index, char serial)
@@ -59,6 +85,7 @@ static void observe(uint8_t index, char serial)
     observations[index].identity.serial[0] = serial;
 }
 
+#ifndef GRIDPICO_RP2040_PAT2_BOOT_READ
 static void admit_fixture(uint8_t index, size_t device, gridpico_pico_peer first)
 {
     assert(gridpico_pico_router_register_device(&router, first, observations[index].name, 3, 3) == GRIDPICO_OK);
@@ -70,7 +97,11 @@ static void admit_fixture(uint8_t index, size_t device, gridpico_pico_peer first
     gridpico_pico_router_attach(&router, (gridpico_pico_peer)(first + 1), true);
 }
 
-#ifndef GRIDPICO_PAT2_APPLY_HOST
+#endif
+
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+#include "pat2_boot_host.inc"
+#elif !defined(GRIDPICO_PAT2_APPLY_HOST)
 static gridpico_pico_pat2_identity saved_identity(uint8_t serial)
 {
     return (gridpico_pico_pat2_identity){

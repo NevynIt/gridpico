@@ -2,6 +2,7 @@
 #define GRIDPICO_PATCH_SESSION_H
 
 #include "api/routing.h"
+#include "core/midi/patch_graph.h"
 
 typedef struct {
     bool is_set;
@@ -17,6 +18,27 @@ typedef struct {
     uint8_t off[(GRIDPICO_PATCH_MAX_PORTS * GRIDPICO_PATCH_MAX_PORTS + 7u) / 8u];
 } gridpico_patch_manual_routes;
 
+typedef gridpico_result (*gridpico_patch_read_route_metadata_fn)(
+    const void *graph_context, gridpico_patch_graph_route_metadata *out);
+typedef gridpico_result (*gridpico_patch_read_route_page_fn)(
+    const void *graph_context, gridpico_revision graph_revision, size_t offset,
+    gridpico_patch_graph_route_page *out);
+
+typedef struct {
+    gridpico_revision revision; /* Composite Routing guard. */
+    gridpico_patch_graph_route_metadata graph;
+    gridpico_device_color colors[GRIDPICO_PATCH_MAX_DEVICES];
+    gridpico_local_port_availability availability[GRIDPICO_PATCH_MAX_PORTS];
+} gridpico_patch_routing_metadata;
+
+typedef struct {
+    gridpico_patch_routing_metadata metadata;
+    size_t record_count;
+    size_t next_offset;
+    size_t route_count; /* Route records in the suffix of this joined page. */
+    gridpico_local_enabled_route routes[GRIDPICO_LOCAL_ROUTING_PAGE_RECORDS];
+} gridpico_patch_routing_page;
+
 typedef struct {
     void *graph_context;
     gridpico_patch_read_graph_fn read_graph;
@@ -27,6 +49,9 @@ typedef struct {
     gridpico_local_read_availability_fn read_availability;
     void *availability_context;
     gridpico_local_routing_snapshot *projection_scratch;
+    gridpico_patch_read_route_metadata_fn read_route_metadata;
+    gridpico_patch_read_route_page_fn read_route_page;
+    gridpico_patch_routing_page *routing_page_scratch;
     gridpico_patch_manual_routes *manual_routes;
     gridpico_revision color_revision;
     /* Colors follow the graph's stable device registration slots. */
@@ -71,6 +96,31 @@ void gridpico_patch_session_bind_local_routing(gridpico_patch_session *session,
  */
 void gridpico_patch_session_bind_projection_scratch(gridpico_patch_session *session,
                                                    gridpico_local_routing_snapshot *scratch);
+
+/* Bind all three before serving this provider, using the existing Graph context.
+ * The serialized owner lends disjoint lifetime scratch and binds exact pair
+ * readback and availability for the same complete, authoritative registry.
+ */
+void gridpico_patch_session_bind_routing_pages(gridpico_patch_session *session,
+                                               gridpico_patch_read_route_metadata_fn read_metadata,
+                                               gridpico_patch_read_route_page_fn read_page,
+                                               gridpico_patch_routing_page *scratch);
+
+gridpico_result gridpico_patch_session_read_routing_metadata(void *context,
+                                                           gridpico_patch_routing_metadata *out);
+/* A zero revision starts at offset zero; a continuation supplies the exact
+ * composite guard. Device and binding rows follow registry order.
+ */
+gridpico_result gridpico_patch_session_read_routing_page(void *context,
+                                                        gridpico_revision expected_revision, size_t offset,
+                                                        gridpico_patch_routing_page *out);
+/* Check the composite guard and a structurally valid exact pair. Status uses
+ * Graph revision. An authorized owner may write in the same serialized turn.
+ */
+gridpico_result gridpico_patch_session_read_guarded_route(void *context,
+                                                         gridpico_revision expected_revision,
+                                                         const gridpico_local_route *route,
+                                                         gridpico_local_route_status *out);
 
 /* Borrow zero-initialized lifetime storage once for the automatic profile.
  * Policy reads use stable slots from the same append-only Graph registry.

@@ -1,6 +1,7 @@
 #include "app/rp2040_pat2_apply.h"
 
-#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_BOOT_READ) || \
+    defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
 #include <string.h>
 
 _Static_assert(GRIDPICO_PATCH_MAX_PORTS <= 32, "Host fixture has Pico registry bounds");
@@ -14,7 +15,7 @@ static size_t port_slot(const gridpico_patch_inventory *inventory, gridpico_port
     return inventory->port_count;
 }
 
-#ifdef GRIDPICO_PAT2_APPLY_HOST
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_BOOT_READ)
 size_t gridpico_pico_pat2_slot_index(gridpico_patch_direction axis, uint8_t slot)
 {
     if (axis == GRIDPICO_PATCH_INPUT && slot < GRIDPICO_PATCH_SOURCE_ROWS) return slot;
@@ -69,12 +70,15 @@ static size_t pair_bit(const gridpico_patch_inventory *inventory, const gridpico
     return source * GRIDPICO_PATCH_MAX_PORTS + destination;
 }
 
-#ifdef GRIDPICO_PAT2_APPLY_HOST
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_BOOT_READ)
 void gridpico_pico_pat2_own_pair(gridpico_pico_router *router, const gridpico_local_route *route)
 {
-    if (router->pat2_apply == NULL ||
-        (router->pat2_apply->intent == NULL && !router->pat2_apply->capture_lifetime) ||
-        route->mode != GRIDPICO_LOCAL_MANAGED) return;
+    if (router->pat2_apply == NULL || route->mode != GRIDPICO_LOCAL_MANAGED) return;
+#ifdef GRIDPICO_PAT2_APPLY_HOST
+    if (router->pat2_apply->intent == NULL && !router->pat2_apply->capture_lifetime) return;
+#else
+    if (router->pat2_apply->intent == NULL) return;
+#endif
     const size_t bit = pair_bit(&router->graph.inventory, route);
     if (bit != SIZE_MAX) {
         router->pat2_apply->progress.owned_pairs.off[bit / 8u] |= (uint8_t)(1u << (bit % 8u));
@@ -140,16 +144,46 @@ static gridpico_result stage_layout(const gridpico_pico_router *router, gridpico
     return GRIDPICO_OK;
 }
 
-static bool table_full(const gridpico_patch_graph *graph)
+static gridpico_result read_membership(gridpico_pico_pat2_apply *apply,
+                                      const gridpico_patch_graph *graph,
+                                      const gridpico_pico_pat2_plan *plan,
+                                      gridpico_pico_pat2_membership *out)
 {
-    for (size_t i = 0; i < graph->branch_limit; ++i) {
-        if (!graph->branches[i].enabled) return false;
+    const size_t total = apply->projection.view.branch_count;
+    gridpico_patch_graph_route_page *page = &apply->route_page;
+    memset(out->present, 0, sizeof(out->present));
+    size_t offset = 0;
+    for (;;) {
+        const gridpico_result result = gridpico_patch_graph_read_route_page(
+            graph, plan->graph_revision, offset, page);
+        if (result != GRIDPICO_OK) return result;
+        if (page->revision != plan->graph_revision || page->record_count > GRIDPICO_PATCH_GRAPH_ROUTE_PAGE_RECORDS ||
+            page->record_count > total - offset || page->next_offset != offset + page->record_count) {
+            return GRIDPICO_UNAVAILABLE;
+        }
+        if (page->record_count == 0) {
+            if (offset != total) return GRIDPICO_UNAVAILABLE;
+            out->enabled_count = offset;
+            return GRIDPICO_OK;
+        }
+        for (size_t row = 0; row < page->record_count; ++row) {
+            const gridpico_local_route *route = &page->records[row].route;
+            if (route->mode != GRIDPICO_LOCAL_MANAGED) continue;
+            for (size_t i = 0; i < plan->pair_count; ++i) {
+                const gridpico_pico_pat2_planned_pair *pair = &plan->pairs[i];
+                if (pair->source.endpoint == route->source && pair->destination.endpoint == route->destination) {
+                    out->present[i] = 1;
+                    break;
+                }
+            }
+        }
+        offset = page->next_offset;
     }
-    return true;
 }
 
 static gridpico_result stage_pairs(gridpico_pico_pat2_apply *apply, bool enable)
 {
+    gridpico_patch_graph *shadow = &apply->shadow.graph;
     for (size_t i = 0; i < apply->plan.pair_count; ++i) {
         const gridpico_pico_pat2_planned_pair *pair = &apply->plan.pairs[i];
         if (apply->next.pair_outcomes[i] != GRIDPICO_PAT2_DUE ||
@@ -158,33 +192,35 @@ static gridpico_result stage_pairs(gridpico_pico_pat2_apply *apply, bool enable)
         const gridpico_local_route_request request = {
             {pair->source.endpoint, pair->destination.endpoint, GRIDPICO_LOCAL_MANAGED}, enable,
         };
-        const size_t bit = pair_bit(&apply->shadow_graph.inventory, &request.route);
+        const size_t bit = pair_bit(&apply->projection.graph.registry.inventory, &request.route);
         if (bit == SIZE_MAX) return GRIDPICO_UNAVAILABLE;
         if (apply->next.owned_pairs.off[bit / 8u] & (1u << (bit % 8u))) {
             apply->next.pair_outcomes[i] = GRIDPICO_PAT2_OPERATOR;
             continue;
         }
         if (enable) {
-            gridpico_patch_managed_enable_decision admission;
-            const gridpico_result result = gridpico_patch_graph_check_managed_enable(
-                &apply->shadow_graph, &request.route, &admission);
+            bool full;
+            const gridpico_result result = gridpico_patch_graph_managed_storage_full(shadow, &request.route, &full);
             if (result != GRIDPICO_OK) return result;
-            if (admission == GRIDPICO_PATCH_MANAGED_ENABLE_BRANCH_LIMIT && table_full(&apply->shadow_graph)) {
+            if (full) {
                 apply->next.pair_outcomes[i] = GRIDPICO_PAT2_FULL;
                 continue;
             }
-            if (admission != GRIDPICO_PATCH_MANAGED_ENABLE_ALLOWED) return GRIDPICO_CAPACITY;
         }
 
-        if (request.route.destination == apply->before.audition_destination) {
-            gridpico_local_route_status status;
-            const gridpico_result result = gridpico_patch_graph_read_local_route(
-                &apply->shadow_graph, &request.route, &status);
-            if (result != GRIDPICO_OK) return result;
-            if ((status.state != GRIDPICO_PATCH_ROUTE_OFF) != enable) return GRIDPICO_UNAVAILABLE;
+        if (request.route.destination == apply->before.audition_destination &&
+            (apply->before.membership.present[i] != 0) != enable) {
+            return GRIDPICO_UNAVAILABLE;
         }
-        const gridpico_result result = gridpico_patch_session_set_local_route(&apply->shadow_session, &request);
+        const gridpico_result result = gridpico_patch_graph_set_local_route(shadow, &request);
         if (result != GRIDPICO_OK) return result;
+        /* Mirror the saved manual choice only after the staged Graph edit succeeds. */
+        if (request.route.source != apply->before.audition_source) {
+            const uint8_t mask = (uint8_t)(1u << (bit % 8u));
+            uint8_t *off = &apply->off.off[bit / 8u];
+            if (enable) *off &= (uint8_t)~mask;
+            else *off |= mask;
+        }
         apply->next.pair_outcomes[i] = GRIDPICO_PAT2_APPLIED;
     }
     return GRIDPICO_OK;
@@ -196,17 +232,28 @@ static bool current_revisions(const gridpico_pico_router *router, const gridpico
            view->layout_revision != 0 && view->layout_revision == router->session.apc_layout_revision;
 }
 
+void gridpico_pico_pat2_discard(gridpico_pico_router *router)
+{
+    if (router == NULL || router->pat2_apply == NULL) return;
+    gridpico_pico_pat2_apply *apply = router->pat2_apply;
+    gridpico_patch_graph_discard_route_shadow(&router->graph, &apply->shadow);
+    apply->prepared = false;
+}
+
 gridpico_result gridpico_pico_pat2_prepare(gridpico_pico_router *router, gridpico_revision roles)
 {
     if (router == NULL || router->pat2_apply == NULL) return GRIDPICO_INVALID;
     gridpico_pico_pat2_apply *apply = router->pat2_apply;
-    apply->prepared = false;
+    gridpico_pico_pat2_discard(router);
     if (roles == 0 || !current_revisions(router, &apply->projection.view)) return GRIDPICO_UNAVAILABLE;
-    gridpico_result result = gridpico_pico_plan_saved_intent(apply->intent, &apply->projection.view, &apply->plan);
+    gridpico_result result = gridpico_pico_resolve_saved_intent(apply->intent, &apply->projection.view, &apply->plan);
+    if (result != GRIDPICO_OK) return result;
+    result = read_membership(apply, &router->graph, &apply->plan, &apply->before.membership);
     if (result != GRIDPICO_OK) return result;
 
     apply->before.intent = apply->intent;
     apply->before.role_revision = roles;
+    apply->before.audition_source = router->session.apc_audition_source;
     apply->before.audition_destination = router->audition.destination;
     memcpy(&apply->before.progress, &apply->progress, sizeof(apply->progress));
     memcpy(&apply->next, &apply->progress, sizeof(apply->progress));
@@ -215,20 +262,58 @@ gridpico_result gridpico_pico_pat2_prepare(gridpico_pico_router *router, gridpic
 
     result = stage_layout(router, apply);
     if (result != GRIDPICO_OK) return result;
-    apply->shadow_graph = router->graph;
-    gridpico_patch_session_init(&apply->shadow_session, &apply->shadow_graph,
-                                gridpico_patch_graph_read_graph, gridpico_patch_graph_set_route);
-    gridpico_patch_session_bind_local_routes(&apply->shadow_session, gridpico_patch_graph_set_local_route,
-                                            gridpico_patch_graph_read_local_route);
-    gridpico_patch_session_bind_local_routing(&apply->shadow_session, gridpico_patch_graph_read_local_state,
-                                             NULL, NULL);
-    apply->shadow_session.apc_audition_source = router->session.apc_audition_source;
-    gridpico_patch_session_bind_manual_routes(&apply->shadow_session, &apply->off);
-    gridpico_patch_session_bind_projection_scratch(&apply->shadow_session, &apply->shadow_read);
-    result = stage_pairs(apply, false);
+    result = gridpico_patch_graph_prepare_route_shadow(&router->graph, apply->plan.graph_revision, &apply->shadow);
+    if (result == GRIDPICO_OK) result = stage_pairs(apply, false);
     if (result == GRIDPICO_OK) result = stage_pairs(apply, true);
-    if (result == GRIDPICO_OK) apply->prepared = true;
+    if (result != GRIDPICO_OK) {
+        gridpico_pico_pat2_discard(router);
+        return result;
+    }
+    apply->prepared = true;
     return result;
+}
+
+static bool same_resolution(const gridpico_pico_pat2_plan *before, const gridpico_pico_pat2_plan *current)
+{
+    if (before->direction_count != current->direction_count || before->pair_count != current->pair_count) return false;
+    for (size_t i = 0; i < before->direction_count; ++i) {
+        const gridpico_connection a = before->directions[i], b = current->directions[i];
+        if (a.endpoint != b.endpoint || a.generation != b.generation) return false;
+    }
+    for (size_t i = 0; i < GRIDPICO_PICO_PAT2_SLOTS; ++i) {
+        const gridpico_pico_pat2_slot *a = &before->slots[i], *b = &current->slots[i];
+        if (a->direction_ref != b->direction_ref || memcmp(a->label, b->label, sizeof(a->label)) != 0) return false;
+    }
+    for (size_t i = 0; i < before->pair_count; ++i) {
+        const gridpico_pico_pat2_pair a = before->pairs[i].saved, b = current->pairs[i].saved;
+        if (a.source_ref != b.source_ref || a.destination_ref != b.destination_ref || a.enabled != b.enabled) return false;
+    }
+    return true;
+}
+
+static gridpico_result recheck_plan(const gridpico_pico_router *router, gridpico_pico_pat2_apply *apply,
+                                   gridpico_revision roles)
+{
+    const gridpico_pico_pat2_verified_view *view = &apply->projection.view;
+    if (apply->intent != apply->before.intent || apply->intent->generation != apply->plan.generation ||
+        roles != apply->before.role_revision || router->session.apc_audition_source != apply->before.audition_source ||
+        router->audition.destination != apply->before.audition_destination ||
+        !current_revisions(router, view) || view->graph_revision != apply->plan.graph_revision ||
+        view->layout_revision != apply->plan.layout_revision ||
+        memcmp(&apply->progress, &apply->before.progress, sizeof(apply->progress)) != 0 ||
+        memcmp(&router->manual_routes, &apply->before.off, sizeof(router->manual_routes)) != 0) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    gridpico_result result = gridpico_pico_resolve_saved_intent(apply->intent, view, &apply->current_plan);
+    if (result != GRIDPICO_OK) return result;
+    if (!same_resolution(&apply->plan, &apply->current_plan)) return GRIDPICO_UNAVAILABLE;
+    result = read_membership(apply, &router->graph, &apply->current_plan, &apply->current_membership);
+    if (result != GRIDPICO_OK) return result;
+    const gridpico_pico_pat2_membership *a = &apply->before.membership, *b = &apply->current_membership;
+    if (a->enabled_count != b->enabled_count || memcmp(a->present, b->present, sizeof(a->present)) != 0) {
+        return GRIDPICO_UNAVAILABLE;
+    }
+    return GRIDPICO_OK;
 }
 
 gridpico_result gridpico_pico_pat2_commit(gridpico_pico_router *router, gridpico_revision roles)
@@ -236,29 +321,18 @@ gridpico_result gridpico_pico_pat2_commit(gridpico_pico_router *router, gridpico
     if (router == NULL || router->pat2_apply == NULL) return GRIDPICO_INVALID;
     gridpico_pico_pat2_apply *apply = router->pat2_apply;
     if (!apply->prepared) return GRIDPICO_UNAVAILABLE;
-    apply->prepared = false;
-    const gridpico_pico_pat2_verified_view *view = &apply->projection.view;
-    if (apply->intent != apply->before.intent || apply->intent->generation != apply->plan.generation ||
-        roles != apply->before.role_revision || router->audition.destination != apply->before.audition_destination ||
-        !current_revisions(router, view) || view->graph_revision != apply->plan.graph_revision ||
-        view->layout_revision != apply->plan.layout_revision ||
-        memcmp(&apply->progress, &apply->before.progress, sizeof(apply->progress)) != 0 ||
-        memcmp(&router->manual_routes, &apply->before.off, sizeof(router->manual_routes)) != 0) {
-        return GRIDPICO_UNAVAILABLE;
+    const bool refresh = router->graph.revision != apply->shadow.graph.revision ||
+                         router->session.apc_layout_revision != apply->layout_revision;
+    gridpico_result result = recheck_plan(router, apply, roles);
+    if (result == GRIDPICO_OK) {
+        result = gridpico_patch_graph_publish_route_shadow(&router->graph, apply->plan.graph_revision, &apply->shadow);
     }
-    const gridpico_result result = gridpico_pico_plan_saved_intent(apply->intent, view, &apply->current_plan);
-    if (result != GRIDPICO_OK) return result;
-    for (size_t i = 0; i < apply->plan.direction_count; ++i) {
-        const gridpico_connection captured = apply->plan.directions[i], current = apply->current_plan.directions[i];
-        if (captured.endpoint != current.endpoint || captured.generation != current.generation) {
-            return GRIDPICO_UNAVAILABLE;
-        }
+    if (result != GRIDPICO_OK) {
+        gridpico_pico_pat2_discard(router);
+        return result;
     }
 
-    const bool refresh = router->graph.revision != apply->shadow_graph.revision ||
-                         router->session.apc_layout_revision != apply->layout_revision;
-    memcpy(router->graph.branches, apply->shadow_graph.branches, sizeof(router->graph.branches));
-    router->graph.revision = apply->shadow_graph.revision;
+    apply->prepared = false;
     router->session.apc_layout = apply->layout;
     router->session.apc_layout_revision = apply->layout_revision;
     router->manual_routes = apply->off;

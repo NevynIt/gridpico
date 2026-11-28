@@ -114,6 +114,16 @@ static gridpico_auto_route_skip_reason evaluate_pair(gridpico_pico_auto_routes *
     const gridpico_patch_port *source = &state->registry.inventory.ports[source_slot];
     const gridpico_patch_port *destination = &state->registry.inventory.ports[destination_slot];
     const gridpico_local_route route = {source->id, destination->id, GRIDPICO_LOCAL_MANAGED};
+#ifdef GRIDPICO_PICO25_HOST_FIXTURE
+    gridpico_local_route_status existing;
+    if (gridpico_patch_graph_read_local_route(&router->graph, &route, &existing) != GRIDPICO_OK ||
+        existing.revision != plan->graph_revision) return GRIDPICO_AUTO_SKIP_UNAVAILABLE;
+    if (existing.state != GRIDPICO_PATCH_ROUTE_OFF) {
+        if (existing.state == GRIDPICO_PATCH_ROUTE_ACTIVE) ++plan->summary.active;
+        else ++plan->summary.pending;
+        return 0;
+    }
+#else
     for (size_t i = 0; i < state->route_count; ++i) {
         const gridpico_local_enabled_route *existing = &state->routes[i];
         if (existing->route.mode != route.mode || existing->route.source != route.source ||
@@ -122,6 +132,7 @@ static gridpico_auto_route_skip_reason evaluate_pair(gridpico_pico_auto_routes *
         else ++plan->summary.pending;
         return 0;
     }
+#endif
     if (gridpico_local_native_virtual_cable_matches(&state->registry.native_virtual_cable,
                                                   source->id, destination->id)) {
         return GRIDPICO_AUTO_SKIP_COMPUTER_RETURN;
@@ -180,7 +191,12 @@ void gridpico_pico_auto_routes_service(gridpico_pico_auto_routes *plan, bool coh
         blocked_outputs == plan->blocked_outputs && plan->ready) return;
 
     gridpico_local_graph_state *state = &plan->router->projection_scratch.graph;
-    if (gridpico_patch_graph_read_local_state(&plan->router->graph, state) != GRIDPICO_OK) {
+#ifdef GRIDPICO_PICO25_HOST_FIXTURE
+    const gridpico_result result = gridpico_patch_graph_copy_local_registry(&plan->router->graph, &state->registry);
+#else
+    const gridpico_result result = gridpico_patch_graph_read_local_state(&plan->router->graph, state);
+#endif
+    if (result != GRIDPICO_OK) {
         gridpico_pico_auto_routes_invalidate(plan);
         return;
     }
@@ -189,8 +205,16 @@ void gridpico_pico_auto_routes_service(gridpico_pico_auto_routes *plan, bool coh
     }
     if (plan->next >= plan->summary.candidates) {
         if (++plan->sweep == 2 || plan->summary.candidates == 0) {
-            if (gridpico_pico_router_read_routing(plan->router, plan->routing_scratch) == GRIDPICO_OK) {
-                plan->routing_revision = plan->routing_scratch->revision;
+#ifdef GRIDPICO_PICO25_HOST_FIXTURE
+            gridpico_patch_routing_metadata *metadata = &plan->router->public_routing_scratch.metadata;
+            const gridpico_result routing = gridpico_patch_session_read_routing_metadata(&plan->router->session, metadata);
+            const gridpico_revision revision = metadata->revision;
+#else
+            const gridpico_result routing = gridpico_pico_router_read_routing(plan->router, plan->routing_scratch);
+            const gridpico_revision revision = routing == GRIDPICO_OK ? plan->routing_scratch->revision : 0;
+#endif
+            if (routing == GRIDPICO_OK) {
+                plan->routing_revision = revision;
                 ++plan->summary.revision;
                 plan->enable = false;
                 plan->ready = true;

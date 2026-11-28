@@ -24,6 +24,7 @@ static uint32_t read_le(const uint8_t *bytes, unsigned width)
     return value;
 }
 
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
 static void write_le(uint8_t *bytes, uint32_t value, unsigned width)
 {
     for (unsigned i = 0; i < width; ++i) {
@@ -31,6 +32,7 @@ static void write_le(uint8_t *bytes, uint32_t value, unsigned width)
         value >>= 8;
     }
 }
+#endif
 
 static uint32_t crc_bytes(uint32_t crc, const uint8_t *bytes, size_t count)
 {
@@ -169,6 +171,7 @@ static bool valid_intent(const gridpico_pico_pat2_intent *intent)
     return true;
 }
 
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
 static bool overlaps_intent(const gridpico_pico_pat2_intent *intent, const uint8_t *record)
 {
     const uintptr_t input = (uintptr_t)intent, output = (uintptr_t)record;
@@ -236,6 +239,7 @@ gridpico_result gridpico_pico_encode_pat2(
     write_le(commit + 8, crc, 4);
     return GRIDPICO_OK;
 }
+#endif
 
 static bool decode(const uint8_t *bytes, size_t size, uint32_t generation,
                    gridpico_pico_pat2_intent *intent)
@@ -346,15 +350,13 @@ gridpico_result gridpico_pico_read_pat2(
     return GRIDPICO_OK;
 }
 
-static bool valid_view(const gridpico_pico_pat2_verified_view *view)
+static bool valid_census(const gridpico_pico_pat2_verified_view *view)
 {
     if (view->graph_revision == 0 || view->layout_revision == 0 ||
         view->observation_count > GRIDPICO_PICO_PAT2_IDENTITIES ||
         (view->observation_count != 0 && view->observations == NULL) ||
         view->binding_count > GRIDPICO_PICO_PAT2_DIRECTIONS ||
-        (view->binding_count != 0 && view->bindings == NULL) ||
-        view->branch_limit > GRIDPICO_PATCH_MAX_BRANCHES || view->branch_count > view->branch_limit ||
-        (view->branch_count != 0 && view->branches == NULL)) return false;
+        (view->binding_count != 0 && view->bindings == NULL)) return false;
 
     for (size_t i = 0; i < view->observation_count; ++i) {
         const gridpico_pico_pat2_observation *item = &view->observations[i];
@@ -378,6 +380,14 @@ static bool valid_view(const gridpico_pico_pat2_verified_view *view)
         }
     }
 
+    return true;
+}
+
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
+static bool valid_branch_view(const gridpico_pico_pat2_verified_view *view)
+{
+    if (view->branch_limit > GRIDPICO_PATCH_MAX_BRANCHES || view->branch_count > view->branch_limit ||
+        (view->branch_count != 0 && view->branches == NULL)) return false;
     for (size_t i = 0; i < view->branch_count; ++i) {
         const gridpico_local_enabled_route *branch = &view->branches[i];
         const gridpico_local_route *route = &branch->route;
@@ -400,6 +410,7 @@ static bool valid_view(const gridpico_pico_pat2_verified_view *view)
     }
     return true;
 }
+#endif
 
 static size_t match_identity(const gridpico_pico_pat2_verified_view *view,
                              const gridpico_pico_pat2_identity *id)
@@ -429,23 +440,12 @@ static gridpico_connection match_direction(const gridpico_pico_pat2_verified_vie
     return (gridpico_connection){0};
 }
 
-static bool branch_enabled(const gridpico_pico_pat2_verified_view *view,
-                           const gridpico_pico_pat2_planned_pair *pair)
-{
-    for (size_t i = 0; i < view->branch_count; ++i) {
-        const gridpico_local_route *route = &view->branches[i].route;
-        if (route->mode == GRIDPICO_LOCAL_MANAGED && route->source == pair->source.endpoint &&
-            route->destination == pair->destination.endpoint) return true;
-    }
-    return false;
-}
-
-gridpico_result gridpico_pico_plan_saved_intent(
+gridpico_result gridpico_pico_resolve_saved_intent(
     const gridpico_pico_pat2_intent *intent, const gridpico_pico_pat2_verified_view *view,
     gridpico_pico_pat2_plan *out_plan)
 {
     if (intent == NULL || view == NULL || out_plan == NULL ||
-        !valid_intent(intent) || !valid_view(view)) return GRIDPICO_INVALID;
+        !valid_intent(intent) || !valid_census(view)) return GRIDPICO_INVALID;
 
     *out_plan = (gridpico_pico_pat2_plan){
         .generation = intent->generation,
@@ -469,27 +469,52 @@ gridpico_result gridpico_pico_plan_saved_intent(
         memcpy(slot->label, intent->directions[ref - 1u].label, sizeof(slot->label));
     }
 
-    /* Account for resolved Off before assigning space to On, even if the
-     * corresponding Off appears later in the record.
-     */
-    size_t occupied = view->branch_count;
     for (size_t i = 0; i < intent->pair_count; ++i) {
         gridpico_pico_pat2_planned_pair *pair = &out_plan->pairs[i];
         pair->saved = intent->pairs[i];
         pair->source = out_plan->directions[pair->saved.source_ref - 1u];
         pair->destination = out_plan->directions[pair->saved.destination_ref - 1u];
-        if (pair->source.endpoint && pair->destination.endpoint && !pair->saved.enabled) {
-            pair->decision = GRIDPICO_PICO_PAT2_PAIR_OFF;
-            if (branch_enabled(view, pair)) --occupied;
+        if (pair->source.endpoint && pair->destination.endpoint) {
+            pair->decision = pair->saved.enabled ? GRIDPICO_PICO_PAT2_PAIR_ON : GRIDPICO_PICO_PAT2_PAIR_OFF;
         }
     }
-    for (size_t i = 0; i < intent->pair_count; ++i) {
+    return GRIDPICO_OK;
+}
+
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
+static bool branch_enabled(const gridpico_pico_pat2_verified_view *view,
+                           const gridpico_pico_pat2_planned_pair *pair)
+{
+    for (size_t i = 0; i < view->branch_count; ++i) {
+        const gridpico_local_route *route = &view->branches[i].route;
+        if (route->mode == GRIDPICO_LOCAL_MANAGED && route->source == pair->source.endpoint &&
+            route->destination == pair->destination.endpoint) return true;
+    }
+    return false;
+}
+
+gridpico_result gridpico_pico_plan_saved_intent(
+    const gridpico_pico_pat2_intent *intent, const gridpico_pico_pat2_verified_view *view,
+    gridpico_pico_pat2_plan *out_plan)
+{
+    if (view == NULL || (view->binding_count != 0 && view->bindings == NULL) ||
+        view->binding_count > GRIDPICO_PICO_PAT2_DIRECTIONS || !valid_branch_view(view)) {
+        return GRIDPICO_INVALID;
+    }
+    const gridpico_result result = gridpico_pico_resolve_saved_intent(intent, view, out_plan);
+    if (result != GRIDPICO_OK) return result;
+
+    /* Capacity in the historical host planner is a projection. The actual
+     * restore uses the current Graph writer after applying Off first. */
+    size_t occupied = view->branch_count;
+    for (size_t i = 0; i < out_plan->pair_count; ++i) {
+        const gridpico_pico_pat2_planned_pair *pair = &out_plan->pairs[i];
+        if (pair->decision == GRIDPICO_PICO_PAT2_PAIR_OFF && branch_enabled(view, pair)) --occupied;
+    }
+    for (size_t i = 0; i < out_plan->pair_count; ++i) {
         gridpico_pico_pat2_planned_pair *pair = &out_plan->pairs[i];
-        if (!pair->source.endpoint || !pair->destination.endpoint || !pair->saved.enabled) continue;
-        if (branch_enabled(view, pair)) {
-            pair->decision = GRIDPICO_PICO_PAT2_PAIR_ON;
-        } else if (occupied < view->branch_limit) {
-            pair->decision = GRIDPICO_PICO_PAT2_PAIR_ON;
+        if (pair->decision != GRIDPICO_PICO_PAT2_PAIR_ON || branch_enabled(view, pair)) continue;
+        if (occupied < view->branch_limit) {
             ++occupied;
         } else {
             pair->decision = GRIDPICO_PICO_PAT2_PAIR_CAPACITY;
@@ -497,3 +522,4 @@ gridpico_result gridpico_pico_plan_saved_intent(
     }
     return GRIDPICO_OK;
 }
+#endif

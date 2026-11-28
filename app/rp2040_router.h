@@ -13,7 +13,11 @@
 
 #if defined(GRIDPICO_RP2040_MATRIX_CLI) && !defined(GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
 #define GRIDPICO_PICO_GENERIC_MIDI 1
+#if defined(GRIDPICO_PICO7_HOST_FIXTURE) || defined(GRIDPICO_RP2040_PICO7_NORMAL)
+enum { GRIDPICO_PICO_USB_CABLES = 2, GRIDPICO_PICO_USB_DEVICES = 7, GRIDPICO_PICO_USB_CABLE_GROUPS = 8 };
+#else
 enum { GRIDPICO_PICO_USB_CABLES = 2, GRIDPICO_PICO_USB_DEVICES = 4, GRIDPICO_PICO_USB_CABLE_GROUPS = 5 };
+#endif
 #endif
 
 typedef enum {
@@ -97,13 +101,17 @@ struct gridpico_pico_router {
 #ifdef GRIDPICO_RP2040_MATRIX_CLI
     gridpico_local_routing_snapshot projection_scratch;
 #endif
+#ifdef GRIDPICO_RP2040_ROUTING_PAGES
+    gridpico_patch_routing_page session_routing_scratch, public_routing_scratch;
+#endif
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
     gridpico_revision physical_feedback_generation;
     bool native_output_ready;
     bool keys_mode, keys_cutover;
     uint8_t apc_placement_first, apc_placement_end;
     gridpico_patch_manual_routes manual_routes;
-#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_BOOT_READ) || \
+    defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
     struct gridpico_pico_pat2_apply *pat2_apply;
 #endif
     struct {
@@ -174,6 +182,16 @@ gridpico_result gridpico_pico_router_read_managed_route(
     void *context, const gridpico_local_route *route, gridpico_local_route_status *out);
 gridpico_result gridpico_pico_router_set_managed_route(
     void *context, const gridpico_local_route_request *request);
+#endif
+#ifdef GRIDPICO_RP2040_ROUTING_PAGES
+/* The serialized caller provides output separate from both internal page workspaces. */
+gridpico_result gridpico_pico_router_read_routing_metadata(void *context,
+                                                          gridpico_patch_routing_metadata *out);
+gridpico_result gridpico_pico_router_read_routing_page(void *context, gridpico_revision expected_revision,
+                                                      size_t offset, gridpico_patch_routing_page *out);
+gridpico_result gridpico_pico_router_read_guarded_managed_route(void *context, gridpico_revision expected_revision,
+                                                              const gridpico_local_route *route,
+                                                              gridpico_local_route_status *out);
 #endif
 gridpico_route_snapshot gridpico_pico_router_pad_status(gridpico_pico_router *router);
 void gridpico_pico_router_attach(gridpico_pico_router *router, gridpico_pico_peer peer, bool attached);

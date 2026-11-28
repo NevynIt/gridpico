@@ -3,9 +3,11 @@
 
 #include "app/rp2040_pat2_projection.h"
 
-#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
-#if defined(GRIDPICO_PAT2_APPLY_HOST) && defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
-#error "The PAT2 link fixture cannot enable the live host fixture hooks."
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_BOOT_READ) || \
+    defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+#if (defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_BOOT_READ)) && \
+    defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+#error "The PAT2 link fixture cannot enable the live restore hooks."
 #endif
 
 enum {
@@ -24,6 +26,11 @@ typedef struct {
     uint8_t pair_outcomes[GRIDPICO_PICO_PAT2_PAIRS];
 } gridpico_pico_pat2_progress;
 
+typedef struct {
+    uint8_t present[GRIDPICO_PICO_PAT2_PAIRS]; /* Exact saved-pair order, including Pending. */
+    size_t enabled_count;
+} gridpico_pico_pat2_membership;
+
 typedef struct gridpico_pico_pat2_apply {
     /* The fixture loans one immutable record before first admission. */
     const gridpico_pico_pat2_intent *intent;
@@ -37,13 +44,14 @@ typedef struct gridpico_pico_pat2_apply {
 #endif
     gridpico_pico_pat2_projection projection;
     gridpico_pico_pat2_plan plan, current_plan;
-    gridpico_patch_graph shadow_graph;
-    gridpico_patch_session shadow_session;
-    gridpico_local_routing_snapshot shadow_read;
+    gridpico_patch_graph_route_shadow shadow;
+    gridpico_patch_graph_route_page route_page;
+    gridpico_pico_pat2_membership current_membership;
     struct {
         const gridpico_pico_pat2_intent *intent;
         gridpico_revision role_revision;
-        gridpico_port_id audition_destination;
+        gridpico_port_id audition_source, audition_destination;
+        gridpico_pico_pat2_membership membership;
         gridpico_pico_pat2_progress progress;
         gridpico_patch_manual_routes off;
     } before;
@@ -54,11 +62,14 @@ typedef struct gridpico_pico_pat2_apply {
     bool prepared;
 } gridpico_pico_pat2_apply;
 
-/* Project into apply->projection before prepare and again before commit.
+/* Zero-initialize the workspace and keep the router and workspace in place.
+ * Project into apply->projection before prepare and again before commit.
  * Both calls run in the foreground. Commit consumes any prepared candidate.
+ * Discard explicitly if a prepared turn is abandoned.
  */
 gridpico_result gridpico_pico_pat2_prepare(gridpico_pico_router *router, gridpico_revision roles);
 gridpico_result gridpico_pico_pat2_commit(gridpico_pico_router *router, gridpico_revision roles);
+void gridpico_pico_pat2_discard(gridpico_pico_router *router);
 void gridpico_pico_pat2_refresh_panels(gridpico_pico_router *router);
 
 #ifdef GRIDPICO_RP2040_PAT2_LINK_FIXTURE
@@ -66,7 +77,7 @@ void gridpico_pico_pat2_refresh_panels(gridpico_pico_router *router);
 gridpico_result gridpico_pico_pat2_link_fixture(const gridpico_pico_pat2_intent *intent);
 #endif
 
-#ifdef GRIDPICO_PAT2_APPLY_HOST
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_BOOT_READ)
 size_t gridpico_pico_pat2_slot_index(gridpico_patch_direction axis, uint8_t slot);
 bool gridpico_pico_pat2_placement_blocked(const gridpico_pico_router *router,
                                           size_t slot);

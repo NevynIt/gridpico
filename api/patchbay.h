@@ -24,18 +24,30 @@ enum {
     GRIDPICO_PATCH_MONITOR_PORT_ID = 6
 };
 
-/* Backing extents for each target ABI. The RP2040 device retains its
- * qualified storage. Initializer admission and the viewport are independent.
+/* Backing extents for each target ABI. The seven-device host fixture
+ * opts into larger inventory backing for generic RP2040 Matrix.
  */
 enum {
 #if defined(PICO_ON_DEVICE) && PICO_ON_DEVICE && defined(PICO_RP2040) && PICO_RP2040
+#if (defined(GRIDPICO_PICO7_HOST_FIXTURE) || defined(GRIDPICO_RP2040_PICO7_NORMAL)) && \
+    defined(GRIDPICO_RP2040_MATRIX_CLI) && \
+    !defined(GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
+    GRIDPICO_PATCH_MAX_DEVICES = 9,
+    GRIDPICO_PATCH_MAX_PORTS = 19,
+#else
     GRIDPICO_PATCH_MAX_DEVICES = 8,
     GRIDPICO_PATCH_MAX_PORTS = 18,
+#endif
 #else
     GRIDPICO_PATCH_MAX_DEVICES = 12,
     GRIDPICO_PATCH_MAX_PORTS = 36,
 #endif
+#if defined(PICO_ON_DEVICE) && PICO_ON_DEVICE && defined(PICO_RP2040) && PICO_RP2040 && \
+    defined(GRIDPICO_RP2040_MATRIX_CLI) && !defined(GRIDPICO_RP2040_PROGRAM_CHANGE_BENCH)
+    GRIDPICO_PATCH_MAX_BRANCHES = 24,
+#else
     GRIDPICO_PATCH_MAX_BRANCHES = 13,
+#endif
     GRIDPICO_PATCH_SOURCE_ROWS = 5,
     GRIDPICO_PATCH_DESTINATION_COLUMNS = 8,
     GRIDPICO_PATCH_NAME_BYTES = 32,

@@ -30,8 +30,16 @@ enum {
 #else
     CABLES = 2,
 #endif
+#ifdef GRIDPICO_RP2040_READONLY_USB_DRIVE
+    NATIVE_INTERFACES = 5,
+    STORAGE_DESCRIPTOR_SIZE = TUD_MSC_DESC_LEN,
+#else
+    NATIVE_INTERFACES = 4,
+    STORAGE_DESCRIPTOR_SIZE = 0,
+#endif
     CONFIG_SIZE = TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN + TUD_MIDI_DESC_HEAD_LEN +
-                  CABLES * TUD_MIDI_DESC_JACK_LEN + 2 * TUD_MIDI_DESC_EP_LEN(CABLES),
+                  CABLES * TUD_MIDI_DESC_JACK_LEN + 2 * TUD_MIDI_DESC_EP_LEN(CABLES) +
+                  STORAGE_DESCRIPTOR_SIZE,
 };
 
 static const tusb_desc_device_t device = {
@@ -59,7 +67,7 @@ static const tusb_desc_device_t device = {
     .bNumConfigurations = 1,
 };
 static const uint8_t configuration[] = {
-    TUD_CONFIG_DESCRIPTOR(1, 4, 0, CONFIG_SIZE, 0, 100),
+    TUD_CONFIG_DESCRIPTOR(1, NATIVE_INTERFACES, 0, CONFIG_SIZE, 0, 100),
     TUD_CDC_DESCRIPTOR(0, 0, 0x81, 8, 0x02, 0x82, 64),
     TUD_MIDI_DESC_HEAD(2, 0, CABLES),
     TUD_MIDI_DESC_JACK_DESC(1, 3),
@@ -76,6 +84,9 @@ static const uint8_t configuration[] = {
     TUD_MIDI_JACKID_OUT_EMB(1), TUD_MIDI_JACKID_OUT_EMB(2),
 #ifdef GRIDPICO_RP2040_KEYS_BENCH
     TUD_MIDI_JACKID_OUT_EMB(3),
+#endif
+#ifdef GRIDPICO_RP2040_READONLY_USB_DRIVE
+    TUD_MSC_DESCRIPTOR(4, 6, 0x04, 0x84, 64),
 #endif
 };
 _Static_assert(sizeof(configuration) == CONFIG_SIZE, "Invalid USB descriptor length");
@@ -105,6 +116,13 @@ const uint16_t *tud_descriptor_string_cb(uint8_t index, uint16_t language)
     }
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
     if (index == FLASH_SERIAL_INDEX && language == 0x0409) return serial_descriptor;
+#endif
+#ifdef GRIDPICO_RP2040_READONLY_USB_DRIVE
+    if (index == 6 && language == 0x0409) {
+        static const uint16_t storage[] = {(TUSB_DESC_STRING << 8) | 18,
+                                           'G', 'R', 'I', 'D', 'P', 'I', 'C', 'O'};
+        return storage;
+    }
 #endif
     if (language != 0x0409 || index > sizeof(strings) / sizeof(strings[0])) return NULL;
     const char *text = strings[index - 1];

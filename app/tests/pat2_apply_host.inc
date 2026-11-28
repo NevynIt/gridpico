@@ -60,6 +60,38 @@ static void admit_one_cable(uint8_t index, size_t device, gridpico_pico_peer pee
     gridpico_pico_router_attach(&router, peer, true);
 }
 
+static void seed_pending_route(gridpico_port_id source, gridpico_port_id destination)
+{
+    const gridpico_local_route_request request = {{source, destination, GRIDPICO_LOCAL_MANAGED}, true};
+    gridpico_local_route_status status;
+    assert(gridpico_patch_graph_set_local_route(&router.graph, &request) == GRIDPICO_OK);
+    assert(gridpico_patch_graph_read_local_route(&router.graph, &request.route, &status) == GRIDPICO_OK);
+    assert(status.state == GRIDPICO_PATCH_ROUTE_PENDING);
+}
+
+static void seed_matrix24_pending_routes(void)
+{
+    const gridpico_patch_device device = {
+        .id = 100, .name = "Fixture only", .state = GRIDPICO_PATCH_DISCONNECTED,
+    };
+    const gridpico_patch_port output = {
+        .id = 100, .device = device.id, .name = "Fixture only Out", .direction = GRIDPICO_PATCH_OUTPUT,
+        .state = GRIDPICO_PATCH_DISCONNECTED, .patch_eligible = true,
+    };
+    /* A registry-only OUT keeps the last discovered cable group available for C. */
+    assert(router.graph.local_profile.dynamic_port_limit < GRIDPICO_PATCH_MAX_PORTS);
+    ++router.graph.local_profile.dynamic_port_limit;
+    assert(gridpico_patch_graph_append_managed_device(&router.graph, &device, &output, 1) == GRIDPICO_OK);
+
+    const gridpico_local_native_virtual_cable native = router.graph.native_virtual_cable;
+    for (size_t cable = A0; cable <= B1; ++cable) {
+        seed_pending_route(native.source, router.discovered[cable].output);
+        seed_pending_route(router.discovered[cable].input, output.id);
+        /* The original A1 to native Pending route is seeded last in both fixtures. */
+        if (cable != A1) seed_pending_route(router.discovered[cable].input, native.destination);
+    }
+}
+
 static void setup(void)
 {
     assert(gridpico_pico_router_init(&router) == GRIDPICO_OK);
@@ -103,6 +135,7 @@ static void setup(void)
             assert(gridpico_patch_graph_set_local_route(&router.graph, &request) == GRIDPICO_OK);
         }
     }
+    if (GRIDPICO_PATCH_MAX_BRANCHES == 24) seed_matrix24_pending_routes();
     const gridpico_local_route_request pending = {
         {router.discovered[A1].input, router.graph.native_virtual_cable.destination, GRIDPICO_LOCAL_MANAGED}, true,
     };
@@ -220,17 +253,17 @@ int main(void)
     memcpy(&before_router, &router, sizeof(router));
     memcpy(&before_progress, &apply.progress, sizeof(apply.progress));
     service_automatic_policy();
-    assert(apply.shadow_graph.revision == UINT64_MAX &&
+    assert(apply.shadow.graph.revision == UINT64_MAX &&
            apply.next.pair_outcomes[1] == GRIDPICO_PAT2_APPLIED && !automatic_routes.coherent);
     assert(memcmp(&before_router, &router, sizeof(router)) == 0);
     assert(memcmp(&before_progress, &apply.progress, sizeof(apply.progress)) == 0);
     router.graph.revision = before_revision;
 
+    memcpy(&before_router, &router, sizeof(router));
     project();
     assert(gridpico_pico_pat2_prepare(&router, physical_roles.revision) == GRIDPICO_OK);
     observe(3, 'A'); /* Exact competitor with no Graph or layout change. */
     project();
-    memcpy(&before_router, &router, sizeof(router));
     assert(gridpico_pico_pat2_commit(&router, physical_roles.revision) == GRIDPICO_UNAVAILABLE);
     assert(memcmp(&before_router, &router, sizeof(router)) == 0);
     mounted[3] = false;
@@ -265,6 +298,7 @@ int main(void)
     assert(gridpico_pico_pat2_prepare(&router, physical_roles.revision) == GRIDPICO_OK);
     assert(apply.next.pair_outcomes[0] == GRIDPICO_PAT2_FULL &&
            apply.next.pair_outcomes[1] == GRIDPICO_PAT2_OPERATOR && desired(route(A0, B1, true).route));
+    gridpico_pico_pat2_discard(&router);
     memcpy(&apply.progress, &before_progress, sizeof(apply.progress)); /* Reset test probe. */
 
     advance_policy();
@@ -300,6 +334,7 @@ int main(void)
     mounted[4] = true;
     const gridpico_pico_peer c_peer = (gridpico_pico_peer)(a_peer + C0);
     admit_one_cable(4, 2, c_peer);
+    assert(router.graph.inventory.port_count == router.graph.local_profile.dynamic_port_limit);
 
     const gridpico_local_route_request leave_off = route(A0, C0, false);
     assert(gridpico_patch_session_set_local_route(&router.session, &leave_off) == GRIDPICO_OK);

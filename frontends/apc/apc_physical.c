@@ -10,6 +10,7 @@ enum {
     APC_RIGHT = 0x43,
     APC_SCENE_FIRST = 0x52,
     APC_STOP_ALL = 0x51,
+    APC_RECORD = 0x5d,
     APC_SHIFT = 0x62,
     APC_FIXED_LED = 0x90,
     APC_DIM_OFF = 0x01,
@@ -320,6 +321,35 @@ void gridpico_apc_physical_init(gridpico_apc_physical *frontend, void *session_c
     };
 }
 
+void gridpico_apc_physical_bind_panic(
+    gridpico_apc_physical *frontend, gridpico_apc_start_panic_fn start_panic,
+    bool *record_claimed)
+{
+    frontend->start_panic = start_panic;
+    frontend->panic_record_claimed = record_claimed;
+}
+
+bool gridpico_apc_physical_consume_panic_record_tail(
+    gridpico_apc_physical *frontend, const gridpico_apc_surface_message *message)
+{
+    bool *record_claimed = frontend->panic_record_claimed;
+    if (record_claimed == NULL || !*record_claimed) {
+        return false;
+    }
+
+    uint8_t note = 0;
+    const gridpico_apc_pad_event event = gridpico_apc_decode_button(message, &note);
+    if (note != APC_RECORD) {
+        return false;
+    }
+    if (event == GRIDPICO_APC_PAD_RELEASED) {
+        *record_claimed = false;
+        frontend->held[APC_RECORD] = false;
+        return true;
+    }
+    return event == GRIDPICO_APC_PAD_PRESSED;
+}
+
 gridpico_result gridpico_apc_physical_detach(gridpico_apc_physical *frontend)
 {
     const gridpico_result result = stop_audition(frontend, GRIDPICO_APC_AUDITION_CANCEL);
@@ -583,6 +613,9 @@ static gridpico_result patch_press(gridpico_apc_physical *frontend,
 gridpico_result gridpico_apc_physical_receive(
     gridpico_apc_physical *frontend, const gridpico_apc_surface_message *message, uint64_t now_ms)
 {
+    if (gridpico_apc_physical_consume_panic_record_tail(frontend, message)) {
+        return GRIDPICO_OK;
+    }
     uint8_t note = 0;
     const gridpico_apc_pad_event event = gridpico_apc_decode_button(message, &note);
     if (event == GRIDPICO_APC_PAD_INVALID) {
@@ -610,6 +643,12 @@ gridpico_result gridpico_apc_physical_receive(
         clear_preview(frontend);
         const gridpico_result refresh = gridpico_apc_physical_refresh(frontend, now_ms);
         return stopped == GRIDPICO_OK ? refresh : stopped;
+    }
+    if (note == APC_RECORD && frontend->held[APC_SHIFT] &&
+        !frontend->arranging && frontend->start_panic != NULL &&
+        frontend->panic_record_claimed != NULL) {
+        *frontend->panic_record_claimed = true;
+        return frontend->start_panic(frontend->panel_context);
     }
     gridpico_patch_direction axis;
     uint8_t slot;

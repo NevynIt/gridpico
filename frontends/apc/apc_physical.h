@@ -19,6 +19,8 @@ typedef gridpico_result (*gridpico_apc_physical_feedback_fn)(
     void *context, const gridpico_apc_surface_message *messages, size_t count,
     const gridpico_apc_physical_page_version *version);
 
+typedef gridpico_result (*gridpico_apc_start_panic_fn)(void *panel_context);
+
 typedef enum {
     GRIDPICO_APC_AUDITION_START,
     GRIDPICO_APC_AUDITION_END,
@@ -54,6 +56,8 @@ typedef struct {
     gridpico_apc_patch_move_fn move;
     void *panel_context;
     gridpico_apc_physical_audition_fn audition;
+    gridpico_apc_start_panic_fn start_panic;
+    bool *panic_record_claimed;
     gridpico_apc_physical_feedback_fn feedback;
     gridpico_apc_patch_snapshot *scratch;
 
@@ -93,6 +97,16 @@ void gridpico_apc_physical_init(gridpico_apc_physical *frontend, void *session_c
                                gridpico_apc_physical_audition_fn audition,
                                gridpico_apc_physical_feedback_fn feedback,
                                gridpico_apc_patch_snapshot *scratch);
+/* The verified Panel attachment owns record_claimed and clears it on
+ * retirement. Rebind the same storage after a same-attachment reset.
+ * Both arguments are required for new Panic claims.
+ */
+void gridpico_apc_physical_bind_panic(
+    gridpico_apc_physical *frontend, gridpico_apc_start_panic_fn start_panic,
+    bool *record_claimed);
+/* Check only current physical Port 1 input before chooser or Keys dispatch. */
+bool gridpico_apc_physical_consume_panic_record_tail(
+    gridpico_apc_physical *frontend, const gridpico_apc_surface_message *message);
 gridpico_result gridpico_apc_physical_receive(
     gridpico_apc_physical *frontend, const gridpico_apc_surface_message *message, uint64_t now_ms);
 gridpico_result gridpico_apc_physical_refresh(gridpico_apc_physical *frontend, uint64_t now_ms);

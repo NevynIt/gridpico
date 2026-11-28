@@ -41,6 +41,7 @@ typedef struct {
     gridpico_pico_pat2_pair pairs[GRIDPICO_PICO_PAT2_PAIRS];
 } gridpico_pico_pat2_intent;
 
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
 /* Encode exactly RECORD_BYTES into caller RAM, with the commit page at
  * DATA_BYTES. The record borrows the nonzero generation from intent. Invalid
  * intent, a short span or overlap returns INVALID with the output unchanged.
@@ -48,6 +49,7 @@ typedef struct {
  */
 gridpico_result gridpico_pico_encode_pat2(
     const gridpico_pico_pat2_intent *intent, uint8_t *record, size_t capacity);
+#endif
 
 typedef enum {
     GRIDPICO_PICO_PAT2_UNREADABLE,
@@ -100,9 +102,13 @@ typedef struct {
     size_t observation_count;
     const gridpico_pico_pat2_binding *bindings;
     size_t binding_count;
-    /* All occupied branches, including existing Pending and any other modes. */
+    /* Total enabled routes, including Pending and other modes. */
+    size_t branch_count;
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
+    /* Used by the historical host planner with a complete sparse snapshot. */
     const gridpico_local_enabled_route *branches;
-    size_t branch_count, branch_limit;
+    size_t branch_limit;
+#endif
 } gridpico_pico_pat2_verified_view;
 
 typedef struct {
@@ -135,11 +141,18 @@ typedef struct {
     gridpico_pico_pat2_planned_pair pairs[GRIDPICO_PICO_PAT2_PAIRS];
 } gridpico_pico_pat2_plan;
 
-/* A pure plan for one coherent view. A future apply must first recheck both
- * revisions and exact binding generations. Output is unchanged on failure.
+/* Resolve the saved intent against the verified census only. Admission is
+ * left to the staged Graph writer. Output is unchanged on failure.
  */
+gridpico_result gridpico_pico_resolve_saved_intent(
+    const gridpico_pico_pat2_intent *intent, const gridpico_pico_pat2_verified_view *view,
+    gridpico_pico_pat2_plan *out_plan);
+
+#ifndef GRIDPICO_RP2040_SNAPSHOT_READ_ONLY
+/* Historical host planner with a fixed sparse snapshot and projected capacity. */
 gridpico_result gridpico_pico_plan_saved_intent(
     const gridpico_pico_pat2_intent *intent, const gridpico_pico_pat2_verified_view *view,
     gridpico_pico_pat2_plan *out_plan);
+#endif
 
 #endif

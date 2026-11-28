@@ -1,4 +1,8 @@
 #include "app/rp2040_router.h"
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+#include "app/rp2040_panic.h"
+#include "frontends/apc/apc_protocol.h"
+#endif
 #include "app/rp2040_auto_routes.h"
 #include "bootsel_line.h"
 
@@ -21,7 +25,8 @@
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
 #include "hardware/structs/usb.h"
 #include "app/rp2040_pat2_projection.h"
-#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_BOOT_READ) || \
+    defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
 #include "app/rp2040_pat2_apply.h"
 #endif
 #include "frontends/apc/apc_chooser.h"
@@ -110,6 +115,9 @@ typedef struct {
     uint32_t out_generation, out_lifetime;
     gridpico_pico_peer out_owner;
     uint8_t next_cable;
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    gridpico_pico_panic_ticket panic_ticket;
+#endif
 #endif
 } host_interface;
 
@@ -121,7 +129,33 @@ enum { CDC_OUTPUT_BYTES_PER_PASS = 64 };
 static uint32_t cdc_output_budget;
 static gridpico_cdc_cli cdc_cli;
 static gridpico_cli_frontend cli;
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+static gridpico_pico_panic pico_panic;
+static gridpico_panic_stage_report panic_reply;
+static uint32_t panic_cdc_generation;
+typedef enum { PICO_PANIC_OWNER_NONE, PICO_PANIC_OWNER_CDC, PICO_PANIC_OWNER_PANEL } pico_panic_owner_kind;
+typedef struct {
+    gridpico_port_id port;
+    uint32_t frontend_generation, input_generation, lifetime;
+    uint8_t index, peer, cable, address, interface_number, endpoint;
+} pico_panic_panel_owner;
+static struct {
+    pico_panic_owner_kind kind;
+    pico_panic_panel_owner panel;
+} pico_panic_owner;
+enum { PHYSICAL_RECORD_NOTE = 0x5d };
+static bool physical_panic_record_down;
+static bool physical_panic_record_claimed;
+static gridpico_result start_physical_panic(void *panel_context);
+static void check_pico_panic_owner(void);
+static gridpico_result read_pico_panic(void *context, gridpico_panic_stage_report *out);
+static gridpico_result start_pico_panic(void *context, gridpico_panic_stage_report *out);
+static void finish_pico_panic(gridpico_pico_panic_ticket ticket, bool exact);
+#endif
 static gridpico_local_routing_snapshot routing_scratch;
+#ifdef GRIDPICO_RP2040_ROUTING_PAGES
+static gridpico_patch_routing_page cli_routing_page;
+#endif
 #endif
 static uint64_t native_led_refresh_at;
 static host_interface interfaces[CFG_TUH_MIDI];
@@ -161,6 +195,9 @@ static bool devices_ready[CFG_TUH_DEVICE_MAX + 1];
 static uint8_t device_streams[CFG_TUH_DEVICE_MAX + 1];
 static uint32_t next_midi_lifetime;
 static bool discovery_dirty;
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+static void pat2_boot_discovery_changed(void);
+#endif
 typedef struct {
     midi_identity identity;
     uint32_t lifetime;
@@ -208,7 +245,12 @@ static bool circuit_ambiguous;
 static uint32_t apc_led_generation;
 #endif
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
-typedef enum { NATIVE_OUT_IDLE, NATIVE_OUT_NOTE, NATIVE_OUT_PANEL } native_out_kind;
+typedef enum {
+    NATIVE_OUT_IDLE, NATIVE_OUT_NOTE, NATIVE_OUT_PANEL,
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    NATIVE_OUT_PANIC,
+#endif
+} native_out_kind;
 enum { NATIVE_EVENT_IDLE, NATIVE_EVENT_ARMED, NATIVE_EVENT_SEEN, NATIVE_EVENT_DUPLICATE };
 static volatile uint8_t native_event_state, native_event_result;
 static volatile uint32_t native_event_length;
@@ -221,6 +263,9 @@ static struct {
     gridpico_pico_packet packet;
     uint32_t generation;
     native_out_kind kind;
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    gridpico_pico_panic_ticket panic_ticket;
+#endif
 } native_out;
 #else
 static uint32_t native_led_generation;
@@ -440,9 +485,21 @@ static void bind_matrix_cli(void)
     cli.read_snapshot = gridpico_patch_session_read_snapshot;
     /* CLI reads and panel refreshes share the serialized foreground. */
     gridpico_cli_bind_apc_patch(&cli, gridpico_patch_session_read_apc_patch, &router.panel_scratch);
+#ifdef GRIDPICO_RP2040_ROUTING_PAGES
+    gridpico_cli_bind_routing_pages(&cli, &router, gridpico_pico_router_read_routing_metadata,
+                                   gridpico_pico_router_read_routing_page,
+                                   gridpico_pico_router_read_guarded_managed_route,
+                                   gridpico_pico_router_read_managed_route, gridpico_pico_router_set_managed_route,
+                                   &cli_routing_page);
+#else
     gridpico_cli_bind_routing(&cli, &router, gridpico_pico_router_read_routing,
                              gridpico_pico_router_read_managed_route, gridpico_pico_router_set_managed_route,
                              &routing_scratch);
+#endif
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    gridpico_cli_bind_musical_control(&cli, &pico_panic, NULL, NULL,
+                                       read_pico_panic, start_pico_panic, &panic_reply);
+#endif
     gridpico_cli_bind_platform(&cli, capabilities, start_cli_platform, NULL);
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
     gridpico_cli_bind_apc_roles(&cli, &physical_roles, read_apc_roles, apply_apc_role);
@@ -608,6 +665,10 @@ static _Noreturn void request_bootsel(void)
 
 static void reset_cdc_requests(void)
 {
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    if (pico_panic_owner.kind == PICO_PANIC_OWNER_CDC) gridpico_pico_panic_cancel(&pico_panic);
+    if (panic_cdc_generation != UINT32_MAX) ++panic_cdc_generation;
+#endif
 #ifdef GRIDPICO_RP2040_MATRIX_CLI
     gridpico_cdc_cli_reset(&cdc_cli);
 #endif
@@ -1002,11 +1063,27 @@ static bool physical_audition_pending(void)
     return router.audition.destination != 0 && router.audition.owner == GRIDPICO_PICO_APC;
 }
 
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+static void bind_physical_panic(bool admit)
+{
+    gridpico_apc_physical_bind_panic(&router.panels[GRIDPICO_PICO_APC].frontend,
+                                    admit ? start_physical_panic : NULL, &physical_panic_record_claimed);
+}
+#endif
+
 static void attach_physical_panel(apc_roles *roles, uint32_t generation)
 {
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    physical_panic_record_down = false;
+    physical_panic_record_claimed = false;
+#endif
     if (router.attached[GRIDPICO_PICO_APC]) gridpico_pico_router_attach(&router, GRIDPICO_PICO_APC, false);
     if (generation != 0) gridpico_pico_router_attach(&router, GRIDPICO_PICO_APC, true);
     roles->panel_generation = router.attached[GRIDPICO_PICO_APC] ? generation : 0;
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    bind_physical_panic(false);
+    check_pico_panic_owner();
+#endif
     if (roles->led_generation != 0 && !roles->retiring) {
         gridpico_pico_router_set_physical_feedback(&router, roles->revision);
     }
@@ -1077,6 +1154,49 @@ static bool panel_graph_input(gridpico_port_id id, uint32_t generation, bool res
     return false;
 }
 
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+static bool read_panic_panel_owner(pico_panic_panel_owner *out)
+{
+    const uint32_t frontend_generation = router.generation[GRIDPICO_PICO_APC];
+    const uint32_t input_generation = physical_roles.panel_generation;
+    usb_midi_lane lane;
+    if (!router.attached[GRIDPICO_PICO_APC] || frontend_generation == 0 || input_generation == 0 ||
+        lookup_lane(physical_roles.panel, false, &lane) != GRIDPICO_OK ||
+        !observations[lane.index].verified || panel_lane_generation(&lane) != input_generation ||
+        !panel_graph_input(physical_roles.panel, input_generation, true)) return false;
+    const host_interface *itf = &interfaces[lane.index];
+    *out = (pico_panic_panel_owner){
+        .port = physical_roles.panel, .frontend_generation = frontend_generation,
+        .input_generation = input_generation, .lifetime = observations[lane.index].lifetime,
+        .index = lane.index, .peer = (uint8_t)lane.peer, .cable = lane.cable,
+        .address = itf->device_address, .interface_number = itf->number,
+        .endpoint = observations[lane.index].input_endpoint,
+    };
+    return true;
+}
+
+static bool observe_physical_record(uint8_t index, const gridpico_pico_packet *packet, bool *fresh)
+{
+    *fresh = false;
+    const uint8_t status = packet->bytes[1];
+    const uint8_t cable = packet->bytes[0] >> 4;
+    if (packet->bytes[2] != PHYSICAL_RECORD_NOTE || cable != 1 ||
+        (packet->bytes[0] & 0x0fu) != status >> 4) return false;
+    const gridpico_apc_surface_message message = {{status, packet->bytes[2], packet->bytes[3]}};
+    uint8_t note;
+    const gridpico_apc_pad_event event = gridpico_apc_decode_button(&message, &note);
+    if (event != GRIDPICO_APC_PAD_PRESSED && event != GRIDPICO_APC_PAD_RELEASED) return false;
+    pico_panic_panel_owner current;
+    if (!read_panic_panel_owner(&current) || current.index != index || current.cable != cable) return false;
+
+    /* Observe ordinary Record even when chooser or Keys bypass the frontend. */
+    const bool down = event == GRIDPICO_APC_PAD_PRESSED;
+    *fresh = down && !physical_panic_record_down;
+    physical_panic_record_down = down;
+    return gridpico_apc_physical_consume_panic_record_tail(&router.panels[GRIDPICO_PICO_APC].frontend, &message);
+}
+#endif
+
 enum { KEYS_LED_QUEUE = 16, KEYS_PAD_FIRST = 0x20 };
 typedef enum { KEYS_LED_PAGE, KEYS_LED_SHOW, KEYS_LED_RESTORE, KEYS_LED_COMPUTER } keys_led_effect;
 static struct {
@@ -1090,6 +1210,14 @@ static struct {
     keys_led_effect flight_effect;
     uint8_t led_head, led_count, show_pads, touched_pads, known_pads;
 } keys;
+
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+static bool physical_panic_mode(void)
+{
+    return !router.keys_mode && !router.keys_cutover &&
+        !router.panels[GRIDPICO_PICO_APC].frontend.arranging;
+}
+#endif
 
 static uint8_t keys_voice_length(const gridpico_pico_packet *packet)
 {
@@ -1121,6 +1249,16 @@ static bool keys_led_current(void)
     return led != NULL && !led->ambiguous && led->lifetime == keys.led_lifetime &&
         eligible_interface(keys.led.index) && led->identity.output_endpoint == host_endpoints_out[keys.led.index];
 }
+
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+static bool physical_panic_admitted(void)
+{
+    /* A chooser preview fences admission while the current job still owns
+     * its exact Panel and mode. Feedback is a start condition only. */
+    return physical_panic_mode() && !keys.chooser.open &&
+        router.physical_feedback_generation != 0 && keys_led_current();
+}
+#endif
 
 static bool keys_native_current(void)
 {
@@ -1318,7 +1456,20 @@ static void service_keys_cutover(void)
     keys.led_head = keys.led_count = keys.known_pads = 0;
     keys.show_pads = 0;
     keys.requested = GRIDPICO_APC_CHOOSER_NO_REQUEST;
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    pico_panic_panel_owner current_panel;
+    const bool same_panel = read_panic_panel_owner(&current_panel);
+    const bool record_claimed = same_panel && physical_panic_record_claimed;
+#endif
     gridpico_pico_router_commit_keys_mode(&router, enter_keys);
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    /* Reset closes the frontend's ordinary held edges; preserve the one
+     * claimed Record tail when its input lifetime did not change. */
+    if (!same_panel) physical_panic_record_down = false;
+    physical_panic_record_claimed = record_claimed;
+    bind_physical_panic(false);
+    check_pico_panic_owner();
+#endif
     if (!input_current) gridpico_apc_chooser_detach(&keys.chooser, keys.chooser.attachment);
 }
 
@@ -1650,6 +1801,9 @@ static void remember_observation(uint8_t index, const midi_identity *identity, c
 static void admit_without_strings(void)
 {
     if (!discovery_dirty) return;
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+    pat2_boot_discovery_changed();
+#endif
     discovery_dirty = false;
     for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
         if (!eligible_interface(index) || observations[index].verified) continue;
@@ -1702,6 +1856,9 @@ static void service_discovery(void)
         return;
     }
     if (!discovery_dirty) return;
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+    pat2_boot_discovery_changed();
+#endif
     discovery_dirty = false;
 
     for (uint8_t index = 0; index < CFG_TUH_MIDI; ++index) {
@@ -1938,12 +2095,21 @@ gridpico_result gridpico_pico_project_pat2_view(gridpico_pico_pat2_projection *o
      */
     if (out->unknown_shape_interfaces != 0) return GRIDPICO_UNAVAILABLE;
 
-    gridpico_result result = gridpico_patch_graph_read_local_state(&router.graph, &out->graph);
+#if defined(GRIDPICO_RP2040_PAT2_BOOT_READ) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+    const gridpico_result result = gridpico_patch_graph_read_route_metadata(&router.graph, &out->graph);
+#else
+    const gridpico_result result = gridpico_patch_graph_read_local_state(&router.graph, &out->graph);
+#endif
     if (result != GRIDPICO_OK) return result;
     out->view = (gridpico_pico_pat2_verified_view){
         .graph_revision = out->graph.revision, .layout_revision = router.session.apc_layout_revision,
-        .observations = out->observations, .bindings = out->bindings, .branches = out->graph.routes,
+        .observations = out->observations, .bindings = out->bindings,
+#if defined(GRIDPICO_RP2040_PAT2_BOOT_READ) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+        .branch_count = out->graph.enabled_count,
+#else
+        .branches = out->graph.routes,
         .branch_count = out->graph.route_count, .branch_limit = router.graph.branch_limit,
+#endif
     };
     uint32_t blocked_inputs = 0, blocked_outputs = 0;
     automatic_policy_blocks(&physical_roles, &blocked_inputs, &blocked_outputs);
@@ -1955,7 +2121,8 @@ gridpico_result gridpico_pico_project_pat2_view(gridpico_pico_pat2_projection *o
     return GRIDPICO_OK;
 }
 
-#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
+#if defined(GRIDPICO_PAT2_APPLY_HOST) || defined(GRIDPICO_RP2040_PAT2_BOOT_READ) || \
+    defined(GRIDPICO_RP2040_PAT2_LINK_FIXTURE)
 /* Borrow the caller-owned fixture state for a single serialized turn. */
 static gridpico_result apply_pat2_turn(gridpico_revision roles)
 {
@@ -1963,8 +2130,8 @@ static gridpico_result apply_pat2_turn(gridpico_revision roles)
     gridpico_result result = gridpico_pico_project_pat2_view(&apply->projection);
     if (result == GRIDPICO_OK) result = gridpico_pico_pat2_prepare(&router, roles);
     if (result == GRIDPICO_OK) result = gridpico_pico_project_pat2_view(&apply->projection);
-    if (result == GRIDPICO_OK) result = gridpico_pico_pat2_commit(&router, roles);
-    if (result != GRIDPICO_OK) apply->prepared = false;
+    if (result == GRIDPICO_OK) return gridpico_pico_pat2_commit(&router, roles);
+    gridpico_pico_pat2_discard(&router);
     return result;
 }
 #endif
@@ -1989,6 +2156,61 @@ gridpico_result gridpico_pico_pat2_link_fixture(const gridpico_pico_pat2_intent 
 }
 #endif
 
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+static _Alignas(8) struct {
+    gridpico_pico_pat2_intent intent;
+    gridpico_pico_pat2_status status;
+    gridpico_pico_pat2_apply apply;
+    gridpico_revision graph_revision, layout_revision, role_revision;
+    bool read, pending, discovery_changed, coherent;
+} pat2_boot;
+
+static bool pat2_boot_pending(void)
+{
+    const gridpico_pico_pat2_progress *progress = &pat2_boot.apply.progress;
+    const uint16_t placed = progress->touched_slots | progress->consumed_slots;
+    for (size_t i = 0; i < GRIDPICO_PICO_PAT2_SLOTS; ++i) {
+        if (pat2_boot.intent.slots[i] && !(placed & (1u << i))) return true;
+    }
+    for (size_t i = 0; i < pat2_boot.intent.pair_count; ++i) {
+        if (progress->pair_outcomes[i] == GRIDPICO_PAT2_DUE) return true;
+    }
+    return false;
+}
+
+static void pat2_boot_read(const uint8_t *sector_a, const uint8_t *sector_b)
+{
+    if (pat2_boot.read) return;
+    pat2_boot.read = true;
+    if (gridpico_pico_read_pat2(sector_a, sector_b, &pat2_boot.status, &pat2_boot.intent) != GRIDPICO_OK) return;
+    pat2_boot.apply.intent = &pat2_boot.intent;
+    router.pat2_apply = &pat2_boot.apply;
+    pat2_boot.pending = pat2_boot_pending();
+    pat2_boot.discovery_changed = true;
+}
+
+static void pat2_boot_discovery_changed(void)
+{
+    pat2_boot.discovery_changed = true;
+}
+
+static bool pat2_boot_apply_after_roles(gridpico_revision roles)
+{
+    if (!pat2_boot.pending) return true;
+    if (pat2_boot.discovery_changed || roles != pat2_boot.role_revision ||
+        (!pat2_boot.coherent && (router.graph.revision != pat2_boot.graph_revision ||
+             router.session.apc_layout_revision != pat2_boot.layout_revision))) {
+        pat2_boot.discovery_changed = false;
+        pat2_boot.role_revision = roles;
+        pat2_boot.graph_revision = router.graph.revision;
+        pat2_boot.layout_revision = router.session.apc_layout_revision;
+        pat2_boot.coherent = apply_pat2_turn(roles) == GRIDPICO_OK;
+        if (pat2_boot.coherent) pat2_boot.pending = pat2_boot_pending();
+    }
+    return pat2_boot.coherent;
+}
+#endif
+
 static void service_automatic_policy(void)
 {
     bool coherent = !discovery_dirty && (discovery.index == NO_INTERFACE || discovery.expired) &&
@@ -2000,7 +2222,9 @@ static void service_automatic_policy(void)
         nominate_controller(roles);
         automatic_policy_blocks(roles, &blocked_inputs, &blocked_outputs);
     }
-#ifdef GRIDPICO_PAT2_APPLY_HOST
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+    if (coherent) coherent = pat2_boot_apply_after_roles(roles->revision);
+#elif defined(GRIDPICO_PAT2_APPLY_HOST)
     if (coherent && router.pat2_apply != NULL && router.pat2_apply->intent != NULL) {
         coherent = apply_pat2_turn(roles->revision) == GRIDPICO_OK;
     }
@@ -2023,8 +2247,23 @@ static void retire_host_interface(uint8_t index, bool fault)
     host_interface *itf = &interfaces[index];
     discovered_device *binding = mounted_binding(index);
     if (binding != NULL) binding->lifetime = 0;
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    pico_panic_panel_owner current_panel;
+    if ((physical_panic_record_down || physical_panic_record_claimed) &&
+        !read_panic_panel_owner(&current_panel)) {
+        physical_panic_record_down = false;
+        physical_panic_record_claimed = false;
+    }
+    check_pico_panic_owner();
+#endif
     discovery_dirty = true;
     if (itf->busy) {
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+        if (itf->panic_ticket.job != 0) {
+            finish_pico_panic(itf->panic_ticket, false);
+            itf->panic_ticket.job = 0;
+        }
+#endif
         fault |= !tuh_edpt_abort_xfer(itf->device_address, host_endpoints_out[index]);
         itf->busy = false;
         itf->out_generation = 0;
@@ -2252,6 +2491,10 @@ void tuh_midi_mount_cb(uint8_t index, const tuh_midi_mount_cb_t *mount)
     add_trace('V', index, values, sizeof(values));
 #endif
     if (index >= CFG_TUH_MIDI) return;
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+    /* An unadmitted MIDI class slot can invalidate a pending match. */
+    discovery_dirty = true;
+#endif
     if (interfaces[index].present) return;
     uint16_t vid, pid;
     if (!tuh_vid_pid_get(mount->daddr, &vid, &pid)) {
@@ -2281,7 +2524,7 @@ void tuh_midi_mount_cb(uint8_t index, const tuh_midi_mount_cb_t *mount)
 bool __real_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t result, uint32_t transferred);
 
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
-static bool current_musical_flight(uint8_t index)
+static bool current_host_musical_owner(uint8_t index)
 {
     const host_interface *itf = &interfaces[index];
     const discovered_device *binding = mounted_binding(index);
@@ -2291,8 +2534,14 @@ static bool current_musical_flight(uint8_t index)
         cable >= cable_span(&binding->identity) || (binding->identity.outputs & (1u << cable)) == 0 ||
         owner != binding->first_peer + cable || !router.attached[owner] ||
         itf->out_generation != router.generation[owner]) return false;
+    return true;
+}
 
-    const gridpico_pico_packet *head = gridpico_pico_router_note(&router, owner);
+static bool current_musical_flight(uint8_t index)
+{
+    const host_interface *itf = &interfaces[index];
+    if (!current_host_musical_owner(index)) return false;
+    const gridpico_pico_packet *head = gridpico_pico_router_note(&router, itf->out_owner);
     gridpico_pico_packet sent = itf->in_flight;
     sent.bytes[0] &= 0x0fu;
     return head != NULL && memcmp(head->bytes, sent.bytes, sizeof(sent.bytes)) == 0;
@@ -2319,8 +2568,14 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
         host_interface *itf = &interfaces[matched];
         const gridpico_pico_peer owner = itf->out_owner;
         const bool led = owner == GRIDPICO_PICO_APC;
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+        const bool panic_flight = itf->panic_ticket.job != 0;
+#endif
         const bool current = led ? physical_roles.led_flight_interface == matched &&
             physical_roles.led_flight_lifetime == observations[matched].lifetime :
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+            panic_flight ? current_host_musical_owner(matched) :
+#endif
             current_musical_flight(matched);
         const bool complete = current && handled && result == XFER_RESULT_SUCCESS &&
             transferred == GRIDPICO_PICO_PACKET_BYTES;
@@ -2337,6 +2592,12 @@ bool __wrap_midih_xfer_cb(uint8_t address, uint8_t endpoint, xfer_result_t resul
                 gridpico_pico_router_led_complete(&router, GRIDPICO_PICO_APC, complete);
             }
         }
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+        if (panic_flight) {
+            finish_pico_panic(itf->panic_ticket, complete);
+            itf->panic_ticket.job = 0;
+        } else
+#endif
         if (complete && !led) {
             gridpico_pico_router_note_sent(&router, owner);
         }
@@ -2426,6 +2687,12 @@ bool __wrap_midid_xfer_cb(uint8_t root, uint8_t endpoint, xfer_result_t result, 
     restore_interrupts(irq);
     if (!owned) return handled;
 
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    if (kind == NATIVE_OUT_PANIC) {
+        finish_pico_panic(native_out.panic_ticket, complete);
+        if (complete) return handled;
+    }
+#endif
     if (!complete) {
         gridpico_pico_router_retire_native_output(&router);
     } else if (kind == NATIVE_OUT_NOTE) {
@@ -2496,6 +2763,9 @@ static bool submit_host_packet(uint8_t index, gridpico_pico_peer owner, const gr
     };
     /* A refused claim cannot leave bytes in TinyUSB's class FIFO. */
     if (!tuh_edpt_xfer(&transfer)) return false;
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+    itf->panic_ticket.job = 0;
+#endif
     itf->out_owner = owner;
     itf->out_generation = router.generation[owner];
     itf->out_lifetime = lifetime;
@@ -2642,7 +2912,15 @@ static void service_host(void)
         const discovered_device *binding = mounted_binding(index);
         gridpico_pico_packet packet;
         for (unsigned i = 0; i < RX_BATCH && tuh_midi_packet_read(index, packet.bytes); ++i) {
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+            bool fresh_record;
+            if (observe_physical_record(index, &packet, &fresh_record)) continue;
+            const bool consumed = dispatch_keys_host(index, &packet);
+            if (pico_panic_owner.kind == PICO_PANIC_OWNER_PANEL && !physical_panic_mode()) check_pico_panic_owner();
+            if (consumed) continue;
+#else
             if (dispatch_keys_host(index, &packet)) continue;
+#endif
             const uint8_t cable = packet.bytes[0] >> 4;
             if (binding != NULL && cable < GRIDPICO_PICO_USB_CABLES &&
                 (binding->identity.inputs & (1u << cable)) != 0) {
@@ -2653,7 +2931,15 @@ static void service_host(void)
                         physical_roles.panel_generation == router.discovered[slot].input_generation &&
                         router.attached[GRIDPICO_PICO_APC]) {
                         packet.bytes[0] = (uint8_t)((packet.bytes[0] & 0x0fu) | 0x10u);
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+                        bind_physical_panic(fresh_record && physical_panic_admitted());
+#endif
                         receive(GRIDPICO_PICO_APC, &packet);
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+                        bind_physical_panic(false);
+                        if (pico_panic_owner.kind == PICO_PANIC_OWNER_PANEL &&
+                            !physical_panic_mode()) check_pico_panic_owner();
+#endif
                     }
                 } else {
                     packet.bytes[0] &= 0x0fu;
@@ -2734,6 +3020,9 @@ static void service_native_epoch(void)
 {
     if (native_epoch_current()) return;
     if (native_active_epoch != 0) {
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+        if (native_out.kind == NATIVE_OUT_PANIC) finish_pico_panic(native_out.panic_ticket, false);
+#endif
         native_active_epoch = 0;
         native_event_state = NATIVE_EVENT_IDLE;
         native_out.kind = NATIVE_OUT_IDLE;
@@ -2788,6 +3077,10 @@ static bool submit_native_packet(const gridpico_pico_packet *packet, native_out_
     return accepted;
 }
 
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+#include "panic_cc123.inc"
+#endif
+
 static void service_native_midi(void)
 {
     service_native_epoch();
@@ -2795,6 +3088,9 @@ static void service_native_midi(void)
     if (!native_epoch_current() || !router.attached[GRIDPICO_PICO_WEB]) return;
     const uint64_t now = time_us_64();
     if (native_out.kind != NATIVE_OUT_IDLE && now >= native_out.deadline) {
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+        if (native_out.kind == NATIVE_OUT_PANIC) finish_pico_panic(native_out.panic_ticket, false);
+#endif
         native_event_state = NATIVE_EVENT_IDLE;
         native_out.kind = NATIVE_OUT_IDLE;
         gridpico_pico_router_retire_native_output(&router);
@@ -2960,6 +3256,11 @@ static void __attribute__((noinline)) service_onboard_status(void)
 }
 #endif
 
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+extern const uint8_t __gridpico_pat2_slot_a[];
+extern const uint8_t __gridpico_pat2_slot_b[];
+#endif
+
 int main(void)
 {
 #ifdef GRIDPICO_RP2040_FLASH_ROUTER
@@ -2989,7 +3290,13 @@ int main(void)
     uint32_t host_frame_at_start = 0;
 #endif
     const tusb_rhport_init_t device = {.role = TUSB_ROLE_DEVICE, .speed = TUSB_SPEED_FULL};
+#ifdef GRIDPICO_RP2040_PAT2_BOOT_READ
+    const gridpico_result router_init = gridpico_pico_router_init(&router);
+    if (router_init == GRIDPICO_OK) pat2_boot_read(__gridpico_pat2_slot_a, __gridpico_pat2_slot_b);
+    if (router_init != GRIDPICO_OK || !tusb_init(DEVICE_ROOT, &device)) {
+#else
     if (!tusb_init(DEVICE_ROOT, &device) || gridpico_pico_router_init(&router) != GRIDPICO_OK) {
+#endif
 #ifdef GRIDPICO_RP2040_ONBOARD_STATUS
         gridpico_onboard_show(GRIDPICO_ONBOARD_FAULT);
 #endif
@@ -3034,8 +3341,11 @@ int main(void)
             host_frame_at_start = hcd_frame_number(HOST_ROOT);
 #endif
         }
+        if (host_ready) tuh_task_ext(0, false);
+#ifdef GRIDPICO_RP2040_PANIC_CC123
+        service_pico_panic();
+#endif
         if (host_ready) {
-            tuh_task_ext(0, false);
             service_host();
 #ifdef GRIDPICO_PICO_GENERIC_MIDI
             service_automatic_policy();
